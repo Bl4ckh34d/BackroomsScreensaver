@@ -73,6 +73,7 @@
         bloodFocusDuration_ = 0.0f;
         bloodFocusReactionsTaken_ = 0;
         bloodFocusReactionCooldown_ = 0.0f;
+        proximityBloodPulseCooldown_ = RandRange(4.5f, 9.0f);
         bloodFocusTarget_ = {};
         float scareScale = ScareCooldownScale();
         sparkCooldown_ = settings_.sparkParticles
@@ -667,6 +668,68 @@
         }
     }
 
+    void UpdateMonsterProximityBlood(float dt) {
+        if (deathActive_ || exitTransitionActive_ || bloodScarePoints_.empty()) return;
+        float monsterRange = std::max(0.1f, settings_.dreadMonsterDistance);
+        float proximity = SmoothStep(0.16f, 1.0f, Clamp01((monsterRange - MonsterDistance()) / monsterRange));
+        if (proximity <= 0.001f) {
+            proximityBloodPulseCooldown_ = std::min(proximityBloodPulseCooldown_, 9.0f);
+            return;
+        }
+
+        proximityBloodPulseCooldown_ -= dt;
+        if (proximityBloodPulseCooldown_ > 0.0f) return;
+
+        Tile cameraTile = CameraTile();
+        float tileMin = std::max(0.1f, maze_.TileMinimum());
+        float tileAvg = std::max(0.1f, maze_.TileAverage());
+        float maxDist = Lerp(tileAvg * 4.2f, tileAvg * 8.8f, proximity);
+        XMFLOAT3 forward = FlashlightForward();
+
+        int revealCount = 1;
+        if (proximity > 0.64f && RandRange(0.0f, 1.0f) < 0.42f) revealCount = 2;
+        if (proximity > 0.86f && RandRange(0.0f, 1.0f) < 0.24f) revealCount = 3;
+
+        for (int reveal = 0; reveal < revealCount; ++reveal) {
+            int bestIndex = -1;
+            float bestScore = -1.0e9f;
+            for (size_t i = 0; i < bloodScarePoints_.size(); ++i) {
+                const BloodScarePoint& point = bloodScarePoints_[i];
+                if (point.triggered || !point.revealBlood) continue;
+                float dx = point.pos.x - camera_.x;
+                float dz = point.pos.z - camera_.z;
+                float distSq = dx * dx + dz * dz;
+                if (distSq < tileMin * tileMin * 0.36f || distSq > maxDist * maxDist) continue;
+                float dist = std::sqrt(distSq);
+                Tile bloodTile = maze_.TileFromWorld(point.pos.x, point.pos.z);
+                float lineBonus = maze_.LineClear(cameraTile, bloodTile) ? 2.4f : 0.0f;
+                float ahead = dist > 0.001f ? (dx * forward.x + dz * forward.z) / dist : 0.0f;
+                float aheadBonus = SmoothStep(-0.20f, 0.78f, ahead) * 1.7f;
+                float nearPreferred = 1.0f - std::abs(dist - tileAvg * 3.2f) / std::max(tileAvg * 4.5f, 0.1f);
+                float score = nearPreferred * 2.6f + lineBonus + aheadBonus + RandRange(0.0f, 1.0f);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIndex = static_cast<int>(i);
+                }
+            }
+            if (bestIndex < 0) break;
+
+            BloodScarePoint& point = bloodScarePoints_[static_cast<size_t>(bestIndex)];
+            point.triggered = true;
+            point.activationTime = time_ - RandRange(0.75f, 2.8f) * (0.72f + proximity * 0.86f);
+            IncludeBloodReveal(point);
+            bloodScareActiveUntil_ = std::max(bloodScareActiveUntil_, time_ + 150.0f);
+        }
+
+        float scareScale = ScareCooldownScale();
+        float minSeconds = Lerp(8.5f, 1.35f, proximity) * scareScale;
+        float maxSeconds = Lerp(14.0f, 2.80f, proximity) * scareScale;
+        proximityBloodPulseCooldown_ = RandRange(std::max(0.85f, minSeconds), std::max(1.20f, maxSeconds));
+        if (proximity > 0.50f) {
+            dreadLevel_ = Clamp01(dreadLevel_ + proximity * 0.018f);
+        }
+    }
+
     void UpdateBloodDread(float dt) {
         bloodFocusReactionCooldown_ = std::max(0.0f, bloodFocusReactionCooldown_ - dt);
         if (deathActive_ || exitTransitionActive_ || bloodScarePoints_.empty()) return;
@@ -762,6 +825,7 @@
             float reactionScale = std::clamp(point.dreadScale, 0.20f, 1.35f);
             float spike = std::max(settings_.dreadJumpscareGain * 1.15f, 0.42f + closeness * 0.24f + gaze * 0.24f) * reactionScale;
             AddDread(spike);
+            AlertMonsterToPlayerTrigger(target);
             flashlightAgitation_ = std::max(flashlightAgitation_, (0.90f + closeness * 0.20f + gaze * 0.18f) * Lerp(0.62f, 1.0f, reactionScale));
             flashlightSnapCooldown_ = std::min(flashlightSnapCooldown_, 0.08f);
             stumbleTimer_ = std::max(stumbleTimer_, (0.10f + closeness * 0.08f) * reactionScale);

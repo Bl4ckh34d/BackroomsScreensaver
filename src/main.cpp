@@ -2204,6 +2204,7 @@ private:
     float bloodFocusDuration_ = 0.0f;
     int bloodFocusReactionsTaken_ = 0;
     float bloodFocusReactionCooldown_ = 0.0f;
+    float proximityBloodPulseCooldown_ = 0.0f;
     XMFLOAT3 bloodFocusTarget_{};
     Tile bloodStudyTile_{-1000, -1000};
     float sparkCooldown_ = 3.0f;
@@ -9608,6 +9609,16 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         SetMonsterGoal(sound, true);
     }
 
+    void AlertMonsterToPlayerTrigger(const XMFLOAT3& fallbackPos) {
+        Tile player = CameraTile();
+        if (ValidMonsterTile(player)) {
+            XMFLOAT3 ping = maze_.WorldCenter(player, 0.0f);
+            AlertMonsterToSound(ping);
+        } else {
+            AlertMonsterToSound(fallbackPos);
+        }
+    }
+
     Tile ChooseMonsterRoamTile(Tile from) {
         Tile best = from;
         float bestScore = -1.0e9f;
@@ -10037,7 +10048,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             if (scareCooldown_ <= 0.0f && sensory > 0.0f) {
                 emitter.triggered = true;
                 float intensity = PickBrokenLampSparkIntensity();
-                AlertMonsterToSound(emitter.pos);
+                AlertMonsterToPlayerTrigger(emitter.pos);
                 SpawnSparkBurst(emitter, intensity);
                 ScheduleSparkChain(emitter.pos, intensity * settings_.effectBrokenLampChainIntensityScale, PickBrokenLampChainBursts());
                 scareCooldown_ = RandRange(9.0f, 18.0f) * scareScale;
@@ -10062,7 +10073,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             float sensory = std::max(ScareSensoryWeight(emitter.pos, 7.8f, 0.76f, 2.10f), 0.70f);
             if (sensory > 0.0f && scareCooldown_ <= 0.0f) {
                 emitter.triggered = true;
-                AlertMonsterToSound(emitter.pos);
+                AlertMonsterToPlayerTrigger(emitter.pos);
                 SpawnSteamBurst(emitter, PickAirVentSteamIntensity());
                 if (!emitter.panelDropped &&
                     RandRange(0.0f, 1.0f) < settings_.effectAirVentPanelDropChance &&
@@ -10161,6 +10172,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                         d.roll = kPi * 0.5f;
                         SparkEmitter impact{{d.pos.x, d.pos.y + 0.08f, d.pos.z}, 0.0f};
                         SpawnSparkBurst(impact, 1.6f);
+                        AlertMonsterToPlayerTrigger(impact.pos);
                     }
                 }
             }
@@ -10240,6 +10252,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         UpdateDread(dt, threat, monsterDist);
         UpdateMonsterSightDread(dt, threat, monsterDist);
         UpdateBloodDread(dt);
+        UpdateMonsterProximityBlood(dt);
         UpdateDreadMeterDisplay(dt);
 
         if (threat && !MonsterSightingFreezeActive()) {
@@ -11256,9 +11269,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         if (gEffectDebugViewer && DebugSliceEffectIsWater(gDebugSliceEffect)) {
             cb.transition0.w = 1.0f + DebugSliceLoopPhase();
         } else if (!gEffectDebugViewer) {
-            float effectAge = std::max(0.0f, time_ - effectAnimationStartTime_);
-            float waterPhase = std::min(0.999f, effectAge / std::max(0.1f, settings_.effectWaterLoopSeconds));
-            cb.transition0.w = 1.0f + waterPhase;
+            cb.transition0.w = 0.0f;
         }
         float fleshAmount = 0.0f;
         if (fleshFlickerTimer_ > 0.0f && fleshFlickerDuration_ > 0.001f) {
