@@ -20,6 +20,18 @@
         junctionScanActive_ = false;
         junctionScanCount_ = 0;
         junctionScanTile_ = {-1000, -1000};
+        branchLookTimer_ = 0.0f;
+        branchLookDuration_ = 0.0f;
+        branchLookYaw_ = yaw_;
+        branchLookPitch_ = -0.045f;
+        branchLookCooldown_ = RandRange(0.65f, 1.45f);
+        branchLookPaused_ = false;
+        lastBranchLookTile_ = {-1000, -1000};
+        roomSurveyTimer_ = 0.0f;
+        roomSurveyDuration_ = 0.0f;
+        roomSurveyYawCount_ = 0;
+        roomSurveyPitchCount_ = 0;
+        roomSurveyCooldown_ = RandRange(1.2f, 2.8f);
         lastTile_ = maze_.start;
         previousTile_ = {-1000, -1000};
         path_.clear();
@@ -1414,23 +1426,176 @@
         return false;
     }
 
+    float BranchLookWeight() const {
+        if (branchLookTimer_ <= 0.0f || branchLookDuration_ <= 0.001f) return 0.0f;
+        float t = 1.0f - branchLookTimer_ / branchLookDuration_;
+        return SmoothStep(0.0f, 0.16f, t) * (1.0f - SmoothStep(0.86f, 1.0f, t));
+    }
+
+    float BranchLookTargetYaw() const {
+        float weight = BranchLookWeight();
+        float scan = (std::sin(time_ * 4.7f + branchLookYaw_ * 1.3f) * 0.020f +
+            std::sin(time_ * 8.9f + branchLookYaw_) * 0.009f) * weight;
+        return branchLookYaw_ + scan;
+    }
+
+    float RoomSurveyWeight() const {
+        if (roomSurveyTimer_ <= 0.0f || roomSurveyDuration_ <= 0.001f) return 0.0f;
+        float t = 1.0f - roomSurveyTimer_ / roomSurveyDuration_;
+        return SmoothStep(0.0f, 0.18f, t) * (1.0f - SmoothStep(0.90f, 1.0f, t));
+    }
+
+    int RoomSurveyIndex(float& localT) const {
+        localT = 0.0f;
+        if (roomSurveyYawCount_ <= 0 || roomSurveyTimer_ <= 0.0f || roomSurveyDuration_ <= 0.001f) return -1;
+        float t = Clamp01(1.0f - roomSurveyTimer_ / roomSurveyDuration_);
+        float segment = t * static_cast<float>(roomSurveyYawCount_);
+        int index = std::min(roomSurveyYawCount_ - 1, static_cast<int>(segment));
+        localT = segment - static_cast<float>(index);
+        return index;
+    }
+
     float RoomSurveyYaw() const {
         if (roomSurveyTimer_ <= 0.0f || roomSurveyDuration_ <= 0.001f) return yaw_;
-        float t = 1.0f - roomSurveyTimer_ / roomSurveyDuration_;
-        float sweep = -std::cos(Clamp01(t) * kPi * 2.0f);
-        return roomSurveyCenter_ + roomSurveyDirection_ * sweep * roomSurveySpan_;
+        float localT = 0.0f;
+        int index = RoomSurveyIndex(localT);
+        if (index < 0) {
+            float t = 1.0f - roomSurveyTimer_ / roomSurveyDuration_;
+            float sweep = -std::cos(Clamp01(t) * kPi * 2.0f);
+            return roomSurveyCenter_ + roomSurveyDirection_ * sweep * roomSurveySpan_;
+        }
+
+        float target = roomSurveyYaws_[static_cast<size_t>(index)];
+        float from = index > 0 ? roomSurveyYaws_[static_cast<size_t>(index - 1)] : roomSurveyCenter_;
+        float enter = SmoothStep(0.0f, 0.24f, localT);
+        float yaw = from + AngleWrap(target - from) * enter;
+        if (index + 1 < roomSurveyYawCount_) {
+            float leave = SmoothStep(0.76f, 1.0f, localT);
+            yaw += AngleWrap(roomSurveyYaws_[static_cast<size_t>(index + 1)] - yaw) * leave * 0.54f;
+        }
+        float inspect = (1.0f - SmoothStep(0.62f, 1.0f, localT)) * SmoothStep(0.18f, 0.52f, localT);
+        yaw += std::sin(time_ * 4.1f + static_cast<float>(index) * 1.9f) * 0.026f * inspect;
+        return yaw;
+    }
+
+    float RoomSurveyPitch() const {
+        if (roomSurveyTimer_ <= 0.0f || roomSurveyDuration_ <= 0.001f || roomSurveyPitchCount_ <= 0) return -0.045f;
+        float localT = 0.0f;
+        int index = RoomSurveyIndex(localT);
+        if (index < 0) return -0.045f;
+        index = std::min(index, roomSurveyPitchCount_ - 1);
+        float target = roomSurveyPitches_[static_cast<size_t>(index)];
+        float from = index > 0 ? roomSurveyPitches_[static_cast<size_t>(index - 1)] : -0.045f;
+        float enter = SmoothStep(0.0f, 0.28f, localT);
+        return from + (target - from) * enter;
+    }
+
+    bool FindRoomPropFocus(Tile cur, XMFLOAT3& focus) const {
+        if (propLookPoints_.empty()) return false;
+        float bestScore = -1.0e9f;
+        XMFLOAT3 best{};
+        for (const XMFLOAT3& p : propLookPoints_) {
+            float dx = p.x - camera_.x;
+            float dz = p.z - camera_.z;
+            float dist = std::sqrt(dx * dx + dz * dz);
+            if (dist < 1.05f || dist > 8.5f) continue;
+            Tile pt = maze_.TileFromWorld(p.x, p.z);
+            if (!maze_.LineClear(cur, pt)) continue;
+            float yawDelta = std::abs(AngleWrap(YawToPoint(p) - bodyYaw_));
+            float closeInterest = SmoothStep(8.5f, 1.6f, dist);
+            float sideInterest = SmoothStep(0.12f, 1.25f, yawDelta) * (1.0f - SmoothStep(2.65f, 3.14f, yawDelta));
+            float heightInterest = 1.0f - Clamp01(std::abs(p.y - 0.95f) / 2.0f) * 0.22f;
+            float repeatPenalty = 0.0f;
+            if (hasLastPropLookTarget_) {
+                float ldx = p.x - lastPropLookTarget_.x;
+                float ldz = p.z - lastPropLookTarget_.z;
+                if (ldx * ldx + ldz * ldz < 0.90f) repeatPenalty = 0.85f;
+            }
+            float score = closeInterest * 2.1f + sideInterest * 1.1f + heightInterest -
+                std::min(yawDelta, 2.8f) * 0.10f - repeatPenalty;
+            if (score > bestScore) {
+                bestScore = score;
+                best = p;
+            }
+        }
+        if (bestScore < 1.35f) return false;
+        focus = best;
+        return true;
     }
 
     void BeginRoomSurvey(Tile cur, bool pauseFirst) {
-        if (!IsRoomSurveySpot(cur) || DreadPressure() > 0.42f || ChasePanicActive() || IsThreatVisible()) return;
+        if (!IsRoomSurveySpot(cur) || DreadPressure() > 0.42f || ChasePanicActive() || IsThreatVisible() ||
+            (!pauseFirst && roomSurveyCooldown_ > 0.0f)) {
+            return;
+        }
+
         roomSurveyCenter_ = bodyYaw_;
         roomSurveySpan_ = std::clamp(0.52f + static_cast<float>(maze_.LocalOpenCount(cur, 2)) * 0.030f, 0.62f, 1.18f);
         roomSurveyDirection_ = RandRange(0.0f, 1.0f) < 0.5f ? -1.0f : 1.0f;
-        roomSurveyDuration_ = pauseFirst ? RandRange(1.70f, 2.55f) : RandRange(1.05f, 1.85f);
+        roomSurveyYawCount_ = 0;
+        roomSurveyPitchCount_ = 0;
+
+        struct SurveyCandidate {
+            float score;
+            float yaw;
+            float pitch;
+        };
+        std::vector<SurveyCandidate> candidates;
+        candidates.reserve(8);
+        Tile previous = HasPreviousMovementTile(cur) ? previousTile_ : Tile{-1000, -1000};
+        Tile nextTarget = pathIndex_ < path_.size() ? path_[pathIndex_] : cur;
+        const Tile dirs[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (Tile d : dirs) {
+            Tile n{cur.x + d.x, cur.y + d.y};
+            if (!maze_.IsOpen(n.x, n.y)) continue;
+            XMFLOAT3 nw = maze_.WorldCenter(n, camera_.y);
+            float branchYaw = std::atan2(nw.x - camera_.x, nw.z - camera_.z);
+            float ray = ViewRayOpenDistance(branchYaw, std::clamp(settings_.fogEndMeters, 6.0f, 18.0f));
+            if (ray < maze_.TileMinimum() * 0.92f) continue;
+            float rel = std::abs(AngleWrap(branchYaw - bodyYaw_));
+            float score = ray * 0.80f + static_cast<float>(maze_.LocalOpenCount(n, 2)) * 0.16f +
+                SmoothStep(0.18f, 1.55f, rel) * 1.15f;
+            if (n == nextTarget) score -= 1.25f;
+            if (n == previous) score -= 0.70f;
+            candidates.push_back({score + RandRange(-0.25f, 0.25f), branchYaw, -0.040f});
+        }
+
+        XMFLOAT3 propFocus{};
+        if (FindRoomPropFocus(cur, propFocus) && RandRange(0.0f, 1.0f) < 0.72f) {
+            candidates.push_back({7.0f + RandRange(-0.35f, 0.35f), YawToPoint(propFocus),
+                std::clamp(PitchToPoint(propFocus), -0.32f, 0.20f)});
+            lastPropLookTarget_ = propFocus;
+            hasLastPropLookTarget_ = true;
+        }
+
+        std::sort(candidates.begin(), candidates.end(), [](const SurveyCandidate& a, const SurveyCandidate& b) {
+            return a.score > b.score;
+        });
+        int maxTargets = pauseFirst ? 5 : 3;
+        int selected = std::min<int>(static_cast<int>(candidates.size()), maxTargets);
+        if (selected > 0) {
+            std::sort(candidates.begin(), candidates.begin() + selected, [this](const SurveyCandidate& a, const SurveyCandidate& b) {
+                return AngleWrap(a.yaw - bodyYaw_) < AngleWrap(b.yaw - bodyYaw_);
+            });
+            if (RandRange(0.0f, 1.0f) < 0.5f) {
+                std::reverse(candidates.begin(), candidates.begin() + selected);
+            }
+            for (int i = 0; i < selected; ++i) {
+                roomSurveyYaws_[static_cast<size_t>(i)] = candidates[static_cast<size_t>(i)].yaw;
+                roomSurveyPitches_[static_cast<size_t>(i)] = candidates[static_cast<size_t>(i)].pitch;
+            }
+            roomSurveyYawCount_ = selected;
+            roomSurveyPitchCount_ = selected;
+        }
+
+        float targetBonus = static_cast<float>(std::max(0, roomSurveyYawCount_ - 1)) * (pauseFirst ? 0.32f : 0.20f);
+        roomSurveyDuration_ = (pauseFirst ? RandRange(1.95f, 2.70f) : RandRange(1.18f, 1.85f)) + targetBonus;
         roomSurveyTimer_ = roomSurveyDuration_;
+        roomSurveyCooldown_ = RandRange(4.5f, 9.5f);
         branchLookTimer_ = 0.0f;
+        branchLookPaused_ = false;
         if (pauseFirst) {
-            stopTimer_ = std::max(stopTimer_, roomSurveyDuration_ * RandRange(0.58f, 0.78f));
+            stopTimer_ = std::max(stopTimer_, roomSurveyDuration_ * RandRange(0.66f, 0.86f));
             headScanTimer_ = 0.0f;
             headScanDuration_ = 0.0f;
             junctionScanActive_ = false;
@@ -1439,9 +1604,10 @@
         }
     }
 
-    bool BeginBranchLook(Tile cur, Tile previous, Tile nextTarget) {
-        if (!maze_.IsOpen(cur.x, cur.y) || IsRoomLike(cur) || DreadPressure() > 0.36f ||
-            ChasePanicActive() || IsThreatVisible() || branchLookTimer_ > 0.0f || roomSurveyTimer_ > 0.0f) {
+    bool BeginBranchLook(Tile cur, Tile previous, Tile nextTarget, bool allowPause = false, bool allowRoomTile = false) {
+        if (!maze_.IsOpen(cur.x, cur.y) || (!allowRoomTile && IsRoomLike(cur)) || DreadPressure() > 0.36f ||
+            ChasePanicActive() || IsThreatVisible() || branchLookTimer_ > 0.0f || roomSurveyTimer_ > 0.0f ||
+            branchLookCooldown_ > 0.0f || cur == lastBranchLookTile_) {
             return false;
         }
 
@@ -1469,9 +1635,21 @@
         }
         if (candidates <= 0) return false;
         branchLookYaw_ = bestYaw;
+        branchLookPitch_ = -0.045f + RandRange(-0.012f, 0.018f);
         float yawDelta = std::abs(AngleWrap(branchLookYaw_ - yaw_));
-        branchLookDuration_ = RandRange(1.18f, 1.72f) + SmoothStep(0.35f, 1.55f, yawDelta) * 0.42f;
+        branchLookDuration_ = RandRange(1.34f, 2.02f) + SmoothStep(0.35f, 1.55f, yawDelta) * 0.50f;
         branchLookTimer_ = branchLookDuration_;
+        branchLookCooldown_ = RandRange(2.2f, 5.4f);
+        lastBranchLookTile_ = cur;
+        branchLookPaused_ = allowPause && RandRange(0.0f, 1.0f) < 0.72f;
+        if (branchLookPaused_) {
+            stopTimer_ = std::max(stopTimer_, branchLookDuration_ * RandRange(0.42f, 0.66f));
+            headScanTimer_ = 0.0f;
+            headScanDuration_ = 0.0f;
+            junctionScanActive_ = false;
+            lookBack_ = false;
+            propLookTimer_ = 0.0f;
+        }
         return true;
     }
 
@@ -2345,11 +2523,15 @@
             ventReactionTimer_ = 0.0f;
             branchLookTimer_ = 0.0f;
             roomSurveyTimer_ = 0.0f;
+            branchLookPaused_ = false;
         } else {
             bloodFocusTimer_ = std::max(0.0f, bloodFocusTimer_ - dt);
             ventReactionTimer_ = std::max(0.0f, ventReactionTimer_ - dt);
             branchLookTimer_ = std::max(0.0f, branchLookTimer_ - dt);
             roomSurveyTimer_ = std::max(0.0f, roomSurveyTimer_ - dt);
+            branchLookCooldown_ = std::max(0.0f, branchLookCooldown_ - dt);
+            roomSurveyCooldown_ = std::max(0.0f, roomSurveyCooldown_ - dt);
+            if (branchLookTimer_ <= 0.0f) branchLookPaused_ = false;
         }
         bool bloodFocusActive = bloodFocusTimer_ > 0.0f;
         bool ventReactionActive = !panicActive && ventReactionTimer_ > 0.0f;
@@ -2377,6 +2559,7 @@
             propLookTimer_ = 0.0f;
             branchLookTimer_ = 0.0f;
             roomSurveyTimer_ = 0.0f;
+            branchLookPaused_ = false;
             bloodFocusTimer_ = 0.0f;
             ventReactionTimer_ = 0.0f;
             chaseLookBackTimer_ = 0.0f;
@@ -2408,6 +2591,7 @@
             propLookTimer_ = 0.0f;
             branchLookTimer_ = 0.0f;
             roomSurveyTimer_ = 0.0f;
+            branchLookPaused_ = false;
 
             chaseLookBackCooldown_ = std::max(0.0f, chaseLookBackCooldown_ - dt);
             chaseLookBackTimer_ = std::max(0.0f, chaseLookBackTimer_ - dt);
@@ -2637,8 +2821,24 @@
                     pauseStarted = roomSurveyTimer_ > 0.0f;
                 } else if (!panicActive && roomEntry && RandRange(0.0f, 1.0f) < 0.72f) {
                     BeginRoomSurvey(cur, false);
-                } else if (!panicActive && turningOrChoosing && hasSideBranch && !roomSurveySpot) {
-                    BeginBranchLook(cur, previousTile, nextTarget);
+                } else if (!panicActive && roomSurveySpot && !roomEntry && roomSurveyCooldown_ <= 0.0f &&
+                    RandRange(0.0f, 1.0f) < 0.24f) {
+                    BeginRoomSurvey(cur, RandRange(0.0f, 1.0f) < 0.38f);
+                    pauseStarted = stopTimer_ > 0.0f && roomSurveyTimer_ > 0.0f;
+                } else if (!panicActive && hasSideBranch) {
+                    bool hallwaySidePeek = continuingStraight && !roomSurveySpot;
+                    bool decisionPeek = turningOrChoosing && !roomSurveySpot;
+                    bool roomEdgePeek = roomSurveySpot && RandRange(0.0f, 1.0f) < 0.42f;
+                    if (hallwaySidePeek || decisionPeek || roomEdgePeek) {
+                        float chance = decisionPeek ? 0.88f : (hallwaySidePeek ? 0.74f : 0.46f);
+                        if (RandRange(0.0f, 1.0f) < chance) {
+                            bool allowPause = hallwaySidePeek
+                                ? RandRange(0.0f, 1.0f) < 0.34f
+                                : RandRange(0.0f, 1.0f) < 0.18f;
+                            bool startedPeek = BeginBranchLook(cur, previousTile, nextTarget, allowPause, roomSurveySpot);
+                            pauseStarted = startedPeek && branchLookPaused_;
+                        }
+                    }
                 }
             }
             softStopActive = !panicActive && (stopTimer_ > 0.0f || bloodFocusActive || ventReactionActive);
@@ -2762,6 +2962,10 @@
         if (exitLookBlend_ < 0.001f) exitLookBlend_ = 0.0f;
 
         float chaseLookBackWeight = threat ? ChaseLookBackWeight() : 0.0f;
+        bool branchLookActive = !panicActive && branchLookTimer_ > 0.0f && branchLookDuration_ > 0.001f;
+        float branchLookWeight = branchLookActive ? BranchLookWeight() : 0.0f;
+        bool roomSurveyActive = !panicActive && roomSurveyTimer_ > 0.0f && roomSurveyDuration_ > 0.001f;
+        float roomSurveyWeight = roomSurveyActive ? RoomSurveyWeight() : 0.0f;
         float stumbleAmount = 0.0f;
         if (stumbleTimer_ > 0.0f && stumbleDuration_ > 0.001f) {
             float t = 1.0f - stumbleTimer_ / stumbleDuration_;
@@ -2785,17 +2989,19 @@
                     desiredYaw = yaw_ + std::sin(time_ * 18.0f + ventReactionScanSeed_) * 0.010f;
                 }
             } else if (bloodFocusActive) desiredYaw = YawToPoint(bloodFocusTarget_);
-            else if (roomSurveyTimer_ > 0.0f) desiredYaw = RoomSurveyYaw();
+            else if (branchLookActive) {
+                float lock = std::max(0.58f, branchLookWeight);
+                desiredYaw = yaw_ + AngleWrap(BranchLookTargetYaw() - yaw_) * lock;
+            } else if (roomSurveyActive) desiredYaw = RoomSurveyYaw();
             else desiredYaw = yaw_;
         } else {
-            bool roomSurveyActive = roomSurveyTimer_ > 0.0f && roomSurveyDuration_ > 0.001f;
-            bool branchLookActive = branchLookTimer_ > 0.0f && branchLookDuration_ > 0.001f;
             Tile cameraTile = CameraTile();
             bool corridorLike = IsCorridorLike(cameraTile);
             if (branchLookActive &&
                 ViewRayOpenDistance(branchLookYaw_, maze_.TileMinimum() * 2.2f) < maze_.TileMinimum() * 0.82f) {
                 branchLookTimer_ = 0.0f;
                 branchLookActive = false;
+                branchLookWeight = 0.0f;
             }
             float idleYaw = std::sin(time_ * 0.73f) * 0.045f + std::sin(time_ * 1.17f) * 0.025f;
             float idleScale = 1.0f;
@@ -2805,13 +3011,9 @@
             if (pathTurnWeight > 0.001f) idleScale *= Lerp(1.0f, 0.18f, Clamp01(pathTurnWeight / 0.52f));
             desiredYaw += idleYaw * idleScale;
             if (roomSurveyActive) {
-                float t = 1.0f - roomSurveyTimer_ / roomSurveyDuration_;
-                float weight = SmoothStep(0.0f, 0.18f, t) * (1.0f - SmoothStep(0.82f, 1.0f, t)) * 0.74f;
-                desiredYaw += AngleWrap(RoomSurveyYaw() - desiredYaw) * weight;
+                desiredYaw += AngleWrap(RoomSurveyYaw() - desiredYaw) * (roomSurveyWeight * 0.92f);
             } else if (branchLookActive) {
-                float t = 1.0f - branchLookTimer_ / branchLookDuration_;
-                float weight = SmoothStep(0.0f, 0.24f, t) * (1.0f - SmoothStep(0.72f, 1.0f, t)) * 0.92f;
-                desiredYaw += AngleWrap(branchLookYaw_ - desiredYaw) * weight;
+                desiredYaw += AngleWrap(BranchLookTargetYaw() - desiredYaw) * std::min(1.0f, branchLookWeight * 1.08f);
             }
             if (exitLookBlend_ > 0.001f) {
                 desiredYaw += AngleWrap(YawToPoint(exitLookFocus_) - desiredYaw) * exitLookBlend_;
@@ -2819,8 +3021,8 @@
         }
         float turnSpeed = panicActive ? Lerp(4.2f, 6.2f, chaseLookBackWeight) : (bloodFocusActive ? 4.1f : 2.9f);
         if (ventReactionActive) turnSpeed = Lerp(2.6f, 7.8f, ventLookWeight);
-        else if (!panicActive && roomSurveyTimer_ > 0.0f) turnSpeed = softStopActive ? 3.15f : 2.35f;
-        else if (!panicActive && branchLookTimer_ > 0.0f) turnSpeed = 4.35f;
+        else if (branchLookActive) turnSpeed = branchLookPaused_ ? 5.25f : 4.65f;
+        else if (roomSurveyActive) turnSpeed = softStopActive ? 3.65f : 2.85f;
         else if (!panicActive && pathTurnWeight > 0.001f) turnSpeed = Lerp(turnSpeed, 4.15f, Clamp01(pathTurnWeight / 0.68f));
         if (!panicActive && !softStopActive && exitLookBlend_ > 0.001f) {
             turnSpeed = std::max(turnSpeed, Lerp(3.45f, 4.85f, Clamp01(exitLookBlend_ / 0.82f)));
@@ -2837,6 +3039,10 @@
             pitchTarget = std::clamp(PitchToPoint(bloodFocusTarget_), -0.34f, 0.22f);
         } else if (threat && chaseLookBackWeight > 0.0f) {
             pitchTarget = Lerp(pitchTarget, chaseLookBackPitch_, chaseLookBackWeight);
+        } else if (branchLookActive) {
+            pitchTarget = Lerp(pitchTarget, branchLookPitch_, branchLookWeight * (branchLookPaused_ ? 0.88f : 0.72f));
+        } else if (roomSurveyActive) {
+            pitchTarget = Lerp(pitchTarget, RoomSurveyPitch(), roomSurveyWeight * 0.78f);
         }
         if (!panicActive && !softStopActive && exitLookBlend_ > 0.001f) {
             float exitPitch = std::clamp(PitchToPoint(exitLookFocus_), -0.24f, 0.26f);
@@ -2851,6 +3057,12 @@
         float panicBlend = SmoothStep(0.08f, 0.84f, chasePanic_);
         float speedTarget = Lerp(calmSpeed, runTarget, panicBlend);
         if (softStopActive) speedTarget = 0.0f;
+        if (!panicActive && branchLookActive && !softStopActive) {
+            speedTarget *= Lerp(1.0f, 0.44f, branchLookWeight);
+        }
+        if (!panicActive && roomSurveyActive && !softStopActive) {
+            speedTarget *= Lerp(1.0f, 0.56f, roomSurveyWeight);
+        }
         float dreadSpeedBoost = settings_.dreadEnabled
             ? dreadLevel_ * (panicActive ? settings_.dreadRunSpeedBoost * 0.34f : settings_.dreadWalkSpeedBoost * 0.55f)
             : 0.0f;

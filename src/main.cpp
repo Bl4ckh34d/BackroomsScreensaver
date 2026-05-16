@@ -572,17 +572,17 @@ struct Settings {
     float walkSpeed = 1.88f;
     float roomSpeed = 1.45f;
     float runSpeed = 3.05f;
-    float turnLookAheadTiles = 1.5f;
-    float roomLookAheadTiles = 1.5f;
-    float roomPauseChance = 0.48f;
-    float junctionScanChance = 0.75f;
-    float scanAngleDegrees = 45.0f;
+    float turnLookAheadTiles = 2.1f;
+    float roomLookAheadTiles = 2.4f;
+    float roomPauseChance = 0.62f;
+    float junctionScanChance = 0.88f;
+    float scanAngleDegrees = 55.0f;
     float lookBackMinSeconds = 5.0f;
     float lookBackMaxSeconds = 90.0f;
     float headBobAmount = 0.075f;
     float sideSwayAmount = 0.025f;
-    float junctionScanBaseSeconds = 0.75f;
-    float junctionScanBranchSeconds = 1.0f;
+    float junctionScanBaseSeconds = 0.85f;
+    float junctionScanBranchSeconds = 1.08f;
 
     float flashlightSwayAmount = 3.0f;
     float flashlightFollowSpeed = 2.0f;
@@ -806,17 +806,17 @@ std::wstring DefaultConfigText() {
       << L"WalkSpeed=1.88\r\n"
       << L"RoomSpeed=1.45\r\n"
       << L"RunSpeed=3.05\r\n"
-      << L"TurnLookAheadTiles=1.5\r\n"
-      << L"RoomLookAheadTiles=1.5\r\n"
-      << L"RoomPauseChance=0.48\r\n"
-      << L"JunctionScanChance=0.75\r\n"
-      << L"ScanAngleDegrees=45\r\n"
+      << L"TurnLookAheadTiles=2.1\r\n"
+      << L"RoomLookAheadTiles=2.4\r\n"
+      << L"RoomPauseChance=0.62\r\n"
+      << L"JunctionScanChance=0.88\r\n"
+      << L"ScanAngleDegrees=55\r\n"
       << L"LookBackMinSeconds=5\r\n"
       << L"LookBackMaxSeconds=90\r\n"
       << L"HeadBobAmount=0.075\r\n"
       << L"SideSwayAmount=0.025\r\n"
-      << L"JunctionScanBaseSeconds=0.75\r\n"
-      << L"JunctionScanBranchSeconds=1\r\n\r\n"
+      << L"JunctionScanBaseSeconds=0.85\r\n"
+      << L"JunctionScanBranchSeconds=1.08\r\n\r\n"
       << L"[CameraFX]\r\n"
       << L"FlashlightSwayAmount=3\r\n"
       << L"FlashlightFollowSpeed=2\r\n"
@@ -2157,11 +2157,20 @@ private:
     float branchLookTimer_ = 0.0f;
     float branchLookDuration_ = 0.0f;
     float branchLookYaw_ = 0.0f;
+    float branchLookPitch_ = -0.045f;
+    float branchLookCooldown_ = 0.0f;
+    bool branchLookPaused_ = false;
+    Tile lastBranchLookTile_{-1000, -1000};
     float roomSurveyTimer_ = 0.0f;
     float roomSurveyDuration_ = 0.0f;
     float roomSurveyCenter_ = 0.0f;
     float roomSurveySpan_ = 0.0f;
     float roomSurveyDirection_ = 1.0f;
+    std::array<float, 6> roomSurveyYaws_{};
+    std::array<float, 6> roomSurveyPitches_{};
+    int roomSurveyYawCount_ = 0;
+    int roomSurveyPitchCount_ = 0;
+    float roomSurveyCooldown_ = 0.0f;
     Tile lastTile_{-1000, -1000};
     Tile previousTile_{-1000, -1000};
     std::vector<Tile> path_;
@@ -12186,13 +12195,13 @@ const ConfigFieldDef kConfigFields[] = {
     {4, 0, kConfigFieldBaseId + 29, L"Movement Speeds", L"CameraAI", L"WalkSpeed", L"Walk speed", L"1.88", ConfigFieldKind::Text, 90},
     {4, 0, kConfigFieldBaseId + 30, L"Movement Speeds", L"CameraAI", L"RoomSpeed", L"Room speed", L"1.45", ConfigFieldKind::Text, 90},
     {4, 0, kConfigFieldBaseId + 31, L"Movement Speeds", L"CameraAI", L"RunSpeed", L"Run speed", L"3.05", ConfigFieldKind::Text, 90},
-    {4, 1, kConfigFieldBaseId + 32, L"Look Ahead", L"CameraAI", L"TurnLookAheadTiles", L"Turn look-ahead tiles", L"1.5", ConfigFieldKind::Text, 90},
-    {4, 1, kConfigFieldBaseId + 33, L"Look Ahead", L"CameraAI", L"RoomLookAheadTiles", L"Room look-ahead tiles", L"1.5", ConfigFieldKind::Text, 90},
-    {4, 1, kConfigFieldBaseId + 34, L"Look Ahead", L"CameraAI", L"RoomPauseChance", L"Room pause chance", L"0.48", ConfigFieldKind::Text, 90},
-    {4, 1, kConfigFieldBaseId + 35, L"Look Ahead", L"CameraAI", L"JunctionScanChance", L"Junction scan chance", L"0.75", ConfigFieldKind::Text, 90},
-    {4, 1, kConfigFieldBaseId + 36, L"Look Ahead", L"CameraAI", L"ScanAngleDegrees", L"Scan angle degrees", L"45", ConfigFieldKind::Text, 90},
-    {4, 1, kConfigFieldBaseId + 54, L"Look Ahead", L"CameraAI", L"JunctionScanBaseSeconds", L"Junction base seconds", L"0.75", ConfigFieldKind::Text, 90},
-    {4, 1, kConfigFieldBaseId + 55, L"Look Ahead", L"CameraAI", L"JunctionScanBranchSeconds", L"Junction branch seconds", L"1", ConfigFieldKind::Text, 90},
+    {4, 1, kConfigFieldBaseId + 32, L"Look Ahead", L"CameraAI", L"TurnLookAheadTiles", L"Turn look-ahead tiles", L"2.1", ConfigFieldKind::Text, 90},
+    {4, 1, kConfigFieldBaseId + 33, L"Look Ahead", L"CameraAI", L"RoomLookAheadTiles", L"Room look-ahead tiles", L"2.4", ConfigFieldKind::Text, 90},
+    {4, 1, kConfigFieldBaseId + 34, L"Look Ahead", L"CameraAI", L"RoomPauseChance", L"Room pause chance", L"0.62", ConfigFieldKind::Text, 90},
+    {4, 1, kConfigFieldBaseId + 35, L"Look Ahead", L"CameraAI", L"JunctionScanChance", L"Junction scan chance", L"0.88", ConfigFieldKind::Text, 90},
+    {4, 1, kConfigFieldBaseId + 36, L"Look Ahead", L"CameraAI", L"ScanAngleDegrees", L"Scan angle degrees", L"55", ConfigFieldKind::Text, 90},
+    {4, 1, kConfigFieldBaseId + 54, L"Look Ahead", L"CameraAI", L"JunctionScanBaseSeconds", L"Junction base seconds", L"0.85", ConfigFieldKind::Text, 90},
+    {4, 1, kConfigFieldBaseId + 55, L"Look Ahead", L"CameraAI", L"JunctionScanBranchSeconds", L"Junction branch seconds", L"1.08", ConfigFieldKind::Text, 90},
     {4, 0, kConfigFieldBaseId + 37, L"Look Back / Head Motion", L"CameraAI", L"LookBackMinSeconds", L"Look-back min seconds", L"5", ConfigFieldKind::Text, 90},
     {4, 0, kConfigFieldBaseId + 38, L"Look Back / Head Motion", L"CameraAI", L"LookBackMaxSeconds", L"Look-back max seconds", L"90", ConfigFieldKind::Text, 90},
     {4, 0, kConfigFieldBaseId + 39, L"Look Back / Head Motion", L"CameraAI", L"HeadBobAmount", L"Head bob amount", L"0.075", ConfigFieldKind::Text, 90},
