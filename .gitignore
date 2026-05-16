@@ -1,0 +1,24 @@
+# Build and package output
+build/
+dist/
+artifacts/
+debug-captures/
+tmp-ini-current/
+
+# Visual Studio / CMake user files
+.vs/
+CMakeUserPresets.json
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+
+# Runtime logs and crash dumps
+*.log
+*.dmp
+*.mdmp
+
+# Local OS/editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store
