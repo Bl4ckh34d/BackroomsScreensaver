@@ -13488,6 +13488,7 @@ struct ConfigHeaderUi {
 };
 
 struct ConfigState {
+    HWND hwnd = nullptr;
     HWND tab = nullptr;
     HWND note = nullptr;
     HWND scrollBar = nullptr;
@@ -14401,12 +14402,13 @@ void ApplyConfigScroll(ConfigState* state) {
         ShowWindow(state->scrollBar, maxScroll > 0 ? SW_SHOW : SW_HIDE);
     }
 
-    auto visibleAt = [](int y, int h) {
-        return y + h > kConfigContentTop && y < kConfigContentBottom;
+    auto fullyVisibleAt = [](int y, int h) {
+        return y >= kConfigContentTop && y + h <= kConfigContentBottom;
     };
     for (const auto& header : state->headers) {
-        bool show = header.tab == tab && visibleAt(header.baseY - offset, 24);
-        MoveConfigChildY(header.control, header.baseY - offset);
+        int headerY = header.baseY - offset;
+        bool show = header.tab == tab && fullyVisibleAt(headerY, 24);
+        MoveConfigChildY(header.control, headerY);
         ShowWindow(header.control, show ? SW_SHOW : SW_HIDE);
     }
     for (const auto& field : state->fields) {
@@ -14414,7 +14416,7 @@ void ApplyConfigScroll(ConfigState* state) {
         int labelY = field.labelBaseY - offset;
         int controlY = field.controlBaseY - offset;
         int sliderY = field.sliderBaseY - offset;
-        bool show = active && visibleAt(controlY, 28);
+        bool show = active && fullyVisibleAt(controlY, 28);
         MoveConfigChildY(field.label, labelY);
         MoveConfigChildY(field.control, controlY);
         ShowWindow(field.label, show ? SW_SHOW : SW_HIDE);
@@ -14423,6 +14425,12 @@ void ApplyConfigScroll(ConfigState* state) {
             MoveConfigChildY(field.slider, sliderY);
             ShowWindow(field.slider, show ? SW_SHOW : SW_HIDE);
         }
+    }
+
+    if (state->hwnd) {
+        RECT scrollRegion{12, kConfigContentTop - 4, 732, kConfigContentBottom + 4};
+        RedrawWindow(state->hwnd, &scrollRegion, nullptr,
+            RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
     }
 }
 
@@ -14507,6 +14515,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             state->mode = params->mode;
             state->embedded = params->embedded;
         }
+        state->hwnd = hwnd;
         BuildConfigModel(state);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 
