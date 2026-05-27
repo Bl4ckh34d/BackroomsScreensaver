@@ -1007,7 +1007,7 @@ private:
         settings_.lampIntensity = std::max(settings_.lampIntensity, 1.05f);
         settings_.lampFlickerRatio = 0.0f;
         settings_.brokenZoneRatio = 0.0f;
-        settings_.ambientLight = std::max(settings_.ambientLight, 0.105f);
+        settings_.ambientLight = 0.0f;
         settings_.flashlightIntensity = std::max(settings_.flashlightIntensity, 1.85f);
         settings_.flashlightAttenuation = std::min(settings_.flashlightAttenuation, 0.070f);
         settings_.flashlightConeDegrees = std::max(settings_.flashlightConeDegrees, 92.0f);

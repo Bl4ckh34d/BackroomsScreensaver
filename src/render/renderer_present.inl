@@ -113,6 +113,9 @@
             settings_.ambientLight,
             std::max(2.0f, settings_.lampSpacing)
         };
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            cb.lighting0.z = 0.0f;
+        }
         if (monsterPreview_) {
             cb.lighting0.y = 0.030f;
             cb.lighting0.z = 0.22f;
@@ -344,7 +347,7 @@
             XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -1.34f);
             doorwayLightPos = Add3(exitDoorCenter_, throughDoor);
             doorwayLightPos.y = exitDoorCenter_.y + 1.02f;
-            doorwayLightStrength = exitDoorOpen * 24.0f;
+            doorwayLightStrength = exitDoorOpen * 12.0f;
             exitLightDir = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
         }
         cb.exitLight0 = {

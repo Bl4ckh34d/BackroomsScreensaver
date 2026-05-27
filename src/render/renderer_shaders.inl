@@ -977,8 +977,8 @@ float3 ExitSignLight(float3 worldPos, float3 worldN)
             float falloff = pow(saturate(1.0 - d / reach), 0.68) / (1.0 + d * d * 0.030);
             float3 warmDaylight = float3(0.94, 0.97, 1.0);
             float angelicLift = smoothstep(0.16, 2.80, axial);
-            result += warmDaylight * doorStrength * falloff * diffuse * spill;
-            result += warmDaylight * doorStrength * falloff * angelicLift * spill * 0.10;
+            result += warmDaylight * doorStrength * falloff * diffuse * spill * 0.78;
+            result += warmDaylight * doorStrength * falloff * angelicLift * spill * 0.045;
         }
     }
     return result;
@@ -2327,10 +2327,10 @@ float4 PSMain(VSOut input) : SV_TARGET
         float streak = smoothstep(1.02, 0.16, abs(p.x + (haze - 0.5) * 0.34));
         float dist = length(input.worldPos - cam);
         float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.22), 1.12);
-        float alpha = edge * lerp(0.16, 0.42, strength) * (0.70 + streak * 0.62) * fogVisibility;
+        float alpha = edge * lerp(0.095, 0.26, strength) * (0.64 + streak * 0.44) * fogVisibility;
         if (alpha < 0.008) discard;
-        float3 color = float3(0.94, 0.97, 1.0) * (3.6 + strength * 7.8) * (0.82 + haze * 0.30);
-        return float4(saturate(ApplyPost(color) + color * 0.14), saturate(alpha));
+        float3 color = float3(0.94, 0.97, 1.0) * (2.2 + strength * 4.5) * (0.82 + haze * 0.24);
+        return float4(saturate(ApplyPost(color) + color * 0.075), saturate(alpha));
     }
 
     if (input.material > 10.50 && input.material < 10.90)
@@ -2517,7 +2517,7 @@ float4 PSMain(VSOut input) : SV_TARGET
     color += float3(1.0, 0.92, 0.78) * surfaceSpec;
     if (materialId > 1.5 && materialId < 2.5)
     {
-        color += base.rgb * 0.035 * (1.0 - saturate(gTransition0.z));
+        color += base.rgb * 0.035 * saturate(gLighting0.z * 12.0) * (1.0 - saturate(gTransition0.z));
     }
     if (materialId > 6.5 && materialId < 7.5)
     {
