@@ -234,7 +234,7 @@
             XMFLOAT3 capCenter = Add3(plaque.center, Add3(Scale3(plaque.right, -plaque.halfW + 0.012f), Scale3(plaque.inward, -0.035f)));
             AppendDynamicBoxAxes(verts, capCenter, plaque.right, up, plaque.inward, {0.018f, plaque.halfH + 0.012f, 0.048f}, 10.0f);
             XMFLOAT3 labelCenter = Add3(plaque.center, Scale3(plaque.inward, 0.071f));
-            XMFLOAT3 hw = Scale3(plaque.right, plaque.halfW * 0.84f);
+            XMFLOAT3 hw = Scale3(plaque.right, std::min(plaque.halfW * 0.58f, 0.78f));
             XMFLOAT3 hh = Scale3(up, 0.081f);
             float v0 = (static_cast<float>(i) + 0.12f) / 3.0f;
             float v1 = (static_cast<float>(i) + 0.88f) / 3.0f;

@@ -1028,7 +1028,7 @@ private:
         MenuPlaquePlacement plaque{};
         plaque.halfW = std::min(maze_.tileW * 0.86f, 1.42f);
         plaque.halfH = 0.136f;
-        plaque.center = {c.x + maze_.tileW * 0.58f, 1.54f - static_cast<float>(index) * 0.34f, northWallZ};
+        plaque.center = {c.x + maze_.tileW * 0.58f, 1.70f - static_cast<float>(index) * 0.32f, northWallZ};
         plaque.right = {1.0f, 0.0f, 0.0f};
         plaque.inward = {0.0f, 0.0f, -1.0f};
         return plaque;
