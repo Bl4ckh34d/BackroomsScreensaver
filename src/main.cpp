@@ -12753,11 +12753,21 @@ void SetDebugControlsVisible(bool visible) {
     }
 }
 
+void SetGameCursorVisible(bool visible) {
+    if (visible) {
+        while (ShowCursor(TRUE) < 0) {}
+    } else {
+        while (ShowCursor(FALSE) >= 0) {}
+    }
+}
+
 void ReleaseGameMouse() {
-    if (!gApp || !gApp->gameMouseCaptured) return;
+    if (!gApp) return;
     ClipCursor(nullptr);
-    ReleaseCapture();
-    ShowCursor(TRUE);
+    if (gApp->gameMouseCaptured) {
+        ReleaseCapture();
+    }
+    SetGameCursorVisible(true);
     gApp->gameMouseCaptured = false;
 }
 
@@ -12771,8 +12781,10 @@ void CaptureGameMouse(HWND hwnd) {
     ClientToScreen(hwnd, &br);
     RECT clip{tl.x, tl.y, br.x, br.y};
     ClipCursor(&clip);
-    SetCapture(hwnd);
-    ShowCursor(FALSE);
+    if (!gApp->gameMouseCaptured) {
+        SetCapture(hwnd);
+        SetGameCursorVisible(false);
+    }
     gApp->gameMouseCaptured = true;
     gApp->gameMouseCenter = {(rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2};
     POINT center = gApp->gameMouseCenter;
@@ -13159,6 +13171,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_SETCURSOR:
         if (gApp && gApp->gameShell && gApp->gameState == GameState::PlayGame) {
             SetCursor(nullptr);
+            return TRUE;
+        }
+        if (gApp && gApp->gameShell) {
+            SetCursor(LoadCursorW(nullptr, IDC_ARROW));
             return TRUE;
         }
         if (gApp && !gApp->preview) {
