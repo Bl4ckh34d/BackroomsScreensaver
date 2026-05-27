@@ -3319,6 +3319,18 @@
             (speedTarget > smoothedMoveSpeed_ ? accel : decel) * dt);
         float speed = smoothedMoveSpeed_;
         float moveDistance = std::min(dist, speed * dt);
+        float botNoise = 0.0f;
+        if (!softStopActive && moveDistance > 0.0001f && speed > 0.05f) {
+            float walkT = Clamp01(speed / std::max(0.1f, settings_.walkSpeed));
+            if (panicActive) {
+                float runT = Clamp01((speed - settings_.walkSpeed) /
+                    std::max(0.1f, settings_.runSpeed - settings_.walkSpeed));
+                botNoise = Lerp(4.0f, 9.4f, runT);
+            } else {
+                botNoise = Lerp(1.8f, 4.2f, walkT);
+            }
+        }
+        playerNoiseRadiusMeters_ += (botNoise - playerNoiseRadiusMeters_) * std::min(1.0f, dt * 9.0f);
         float invDist = 1.0f / std::max(0.001f, dist);
         bool movedSafely = MoveCameraSafely(dx * invDist * moveDistance, dz * invDist * moveDistance,
             moveDistance, speed, targetTileForMove, freeRunMove);

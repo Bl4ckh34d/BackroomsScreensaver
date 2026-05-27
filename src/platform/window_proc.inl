@@ -109,16 +109,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_SYSKEYDOWN:
 #if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell) {
-            if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
-                (gApp->gameState == GameState::PlayGame || gApp->gameState == GameState::DebugScene)) {
-                EnterGameMainMenu(hwnd);
-            } else if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
-                gApp->gameState == GameState::Settings && gApp->gameConfig) {
-                DestroyWindow(gApp->gameConfig);
-            } else if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
-                gApp->gameState == GameState::MainMenu && gApp->gameRunStarted && !gApp->gameDebugActive) {
-                EnterGamePlay(hwnd);
-            }
             return 0;
         }
 #endif

@@ -275,6 +275,7 @@ const ConfigFieldDef kConfigFields[] = {
     {7, 0, kConfigFieldBaseId + 77, L"Threat Logic", L"Monster", L"MonsterVisibleDistance", L"Visible threat meters", L"12", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 90, L"Dread Meter", L"Dread", L"Enabled", L"Enable dread", L"1", ConfigFieldKind::Bool, 0},
     {7, 0, kConfigFieldBaseId + 91, L"Dread Meter", L"Dread", L"DebugMeter", L"Show debug meter", L"0", ConfigFieldKind::Bool, 0},
+    {7, 0, kConfigFieldBaseId + 176, L"Debug Overlay", L"Debug", L"AiMapOverlay", L"AI minimap overlay", L"0", ConfigFieldKind::Bool, 0},
     {7, 0, kConfigFieldBaseId + 92, L"Dread Meter", L"Dread", L"DecayPerSecond", L"Decay per second", L"0.03", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 93, L"Dread Meter", L"Dread", L"MonsterDistance", L"Monster pressure meters", L"13", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 94, L"Dread Meter", L"Dread", L"MonsterGainPerSecond", L"Monster gain per sec", L"0.42", ConfigFieldKind::Text, 90},
@@ -327,7 +328,7 @@ void BuildGameConfigModel(ConfigState* state) {
         L"Game runtime and launch policy. These settings apply to the playable executable and shared INI.",
         L"Rendering, textures, lighting, post processing, particles, and visual atmosphere.",
         L"Maze generation, scare density, monster pressure, dread, and exit pacing.",
-        L"Manual player control tuning. Key rebinding is planned after this settings split.",
+        L"Manual player control tuning and persisted key bindings.",
         L"Audio settings are persisted now; the audio engine will consume them in a later milestone."
     };
 

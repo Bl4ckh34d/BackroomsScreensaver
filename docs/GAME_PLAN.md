@@ -16,6 +16,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 - [x] Start splitting game-domain code into `src/game/`.
 - [x] Tune manual player head bob down so walking and sprinting feel less exaggerated.
 - [x] Add atmospheric manual mouse-look smoothing and pitch-limit damping near +/-89 degrees.
+- [x] Add in-game keybinding buttons for every player action, with Escape canceling active capture.
 - [x] Add debug AI minimap overlay for player hearing radius, monster path, and monster sound/target tiles.
 - [x] Move game shell and loading overlay code out of `main.cpp`.
 - [x] Move app state, game app loop, window procedure, and CLI mode parsing out of `main.cpp`.

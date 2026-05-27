@@ -287,6 +287,7 @@ public:
             target.airParticleDensity = settings.airParticleDensity;
             target.mouseSensitivity = settings.mouseSensitivity;
             target.invertMouseY = settings.invertMouseY;
+            target.gameKeyBindings = settings.gameKeyBindings;
             target.audioMuted = settings.audioMuted;
             target.audioMasterVolume = settings.audioMasterVolume;
             target.audioEffectsVolume = settings.audioEffectsVolume;

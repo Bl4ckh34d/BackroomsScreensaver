@@ -225,16 +225,21 @@ GameInputSnapshot CollectGameInput() {
     GameInputSnapshot input{};
     if (!gApp || gApp->gameState != GameState::PlayGame) return input;
     auto down = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
-    input.moveX = (down('D') ? 1.0f : 0.0f) + (down('A') ? -1.0f : 0.0f);
-    input.moveZ = (down('W') ? 1.0f : 0.0f) + (down('S') ? -1.0f : 0.0f);
+    const Settings& settings = gApp->gameInputSettings;
+    input.moveX =
+        (down(GameActionKey(settings, GameInputAction::MoveRight)) ? 1.0f : 0.0f) +
+        (down(GameActionKey(settings, GameInputAction::MoveLeft)) ? -1.0f : 0.0f);
+    input.moveZ =
+        (down(GameActionKey(settings, GameInputAction::MoveForward)) ? 1.0f : 0.0f) +
+        (down(GameActionKey(settings, GameInputAction::MoveBackward)) ? -1.0f : 0.0f);
     input.lookDeltaX = gApp->gameMouseDeltaX;
     input.lookDeltaY = gApp->gameMouseDeltaY;
     gApp->gameMouseDeltaX = 0.0f;
     gApp->gameMouseDeltaY = 0.0f;
-    input.jump = down(VK_SPACE);
-    input.sprint = down(VK_SHIFT);
-    input.crouch = down(VK_CONTROL) || down('C');
-    input.interact = down('E');
-    input.pause = down(VK_ESCAPE);
+    input.jump = down(GameActionKey(settings, GameInputAction::Jump));
+    input.sprint = down(GameActionKey(settings, GameInputAction::Sprint));
+    input.crouch = down(GameActionKey(settings, GameInputAction::Crouch));
+    input.interact = down(GameActionKey(settings, GameInputAction::Interact));
+    input.pause = down(GameActionKey(settings, GameInputAction::Pause));
     return input;
 }

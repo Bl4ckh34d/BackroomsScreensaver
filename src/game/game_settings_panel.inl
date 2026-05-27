@@ -18,6 +18,7 @@ struct GameSettingsPanelState {
     int tab = 0;
     int draggingSlider = 0;
     bool resolutionDropdownOpen = false;
+    int capturingKeyAction = -1;
     std::vector<POINT> resolutionOptions;
     std::vector<GameSettingsHit> hits;
 };
@@ -44,6 +45,7 @@ constexpr int kGameSettingsEffectsVolume = 408;
 constexpr int kGameSettingsAmbienceVolume = 409;
 constexpr int kGameSettingsMonsterVolume = 410;
 constexpr int kGameSettingsResolutionOptionBase = 800;
+constexpr int kGameSettingsKeybindBase = 900;
 
 std::wstring FormatSettingValue(float value) {
     wchar_t buffer[32]{};
@@ -114,6 +116,9 @@ void SaveGameSettingsPanel(const GameSettingsPanelState* state) {
     WriteIniFloat(L"Atmosphere", L"AirParticleDensity", s.airParticleDensity);
     WriteIniFloat(L"Controls", L"MouseSensitivity", s.mouseSensitivity);
     WriteIniIntValue(L"Controls", L"InvertMouseY", s.invertMouseY ? 1 : 0);
+    for (const GameInputBindingDef& binding : kGameInputBindings) {
+        WriteIniIntValue(L"Controls", binding.iniKey, GameActionKey(s, binding.action));
+    }
     WriteIniIntValue(L"Audio", L"Muted", s.audioMuted ? 1 : 0);
     WriteIniFloat(L"Audio", L"MasterVolume", s.audioMasterVolume);
     WriteIniFloat(L"Audio", L"EffectsVolume", s.audioEffectsVolume);
@@ -226,6 +231,25 @@ void DrawGameSettingsDropdown(HDC dc, GameSettingsPanelState* state, int x, int 
             AddGameSettingsHit(state, option, kGameSettingsResolutionOptionBase + i, GameSettingsControlKind::DropdownOption);
         }
     }
+}
+
+void DrawGameSettingsKeybind(HDC dc, GameSettingsPanelState* state, int x, int y, int actionIndex) {
+    if (!state || actionIndex < 0 || actionIndex >= kGameInputActionCount) return;
+    const GameInputBindingDef& binding = kGameInputBindings[static_cast<size_t>(actionIndex)];
+    RECT labelRc{x, y, x + 230, y + 30};
+    DrawTextLine(dc, binding.label, labelRc, RGB(226, 221, 205));
+
+    RECT button{x + 250, y, x + 430, y + 30};
+    bool capturing = state->capturingKeyAction == actionIndex;
+    FillSolid(dc, button, capturing ? RGB(132, 70, 48) : RGB(46, 43, 37));
+    FrameRect(dc, &button, GetSysColorBrush(COLOR_GRAYTEXT));
+    RECT textRc = button;
+    InflateRect(&textRc, -10, 0);
+    std::wstring text = capturing
+        ? L"Press a key..."
+        : KeyDisplayName(GameActionKey(state->settings, binding.action));
+    DrawTextLine(dc, text, textRc, RGB(235, 229, 210), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    AddGameSettingsHit(state, button, kGameSettingsKeybindBase + actionIndex, GameSettingsControlKind::Button);
 }
 
 void ApplyGameSettingsSlider(GameSettingsPanelState* state, int id, int x) {
@@ -349,9 +373,13 @@ void PaintGameSettingsPanel(HWND hwnd, HDC dc, GameSettingsPanelState* state) {
         DrawTextLine(dc, L"Gameplay tuning is still being separated from the old screensaver configuration. Monster/noise/stealth settings will land here as those systems become real game systems.", text, RGB(226, 221, 205), DT_LEFT | DT_WORDBREAK);
     } else if (state->tab == 3) {
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsMouseSensitivity, L"Mouse sensitivity", s.mouseSensitivity, 0.2f, 3.0f, FormatSettingValue(s.mouseSensitivity)); y += 48;
-        DrawGameSettingsCheck(dc, state, x, y, kGameSettingsInvertY, L"Invert Y axis", s.invertMouseY);
-        RECT text{x, y + 52, panel.right - 34, y + 92};
-        DrawTextLine(dc, L"Key rebinding will replace the fixed WASD / Space / Shift / Ctrl / E controls in a later pass.", text, RGB(174, 166, 142), DT_LEFT | DT_WORDBREAK);
+        DrawGameSettingsCheck(dc, state, x, y, kGameSettingsInvertY, L"Invert Y axis", s.invertMouseY); y += 48;
+        for (int i = 0; i < kGameInputActionCount; ++i) {
+            DrawGameSettingsKeybind(dc, state, x, y, i);
+            y += 36;
+        }
+        RECT text{x, y + 8, panel.right - 34, y + 48};
+        DrawTextLine(dc, L"Click an action, then press and hold the new key. Escape cancels the capture and keeps the previous key.", text, RGB(174, 166, 142), DT_LEFT | DT_WORDBREAK);
     } else {
         DrawGameSettingsCheck(dc, state, x, y, kGameSettingsMuted, L"Mute audio", s.audioMuted); y += 48;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsMasterVolume, L"Master volume", s.audioMasterVolume, 0.0f, 1.0f, FormatSettingValue(s.audioMasterVolume)); y += 42;
@@ -379,6 +407,8 @@ LRESULT CALLBACK GameSettingsPanelWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         BuildGameResolutionOptions(state);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
         return 0;
+    case WM_GETDLGCODE:
+        return DLGC_WANTALLKEYS;
     case WM_PAINT: {
         PAINTSTRUCT ps{};
         HDC dc = BeginPaint(hwnd, &ps);
@@ -400,6 +430,7 @@ LRESULT CALLBACK GameSettingsPanelWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         RECT closeRect{client.right - 160, client.bottom - 58, client.right - 38, client.bottom - 24};
         if (PtInRectInclusive(saveRect, p)) {
             SaveGameSettingsPanel(state);
+            if (gApp) gApp->gameInputSettings = state->settings;
             if (gApp && gApp->rendererInitialized) gApp->renderer.ApplyGameSettings(state->settings);
             ApplyGameWindowSettings(state->settings);
             DestroyWindow(hwnd);
@@ -412,6 +443,7 @@ LRESULT CALLBACK GameSettingsPanelWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         int directId = FindGameSettingsHitId(state, p);
         if (directId == kGameSettingsSave) {
             SaveGameSettingsPanel(state);
+            if (gApp) gApp->gameInputSettings = state->settings;
             if (gApp && gApp->rendererInitialized) gApp->renderer.ApplyGameSettings(state->settings);
             ApplyGameWindowSettings(state->settings);
             DestroyWindow(hwnd);
@@ -445,8 +477,18 @@ LRESULT CALLBACK GameSettingsPanelWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                     state->settings.gameResolutionHeight = res.y;
                 }
                 state->resolutionDropdownOpen = false;
+            } else if (hit.id >= kGameSettingsKeybindBase &&
+                hit.id < kGameSettingsKeybindBase + kGameInputActionCount) {
+                state->capturingKeyAction = hit.id - kGameSettingsKeybindBase;
+                state->resolutionDropdownOpen = false;
+                if (gApp) {
+                    gApp->gameSettingsKeyCaptureActive = true;
+                    gApp->gameSettingsEscapeConsumed = false;
+                }
+                SetFocus(hwnd);
             } else if (hit.id == kGameSettingsSave) {
                 SaveGameSettingsPanel(state);
+                if (gApp) gApp->gameInputSettings = state->settings;
                 if (gApp && gApp->rendererInitialized) gApp->renderer.ApplyGameSettings(state->settings);
                 ApplyGameWindowSettings(state->settings);
                 DestroyWindow(hwnd);
@@ -462,6 +504,29 @@ LRESULT CALLBACK GameSettingsPanelWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         InvalidateRect(hwnd, nullptr, TRUE);
         return 0;
     }
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
+        if (state && state->capturingKeyAction >= 0) {
+            if (wParam == VK_ESCAPE) {
+                state->capturingKeyAction = -1;
+                if (gApp) {
+                    gApp->gameSettingsKeyCaptureActive = false;
+                    gApp->gameSettingsEscapeConsumed = true;
+                }
+            } else if (wParam > 0 && wParam < 256) {
+                AssignGameActionKey(state->settings,
+                    static_cast<GameInputAction>(state->capturingKeyAction),
+                    static_cast<int>(wParam));
+                state->capturingKeyAction = -1;
+                if (gApp) {
+                    gApp->gameSettingsKeyCaptureActive = false;
+                    gApp->gameSettingsEscapeConsumed = false;
+                }
+            }
+            InvalidateRect(hwnd, nullptr, TRUE);
+            return 0;
+        }
+        break;
     case WM_MOUSEMOVE:
         if (state && state->draggingSlider != 0 && (wParam & MK_LBUTTON)) {
             ApplyGameSettingsSlider(state, state->draggingSlider, GET_X_LPARAM(lParam));
@@ -479,6 +544,10 @@ LRESULT CALLBACK GameSettingsPanelWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     case WM_ERASEBKGND:
         return 1;
     case WM_DESTROY:
+        if (gApp) {
+            gApp->gameSettingsKeyCaptureActive = false;
+            gApp->gameSettingsEscapeConsumed = false;
+        }
         delete state;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         if (gApp && gApp->gameConfig == hwnd) {

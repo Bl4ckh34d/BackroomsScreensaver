@@ -25,6 +25,7 @@ enum class GameState {
 
 struct App {
     Renderer renderer;
+    Settings gameInputSettings;
     bool preview = false;
     bool gameShell = false;
     bool rendererInitialized = false;
@@ -45,6 +46,8 @@ struct App {
     HWND gameExit = nullptr;
     HWND gameConfig = nullptr;
     GameState gameSettingsReturnState = GameState::MainMenu;
+    bool gameSettingsKeyCaptureActive = false;
+    bool gameSettingsEscapeConsumed = false;
     bool firstMouse = true;
     POINT initialMouse{};
     HWND hwnd = nullptr;

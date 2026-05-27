@@ -23,6 +23,7 @@ int RunGame(HINSTANCE hInstance) {
     gApp = &app;
 
     Settings launchSettings = LoadSettings();
+    app.gameInputSettings = launchSettings;
     int w = std::clamp(launchSettings.gameResolutionWidth, 640, 7680);
     int h = std::clamp(launchSettings.gameResolutionHeight, 360, 4320);
     int x = std::max(0, (GetSystemMetrics(SM_CXSCREEN) - w) / 2);
@@ -103,17 +104,22 @@ int RunGame(HINSTANCE hInstance) {
         float dt = std::min(0.05f, static_cast<float>(now - lastTicks) / 1000.0f);
         lastTicks = now;
 
+        int pauseVk = GameActionKey(app.gameInputSettings, GameInputAction::Pause);
         bool escapeDown = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
-        if (escapeDown && !escapeWasDown) {
+        bool pauseDown = (GetAsyncKeyState(pauseVk) & 0x8000) != 0;
+        if (!escapeDown) app.gameSettingsEscapeConsumed = false;
+        if (pauseDown && !escapeWasDown) {
             if (app.gameState == GameState::PlayGame || app.gameState == GameState::DebugScene) {
                 EnterGameMainMenu(hwnd);
             } else if (app.gameState == GameState::Settings && app.gameConfig) {
-                DestroyWindow(app.gameConfig);
+                if (!app.gameSettingsKeyCaptureActive && !app.gameSettingsEscapeConsumed) {
+                    DestroyWindow(app.gameConfig);
+                }
             } else if (app.gameState == GameState::MainMenu && app.gameRunStarted && !app.gameDebugActive) {
                 EnterGamePlay(hwnd);
             }
         }
-        escapeWasDown = escapeDown;
+        escapeWasDown = pauseDown;
 
         if (app.rendererInitialized &&
             (app.gameState == GameState::PlayGame || app.gameState == GameState::DebugScene)) {

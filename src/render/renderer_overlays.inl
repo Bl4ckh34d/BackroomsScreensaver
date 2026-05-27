@@ -189,8 +189,7 @@
                 if (!maze_.IsOpen(x, y)) continue;
                 XMFLOAT4 color{0.74f, 0.66f, 0.47f, 0.36f};
                 Tile t{x, y};
-                if (t == maze_.start) color = {0.25f, 0.80f, 0.42f, 0.68f};
-                else if (t == maze_.exit) color = {1.0f, 0.26f, 0.12f, 0.76f};
+                if (t == maze_.exit) color = {0.20f, 0.88f, 0.38f, 0.78f};
                 float px = mapTileX(x);
                 float py = y0 + static_cast<float>(y) * cell;
                 float inset = std::max(0.18f, cell * 0.10f);
@@ -198,7 +197,9 @@
             }
         }
 
-        if (settings_.debugAiMapOverlay) {
+        bool drawAiDebug = settings_.debugAiMapOverlay ||
+            (runtimeMode_ == RendererRuntimeMode::ScreensaverAutopilot && settings_.mapOverlay);
+        if (drawAiDebug) {
             float hearingRadius = std::max(0.0f, playerNoiseRadiusMeters_);
             if (hearingRadius > 0.05f) {
                 float radiusSq = hearingRadius * hearingRadius;

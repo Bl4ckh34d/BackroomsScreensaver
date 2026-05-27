@@ -93,6 +93,56 @@ bool LoadImageWic(const std::filesystem::path& path, int targetW, int targetH, I
     return SUCCEEDED(hr);
 }
 
+enum class GameInputAction {
+    MoveForward,
+    MoveBackward,
+    MoveLeft,
+    MoveRight,
+    Jump,
+    Sprint,
+    Crouch,
+    Interact,
+    Pause,
+    Count
+};
+
+constexpr int kGameInputActionCount = static_cast<int>(GameInputAction::Count);
+
+struct GameInputBindingDef {
+    GameInputAction action;
+    const wchar_t* label;
+    const wchar_t* iniKey;
+    int defaultVk;
+};
+
+const GameInputBindingDef kGameInputBindings[] = {
+    {GameInputAction::MoveForward, L"Move forward", L"KeyMoveForward", 'W'},
+    {GameInputAction::MoveBackward, L"Move backward", L"KeyMoveBackward", 'S'},
+    {GameInputAction::MoveLeft, L"Move left", L"KeyMoveLeft", 'A'},
+    {GameInputAction::MoveRight, L"Move right", L"KeyMoveRight", 'D'},
+    {GameInputAction::Jump, L"Jump", L"KeyJump", VK_SPACE},
+    {GameInputAction::Sprint, L"Sprint", L"KeySprint", VK_SHIFT},
+    {GameInputAction::Crouch, L"Crouch", L"KeyCrouch", VK_CONTROL},
+    {GameInputAction::Interact, L"Interact", L"KeyInteract", 'E'},
+    {GameInputAction::Pause, L"Pause / menu", L"KeyPause", VK_ESCAPE}
+};
+
+std::array<int, kGameInputActionCount> DefaultGameKeyBindings() {
+    std::array<int, kGameInputActionCount> keys{};
+    for (const GameInputBindingDef& binding : kGameInputBindings) {
+        keys[static_cast<size_t>(binding.action)] = binding.defaultVk;
+    }
+    return keys;
+}
+
+const GameInputBindingDef& GameInputBinding(GameInputAction action) {
+    return kGameInputBindings[static_cast<size_t>(action)];
+}
+
+struct Settings;
+int GameActionKey(const Settings& settings, GameInputAction action);
+void SetGameActionKey(Settings& settings, GameInputAction action, int vk);
+
 struct Settings {
     bool allowWarpFallback = false;
     bool gameFullscreen = false;
@@ -178,6 +228,7 @@ struct Settings {
     float fadeInSeconds = 1.25f;
     float mouseSensitivity = 1.0f;
     bool invertMouseY = false;
+    std::array<int, kGameInputActionCount> gameKeyBindings = DefaultGameKeyBindings();
 
     bool audioMuted = false;
     float audioMasterVolume = 1.0f;
@@ -279,6 +330,72 @@ struct Settings {
     float monsterAltLeftEyeY = -0.145f;
     float monsterAltLeftEyeZ = 0.095f;
 };
+
+int GameActionKey(const Settings& settings, GameInputAction action) {
+    size_t index = static_cast<size_t>(action);
+    if (index >= settings.gameKeyBindings.size()) return 0;
+    return settings.gameKeyBindings[index];
+}
+
+void SetGameActionKey(Settings& settings, GameInputAction action, int vk) {
+    size_t index = static_cast<size_t>(action);
+    if (index >= settings.gameKeyBindings.size()) return;
+    settings.gameKeyBindings[index] = std::clamp(vk, 1, 255);
+}
+
+void AssignGameActionKey(Settings& settings, GameInputAction action, int vk) {
+    vk = std::clamp(vk, 1, 255);
+    int actionIndex = static_cast<int>(action);
+    int previous = GameActionKey(settings, action);
+    for (int i = 0; i < kGameInputActionCount; ++i) {
+        if (i != actionIndex && settings.gameKeyBindings[static_cast<size_t>(i)] == vk) {
+            settings.gameKeyBindings[static_cast<size_t>(i)] = previous;
+            break;
+        }
+    }
+    SetGameActionKey(settings, action, vk);
+}
+
+std::wstring KeyDisplayName(int vk) {
+    vk = std::clamp(vk, 1, 255);
+    if (vk >= 'A' && vk <= 'Z') return std::wstring(1, static_cast<wchar_t>(vk));
+    if (vk >= '0' && vk <= '9') return std::wstring(1, static_cast<wchar_t>(vk));
+    switch (vk) {
+    case VK_ESCAPE: return L"Esc";
+    case VK_SPACE: return L"Space";
+    case VK_SHIFT: return L"Shift";
+    case VK_CONTROL: return L"Ctrl";
+    case VK_MENU: return L"Alt";
+    case VK_TAB: return L"Tab";
+    case VK_RETURN: return L"Enter";
+    case VK_BACK: return L"Backspace";
+    case VK_LEFT: return L"Left";
+    case VK_RIGHT: return L"Right";
+    case VK_UP: return L"Up";
+    case VK_DOWN: return L"Down";
+    case VK_PRIOR: return L"Page Up";
+    case VK_NEXT: return L"Page Down";
+    case VK_HOME: return L"Home";
+    case VK_END: return L"End";
+    case VK_INSERT: return L"Insert";
+    case VK_DELETE: return L"Delete";
+    case VK_LSHIFT: return L"Left Shift";
+    case VK_RSHIFT: return L"Right Shift";
+    case VK_LCONTROL: return L"Left Ctrl";
+    case VK_RCONTROL: return L"Right Ctrl";
+    case VK_LMENU: return L"Left Alt";
+    case VK_RMENU: return L"Right Alt";
+    default: break;
+    }
+
+    UINT scan = MapVirtualKeyW(static_cast<UINT>(vk), MAPVK_VK_TO_VSC);
+    wchar_t name[96]{};
+    LONG lparam = static_cast<LONG>(scan << 16);
+    if (GetKeyNameTextW(lparam, name, ARRAYSIZE(name)) > 0) return name;
+    wchar_t fallback[32]{};
+    swprintf_s(fallback, L"VK %d", vk);
+    return fallback;
+}
 
 std::filesystem::path SettingsPath() {
     return ModuleDirectory() / L"BackroomsMaze.ini";
@@ -424,7 +541,11 @@ std::wstring DefaultConfigText() {
       << L"FadeInSeconds=1.25\r\n\r\n"
       << L"[Controls]\r\n"
       << L"MouseSensitivity=1\r\n"
-      << L"InvertMouseY=0\r\n\r\n"
+      << L"InvertMouseY=0\r\n";
+    for (const GameInputBindingDef& binding : kGameInputBindings) {
+        s << binding.iniKey << L"=" << binding.defaultVk << L"\r\n";
+    }
+    s << L"\r\n"
       << L"[Audio]\r\n"
       << L"; Reserved for the game audio engine. Values are saved now so the settings UI is ready.\r\n"
       << L"Muted=0\r\n"
@@ -681,6 +802,10 @@ Settings LoadSettings() {
     s.fadeInSeconds = std::clamp(IniFloat(L"CameraFX", L"FadeInSeconds", s.fadeInSeconds), 0.0f, 8.0f);
     s.mouseSensitivity = std::clamp(IniFloat(L"Controls", L"MouseSensitivity", s.mouseSensitivity), 0.1f, 5.0f);
     s.invertMouseY = IniInt(L"Controls", L"InvertMouseY", s.invertMouseY ? 1 : 0) != 0;
+    for (const GameInputBindingDef& binding : kGameInputBindings) {
+        int fallback = GameActionKey(s, binding.action);
+        SetGameActionKey(s, binding.action, std::clamp(IniInt(L"Controls", binding.iniKey, fallback), 1, 255));
+    }
 
     s.audioMuted = IniInt(L"Audio", L"Muted", s.audioMuted ? 1 : 0) != 0;
     s.audioMasterVolume = std::clamp(IniFloat(L"Audio", L"MasterVolume", s.audioMasterVolume), 0.0f, 1.0f);
