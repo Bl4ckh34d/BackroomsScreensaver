@@ -339,6 +339,7 @@
 
     bool LoadMonsterSkullMesh() {
         skullMesh_.clear();
+        monsterMeshLoaded_ = false;
         monsterUsingAltSkull_ = false;
         std::wstring configuredPath = settings_.monsterSkullMesh;
         if (!settings_.monsterAltSkullMesh.empty() &&
@@ -354,6 +355,7 @@
         uint64_t hash = MonsterMeshCacheHash(path);
         if (LoadMonsterMeshCache(hash, skullMesh_)) {
             StartupProfileLine(L"Loaded cached monster skull mesh: " + std::to_wstring(skullMesh_.size() / 3) + L" tris");
+            monsterMeshLoaded_ = true;
             return true;
         }
 
@@ -366,6 +368,7 @@
             ok = LoadMonsterSkullObj(path, skullMesh_);
         }
         if (ok) {
+            monsterMeshLoaded_ = true;
             if (ext != L".bin") {
                 SaveMonsterMeshCache(hash, skullMesh_);
             }
@@ -631,6 +634,7 @@
     }
 
     bool LoadPropMeshes() {
+        propMeshesLoaded_ = false;
         for (StaticPropMesh& mesh : chairPropMeshes_) mesh = {};
         cabinetPropMesh_ = {};
         deskPropMesh_ = {};
@@ -675,5 +679,16 @@
         if (exitSignLoaded) ++loaded;
         loaded += ceilingLampLoaded;
         StartupProfileLine(L"Loaded prop meshes: " + std::to_wstring(loaded) + L"/14");
-        return loaded > 0;
+        propMeshesLoaded_ = loaded > 0;
+        menuPropMeshesLoaded_ = menuPropMeshesLoaded_ || exitSignLoaded;
+        return propMeshesLoaded_;
+    }
+
+    bool LoadMenuPropMeshes() {
+        if (menuPropMeshesLoaded_ && !exitSignPropMesh_.vertices.empty()) return true;
+        exitSignPropMesh_ = {};
+        bool exitSignLoaded = LoadStaticPropObj(L"assets\\models\\runtime\\emergency_exit_sign.brmesh", 7.0f, exitSignPropMesh_);
+        menuPropMeshesLoaded_ = exitSignLoaded;
+        StartupProfileLine(exitSignLoaded ? L"Loaded menu prop mesh: emergency exit sign" : L"Menu exit sign mesh missing");
+        return exitSignLoaded;
     }

@@ -169,19 +169,25 @@ public:
         ReportStartupStep(L"Flashlight pattern ready", L"Creating constant buffers.");
         if (!CreateConstantBuffer()) return false;
         profile.Mark(L"CreateConstantBuffer");
-        ReportStartupStep(L"GPU buffers ready", L"Loading monster mesh.");
+        ReportStartupStep(L"GPU buffers ready", runtimeMode_ == RendererRuntimeMode::MainMenu
+            ? L"Loading menu meshes."
+            : L"Loading monster mesh.");
 
         runtimeSeed_ = ResolveRuntimeSeed(settings_.mazeSeed);
         ApplyRuntimeVariation(settings_, runtimeSeed_);
         gameplaySettings_ = settings_;
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) ApplyMainMenuSettings();
         if (gEffectDebugViewer) ApplyDebugSliceSettings();
-        LoadMonsterSkullMesh();
-        profile.Mark(L"LoadMonsterSkullMesh");
-        ReportStartupStep(L"Monster mesh ready", L"Loading prop meshes.");
-        LoadPropMeshes();
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            LoadMenuPropMeshes();
+            profile.Mark(L"LoadMenuPropMeshes");
+            ReportStartupStep(L"Menu meshes ready", L"Generating menu layout.");
+        } else {
+            EnsureFullSceneAssets();
+            profile.Mark(L"LoadSceneAssets");
+            ReportStartupStep(L"Scene meshes ready", L"Generating maze layout.");
+        }
         profile.Mark(L"LoadPropMeshes");
-        ReportStartupStep(L"Prop meshes ready", L"Generating maze layout.");
         maze_.rng.seed(runtimeSeed_);
         rng_.seed(runtimeSeed_ ^ 0x9e3779b9u);
 
@@ -363,6 +369,7 @@ public:
         gEffectDebugViewer = false;
         gBloodDebugEveryWall = false;
         runtimeMode_ = RendererRuntimeMode::PlayableGame;
+        EnsureFullSceneAssets();
         settings_ = gameplaySettings_;
         maze_.w = settings_.mazeWidth;
         maze_.h = settings_.mazeHeight;
@@ -374,6 +381,7 @@ public:
 
     void EnterDebugViewer(DebugSliceEffect effect = DebugSliceEffect::Blood, int tiles = 3) {
         runtimeMode_ = RendererRuntimeMode::DebugViewer;
+        EnsureFullSceneAssets();
         gEffectDebugViewer = true;
         gBloodDebugEveryWall = effect == DebugSliceEffect::Blood || DebugSliceEffectIsWater(effect);
         ConfigureDebugSlice(effect, tiles);
@@ -449,6 +457,15 @@ private:
         XMFLOAT3 max{};
         bool generatedUvFallback = false;
     };
+
+    void EnsureFullSceneAssets() {
+        if (!monsterMeshLoaded_ || skullMesh_.empty()) {
+            LoadMonsterSkullMesh();
+        }
+        if (!propMeshesLoaded_) {
+            LoadPropMeshes();
+        }
+    }
 
     static bool StaticPropNeedsGeneratedUv(const StaticPropMesh& mesh) {
         if (mesh.vertices.size() < 3) return false;
@@ -752,6 +769,9 @@ private:
     StaticPropMesh airVentPropMesh_;
     StaticPropMesh exitSignPropMesh_;
     std::array<StaticPropMesh, 4> ceilingLampPropMeshes_;
+    bool monsterMeshLoaded_ = false;
+    bool propMeshesLoaded_ = false;
+    bool menuPropMeshesLoaded_ = false;
     RendererRuntimeMode runtimeMode_ = RendererRuntimeMode::ScreensaverAutopilot;
     GameInputSnapshot gameInput_{};
     Settings gameplaySettings_{};
