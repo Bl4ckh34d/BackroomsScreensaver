@@ -154,6 +154,7 @@
         playerVerticalOffset_ = 0.0f;
         playerVerticalVelocity_ = 0.0f;
         playerStaminaRegenDelay_ = 0.0f;
+        playerNoiseRadiusMeters_ = 0.0f;
         playerGrounded_ = true;
         monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
         monsterPath_.clear();
@@ -2690,6 +2691,19 @@
         smoothedMoveSpeed_ = MoveTowards(smoothedMoveSpeed_, wantsMove ? targetSpeed : 0.0f,
             (wantsMove ? 8.0f : 10.0f) * dt);
         float moveDistance = smoothedMoveSpeed_ * dt;
+        float moveNoise = 0.0f;
+        if (wantsMove && smoothedMoveSpeed_ > 0.05f) {
+            float walkT = Clamp01(smoothedMoveSpeed_ / std::max(0.1f, walkSpeed));
+            if (crouching) {
+                moveNoise = Lerp(0.45f, 1.55f, walkT);
+            } else if (wantsSprint) {
+                float runT = Clamp01((smoothedMoveSpeed_ - walkSpeed) / std::max(0.1f, sprintSpeed - walkSpeed));
+                moveNoise = Lerp(4.0f, 9.4f, runT);
+            } else {
+                moveNoise = Lerp(1.8f, 4.2f, walkT);
+            }
+        }
+        playerNoiseRadiusMeters_ += (moveNoise - playerNoiseRadiusMeters_) * std::min(1.0f, dt * 9.0f);
         if (wantsMove && moveDistance > 0.0001f) {
             XMFLOAT3 forward = Forward();
             XMFLOAT3 right{std::cos(yaw_), 0.0f, -std::sin(yaw_)};

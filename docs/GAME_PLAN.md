@@ -16,6 +16,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 - [x] Start splitting game-domain code into `src/game/`.
 - [x] Tune manual player head bob down so walking and sprinting feel less exaggerated.
 - [x] Add atmospheric manual mouse-look smoothing and pitch-limit damping near +/-89 degrees.
+- [x] Add debug AI minimap overlay for player hearing radius, monster path, and monster sound/target tiles.
 - [ ] Expand Debug into a full in-game test lab.
 - [ ] Add stealth/noise gameplay.
 - [ ] Replace placeholder monster with a procedural many-limbed creature.
@@ -83,6 +84,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 
 - Existing debug slice viewer is the first Debug state.
 - Debug Settings currently owns map/dread overlays, fixed study views, effect loop tuning, autopilot camera tuning, and monster mesh/eye calibration.
+- Debug Settings includes an AI minimap overlay toggle for inspecting monster hearing/path target behavior during gameplay.
 - Add texture/material test wall.
 - Add model browser for runtime props and monster prototypes.
 - Add labyrinth generation test controls.

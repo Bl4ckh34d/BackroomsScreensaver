@@ -617,6 +617,7 @@ struct Settings {
     int roomMaxRadiusRange = 1;
     uint32_t mazeSeed = 0;
     bool mapOverlay = true;
+    bool debugAiMapOverlay = false;
     float runVariation = 0.1f;
     float tileWidthMeters = kTile;
     float tileLengthMeters = kTile;
@@ -1006,6 +1007,8 @@ std::wstring DefaultConfigText() {
       << L"WalkSpeedBoost=0.05\r\n"
       << L"RunSpeedBoost=0.075\r\n"
       << L"FlashlightFlicker=1\r\n\r\n"
+      << L"[Debug]\r\n"
+      << L"AiMapOverlay=0\r\n\r\n"
       << L"[Monster]\r\n"
       << L"MonsterScale=1\r\n"
       << L"MonsterSpeed=0.68\r\n"
@@ -1117,6 +1120,7 @@ Settings LoadSettings() {
     s.roomMaxRadiusRange = std::clamp(IniInt(L"Maze", L"RoomMaxRadiusRange", s.roomMaxRadiusRange), 0, 16);
     s.mazeSeed = static_cast<uint32_t>(std::clamp(IniInt(L"Maze", L"RandomSeed", static_cast<int>(s.mazeSeed)), 0, std::numeric_limits<int>::max()));
     s.mapOverlay = IniInt(L"Maze", L"MapOverlay", s.mapOverlay ? 1 : 0) != 0;
+    s.debugAiMapOverlay = IniInt(L"Debug", L"AiMapOverlay", s.debugAiMapOverlay ? 1 : 0) != 0;
     s.tileWidthMeters = std::clamp(IniFloat(L"Maze", L"TileWidthMeters", s.tileWidthMeters), 1.2f, 8.0f);
     s.tileLengthMeters = std::clamp(IniFloat(L"Maze", L"TileLengthMeters", s.tileLengthMeters), 1.2f, 8.0f);
     s.wallHeightMeters = std::clamp(IniFloat(L"Maze", L"WallHeightMeters", s.wallHeightMeters), 1.8f, 8.0f);
@@ -1923,6 +1927,8 @@ public:
             target.gameResolutionWidth = settings.gameResolutionWidth;
             target.gameResolutionHeight = settings.gameResolutionHeight;
             target.allowWarpFallback = settings.allowWarpFallback;
+            target.mapOverlay = settings.mapOverlay;
+            target.debugAiMapOverlay = settings.debugAiMapOverlay;
             target.exposure = settings.exposure;
             target.bloomAmount = settings.bloomAmount;
             target.motionBlurAmount = settings.motionBlurAmount;
@@ -2340,6 +2346,7 @@ private:
     float playerVerticalOffset_ = 0.0f;
     float playerVerticalVelocity_ = 0.0f;
     float playerStaminaRegenDelay_ = 0.0f;
+    float playerNoiseRadiusMeters_ = 0.0f;
     bool playerGrounded_ = true;
     bool monsterPreview_ = false;
     MonsterPreviewView monsterPreviewView_ = MonsterPreviewView::Orbit;
@@ -11996,7 +12003,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
 
         std::vector<OverlayVertex> verts;
         verts.reserve(std::min(static_cast<size_t>(kOverlayVertexCapacity),
-            static_cast<size_t>(maze_.w * maze_.h * 6 + 96)));
+            static_cast<size_t>(maze_.w * maze_.h * 12 + monsterPath_.size() * 6 + 192)));
         auto ndcX = [&](float px) { return px / static_cast<float>(width_) * 2.0f - 1.0f; };
         auto ndcY = [&](float py) { return 1.0f - py / static_cast<float>(height_) * 2.0f; };
         auto pushRect = [&](float x, float y, float w, float h, XMFLOAT4 color) {
@@ -12028,6 +12035,20 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         auto mapTileX = [&](int tileX) {
             return x0 + static_cast<float>(maze_.w - 1 - tileX) * cell;
         };
+        auto pushTile = [&](Tile t, XMFLOAT4 color, float insetScale = 0.14f) {
+            if (!maze_.InBounds(t.x, t.y)) return;
+            float inset = std::max(0.12f, cell * insetScale);
+            float px = mapTileX(t.x);
+            float py = y0 + static_cast<float>(t.y) * cell;
+            pushRect(px + inset, py + inset, std::max(0.45f, cell - inset * 2.0f), std::max(0.45f, cell - inset * 2.0f), color);
+        };
+        auto markTile = [&](Tile t, XMFLOAT4 color, float scale) {
+            if (!maze_.InBounds(t.x, t.y)) return;
+            float size = std::max(3.0f, cell * scale);
+            float px = mapTileX(t.x) + cell * 0.5f - size * 0.5f;
+            float py = y0 + (static_cast<float>(t.y) + 0.5f) * cell - size * 0.5f;
+            pushRect(px, py, size, size, color);
+        };
 
         for (int y = 0; y < maze_.h; ++y) {
             for (int x = 0; x < maze_.w; ++x) {
@@ -12043,13 +12064,40 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             }
         }
 
-        auto markTile = [&](Tile t, XMFLOAT4 color, float scale) {
-            if (!maze_.InBounds(t.x, t.y)) return;
-            float size = std::max(3.0f, cell * scale);
-            float px = mapTileX(t.x) + cell * 0.5f - size * 0.5f;
-            float py = y0 + (static_cast<float>(t.y) + 0.5f) * cell - size * 0.5f;
-            pushRect(px, py, size, size, color);
-        };
+        if (settings_.debugAiMapOverlay) {
+            float hearingRadius = std::max(0.0f, playerNoiseRadiusMeters_);
+            if (hearingRadius > 0.05f) {
+                float radiusSq = hearingRadius * hearingRadius;
+                for (int y = 0; y < maze_.h; ++y) {
+                    for (int x = 0; x < maze_.w; ++x) {
+                        XMFLOAT3 center = maze_.WorldCenter({x, y}, 0.0f);
+                        float dx = center.x - camera_.x;
+                        float dz = center.z - camera_.z;
+                        if (dx * dx + dz * dz <= radiusSq) {
+                            pushTile({x, y}, {1.0f, 0.03f, 0.02f, 0.18f}, 0.02f);
+                        }
+                    }
+                }
+            }
+
+            bool alertPath = monsterHasSound_ || monsterHasLastKnown_ || monsterChasingVisible_;
+            XMFLOAT4 pathColor = alertPath ? XMFLOAT4{1.0f, 0.12f, 0.04f, 0.72f} : XMFLOAT4{1.0f, 0.56f, 0.10f, 0.52f};
+            for (size_t i = monsterPathIndex_; i < monsterPath_.size(); ++i) {
+                float t = monsterPath_.size() > monsterPathIndex_
+                    ? static_cast<float>(i - monsterPathIndex_) / static_cast<float>(std::max<size_t>(1, monsterPath_.size() - monsterPathIndex_))
+                    : 0.0f;
+                XMFLOAT4 color = pathColor;
+                color.w *= Lerp(1.0f, 0.46f, Clamp01(t));
+                pushTile(monsterPath_[i], color, 0.26f);
+            }
+            if (monsterHasSound_) markTile(monsterSoundTile_, {1.0f, 0.02f, 0.02f, 0.96f}, 2.05f);
+            if (monsterHasLastKnown_) markTile(monsterLastKnownTile_, {1.0f, 0.88f, 0.16f, 0.90f}, 1.85f);
+            if (ValidMonsterTile(monsterGoal_)) markTile(monsterGoal_, {1.0f, 0.38f, 0.02f, 0.78f}, 1.62f);
+            if (ValidMonsterTile(monsterRoamTile_) && !monsterHasSound_ && !monsterHasLastKnown_) {
+                markTile(monsterRoamTile_, {0.82f, 0.68f, 0.42f, 0.56f}, 1.42f);
+            }
+        }
+
         markTile(CameraTile(), {0.20f, 0.72f, 1.0f, 0.82f}, 1.70f);
         markTile(MonsterTile(), {0.88f, 0.04f, 0.05f, 0.64f}, 1.45f);
 
@@ -13857,6 +13905,7 @@ void BuildDebugConfigModel(ConfigState* state) {
     auto& f = state->fieldDefs;
     AddConfigFieldCopy(f, L"Maze", L"MapOverlay", 0, 0, L"Overlays");
     AddConfigFieldCopy(f, L"Dread", L"DebugMeter", 0, 0, L"Overlays");
+    AddCustomConfigField(f, 0, 0, kConfigFieldBaseId + 176, L"Overlays", L"Debug", L"AiMapOverlay", L"AI minimap overlay", L"0", ConfigFieldKind::Bool, 0);
     AddConfigFieldCopy(f, L"Atmosphere", L"BloodStudyView", 0, 1, L"Forced Views");
 
     const wchar_t* effectKeys[] = {L"BloodLoopSeconds", L"BloodFullSpreadAge", L"WaterLoopSeconds", L"AirVentLoopSeconds",
@@ -14159,6 +14208,7 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.roomMaxRadiusRange = std::clamp(ParseConfigInt(state, L"Maze", L"RoomMaxRadiusRange", s.roomMaxRadiusRange), 0, 16);
     s.mazeSeed = static_cast<uint32_t>(std::clamp(ParseConfigInt(state, L"Maze", L"RandomSeed", static_cast<int>(s.mazeSeed)), 0, std::numeric_limits<int>::max()));
     s.mapOverlay = ParseConfigInt(state, L"Maze", L"MapOverlay", s.mapOverlay ? 1 : 0) != 0;
+    s.debugAiMapOverlay = ParseConfigInt(state, L"Debug", L"AiMapOverlay", s.debugAiMapOverlay ? 1 : 0) != 0;
     s.tileWidthMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"TileWidthMeters", s.tileWidthMeters), 1.2f, 8.0f);
     s.tileLengthMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"TileLengthMeters", s.tileLengthMeters), 1.2f, 8.0f);
     s.wallHeightMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"WallHeightMeters", s.wallHeightMeters), 1.8f, 8.0f);
@@ -14775,6 +14825,9 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         int id = LOWORD(wParam);
         if (id == kConfigSaveId && state) {
             SaveConfigControls(state);
+            if (state->mode == ConfigDialogMode::Debug && gApp && gApp->rendererInitialized) {
+                gApp->renderer.ApplyGameSettings(LoadSettings());
+            }
             const wchar_t* message = state->mode == ConfigDialogMode::Game
                 ? L"Game settings saved. Display settings apply next launch; start a new run to reload level-generation settings."
                 : (state->mode == ConfigDialogMode::Debug
