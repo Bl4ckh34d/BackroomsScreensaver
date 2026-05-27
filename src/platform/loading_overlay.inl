@@ -70,9 +70,9 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
     const ImageRGBA& logo = LoadingOverlayLogo();
     int width = std::max<LONG>(1, rc.right - rc.left);
     int height = std::max<LONG>(1, rc.bottom - rc.top);
-    int logoSize = std::clamp(std::min(width, height) / 4, 132, 248);
+    int logoSize = std::clamp(std::min(width, height) / 3, 190, 330);
     int x = rc.left + (width - logoSize) / 2;
-    int y = rc.top + height / 2 - logoSize / 2 - std::clamp(height / 16, 24, 58);
+    int y = rc.top + height / 2 - logoSize / 2 - std::clamp(height / 22, 16, 38);
 
     if (logo.Valid()) {
         static std::vector<uint8_t> tinted;
@@ -125,24 +125,15 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
     }
 
     SetBkMode(hdc, TRANSPARENT);
-    HFONT logoFont = CreateFontW(-28, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     HFONT detailFont = CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    HGDIOBJ oldFont = SelectObject(hdc, logoFont);
-    SetTextColor(hdc, RGB(245, 245, 245));
-    RECT nameRect{rc.left + 24, y + logoSize + 16, rc.right - 24, y + logoSize + 54};
-    DrawTextW(hdc, L"NeuralForge Solutions", -1, &nameRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-
-    SelectObject(hdc, detailFont);
+    HGDIOBJ oldFont = SelectObject(hdc, detailFont);
     SetTextColor(hdc, RGB(126, 119, 91));
     std::wstring detail = state && !state->detail.empty() ? state->detail : L"Preparing renderer";
-    RECT detailRect{rc.left + 24, nameRect.bottom + 4, rc.right - 24, nameRect.bottom + 30};
+    RECT detailRect{rc.left + 24, y + logoSize + 18, rc.right - 24, y + logoSize + 44};
     DrawTextW(hdc, detail.c_str(), -1, &detailRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     SelectObject(hdc, oldFont);
-    DeleteObject(logoFont);
     DeleteObject(detailFont);
 }
 
