@@ -127,13 +127,15 @@ int RunGame(HINSTANCE hInstance) {
 
         if (app.gameState == GameState::MainMenu) {
             PushGameMenuInteractionToRenderer(hwnd);
-            if (app.rendererInitialized) {
+            bool rendererMenuScene = app.rendererInitialized &&
+                app.renderer.RuntimeMode() == RendererRuntimeMode::MainMenu;
+            if (rendererMenuScene) {
                 app.renderer.TickFixed(dt);
-                HDC dc = GetDC(hwnd);
-                if (dc) {
-                    PaintGameMainMenu(hwnd, dc);
-                    ReleaseDC(hwnd, dc);
-                }
+            }
+            HDC dc = GetDC(hwnd);
+            if (dc) {
+                PaintGameMainMenu(hwnd, dc);
+                ReleaseDC(hwnd, dc);
             }
             UpdateGameMenuTransition(hwnd);
         }
