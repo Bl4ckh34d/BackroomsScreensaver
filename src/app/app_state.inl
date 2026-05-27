@@ -51,6 +51,7 @@ struct App {
     int gameMenuHoverId = 0;
     POINT gameMenuMouse{};
     bool gameMenuHasMouse = false;
+    bool gameMenuTrackingMouse = false;
     ULONGLONG gameMenuBloodStart = 0;
     ULONGLONG gameMenuLampBurstStart = 0;
     ULONGLONG gameMenuFadeStart = 0;

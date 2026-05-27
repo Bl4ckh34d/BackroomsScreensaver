@@ -325,10 +325,10 @@ public:
         menuPointerTargetY_ = Clamp01(pointerY);
         menuButtonHover_ = buttonHover;
         menuExitHover_ = exitHover;
-        menuSinglePlayerHover_ = singlePlayerHover;
+        menuSinglePlayerHover_ = buttonHover && singlePlayerHover;
         menuHoverButtonIndex_ = -1;
         if (buttonHover) {
-            if (singlePlayerHover) menuHoverButtonIndex_ = 0;
+            if (menuSinglePlayerHover_) menuHoverButtonIndex_ = 0;
         }
     }
 

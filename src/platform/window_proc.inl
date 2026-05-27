@@ -108,6 +108,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         if (gApp && gApp->gameShell && gApp->gameState == GameState::MainMenu && hwnd == gApp->hwnd) {
             POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+            if (!gApp->gameMenuTrackingMouse) {
+                TRACKMOUSEEVENT tme{};
+                tme.cbSize = sizeof(tme);
+                tme.dwFlags = TME_LEAVE;
+                tme.hwndTrack = hwnd;
+                if (TrackMouseEvent(&tme)) gApp->gameMenuTrackingMouse = true;
+            }
             int hover = HitTestGameMenu(hwnd, p);
             gApp->gameMenuMouse = p;
             gApp->gameMenuHasMouse = true;
@@ -134,6 +141,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
         }
         return 0;
+    case WM_MOUSELEAVE:
+#if defined(BACKROOMS_GAME_EXE)
+        if (gApp && gApp->gameShell && gApp->gameState == GameState::MainMenu && hwnd == gApp->hwnd) {
+            gApp->gameMenuTrackingMouse = false;
+            gApp->gameMenuHasMouse = false;
+            gApp->gameMenuHoverId = 0;
+            if (GameMenuUsesRendererScene()) {
+                gApp->renderer.SetMenuInteraction(0.5f, 0.5f, false, false, false);
+                gApp->renderer.SetMenuHoverButtonIndex(-1);
+            }
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+#endif
+        break;
     case WM_LBUTTONDOWN:
     case WM_MBUTTONDOWN:
     case WM_RBUTTONDOWN:

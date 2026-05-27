@@ -139,6 +139,18 @@ bool GameMenuUsesRendererScene() {
         gApp->renderer.RuntimeMode() == RendererRuntimeMode::MainMenu;
 }
 
+int GameMenuHoverButtonIndex(int hoverId) {
+    const auto buttons = ActiveGameMenuButtons();
+    for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
+        if (hoverId == buttons[static_cast<size_t>(i)].id) return i;
+    }
+    return -1;
+}
+
+bool GameMenuHoverIsButton(int hoverId) {
+    return GameMenuHoverButtonIndex(hoverId) >= 0;
+}
+
 void PushGameMenuInteractionToRenderer(HWND hwnd) {
     if (!GameMenuUsesRendererScene() || !hwnd) return;
     RECT rc{};
@@ -147,18 +159,12 @@ void PushGameMenuInteractionToRenderer(HWND hwnd) {
     int h = std::max<LONG>(1, rc.bottom - rc.top);
     float x = gApp->gameMenuHasMouse ? static_cast<float>(gApp->gameMenuMouse.x) / static_cast<float>(w) : 0.5f;
     float y = gApp->gameMenuHasMouse ? static_cast<float>(gApp->gameMenuMouse.y) / static_cast<float>(h) : 0.5f;
-    int hoverIndex = -1;
-    const auto buttons = ActiveGameMenuButtons();
-    for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-        if (gApp->gameMenuHoverId == buttons[static_cast<size_t>(i)].id) {
-            hoverIndex = i;
-            break;
-        }
-    }
+    int hoverId = gApp->gameMenuHasMouse ? gApp->gameMenuHoverId : 0;
+    int hoverIndex = GameMenuHoverButtonIndex(hoverId);
     gApp->renderer.SetMenuInteraction(x, y,
         hoverIndex >= 0,
-        gApp->gameMenuHoverId == kGameExitId,
-        gApp->gameMenuHoverId == kGameSinglePlayerId);
+        hoverId == kGameExitId,
+        hoverIndex == 0);
     gApp->renderer.SetMenuHoverButtonIndex(hoverIndex);
 }
 
@@ -305,7 +311,7 @@ void DrawGameMenuFlashlight(HDC dc, const RECT& client, ULONGLONG now) {
     float jitterY = std::cos(static_cast<float>(now) * 0.0067f) * 0.012f + std::sin(static_cast<float>(now) * 0.017f) * 0.005f;
     int cx = static_cast<int>((mx + jitterX) * w);
     int cy = static_cast<int>((my + jitterY) * h);
-    bool flicker = gApp->gameMenuHoverId != 0;
+    bool flicker = GameMenuHoverIsButton(gApp->gameMenuHasMouse ? gApp->gameMenuHoverId : 0);
     int radius = flicker ? 168 : 205;
     int rings = 9;
     for (int i = rings; i >= 1; --i) {
@@ -648,6 +654,9 @@ void EnterGameMainMenu(HWND hwnd) {
     gApp->gameMenuFadeOut = false;
     gApp->gameMenuPendingCommand = 0;
     gApp->gameMenuFadeStart = GetTickCount64();
+    gApp->gameMenuHoverId = 0;
+    gApp->gameMenuHasMouse = false;
+    gApp->gameMenuTrackingMouse = false;
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;
     if (gApp->rendererInitialized) {
