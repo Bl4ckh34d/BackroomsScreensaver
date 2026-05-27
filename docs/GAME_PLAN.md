@@ -19,6 +19,13 @@ This file is the source of truth for turning the screensaver into a playable C++
 - [x] Add debug AI minimap overlay for player hearing radius, monster path, and monster sound/target tiles.
 - [x] Move game shell and loading overlay code out of `main.cpp`.
 - [x] Move app state, game app loop, window procedure, and CLI mode parsing out of `main.cpp`.
+- [x] Split the screensaver runtime host and process entry point out of `main.cpp`.
+- [x] Move the legacy config dialog and embedded settings host out of `main.cpp`.
+- [x] Split config parsing/defaults, dialog schema/model, and dialog window code into separate config files.
+- [x] Move maze generation and pathfinding helpers into `src/maze/`.
+- [x] Move render structs, shaders, textures, mesh loading, static maze mesh generation, dynamic geometry, overlays, and present code into `src/render/`.
+- [x] Move monster AI/pathing and scare/effect event updates out of `main.cpp`.
+- [x] Reduce `src/main.cpp` to the shared compile shell plus the remaining `Renderer` state/member declarations.
 - [ ] Expand Debug into a full in-game test lab.
 - [ ] Add stealth/noise gameplay.
 - [ ] Replace placeholder monster with a procedural many-limbed creature.

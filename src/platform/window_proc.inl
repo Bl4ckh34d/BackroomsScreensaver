@@ -1,5 +1,5 @@
 // Main window procedure, screensaver quit handling, and command-line mode parsing.
-// Included from main.cpp after app state, game shell, and loading overlay helpers.
+// Included from main.cpp after app state and loading overlay helpers.
 
 void QuitScreensaver(HWND hwnd) {
     if (gApp && !gApp->preview && !gApp->quitting) {
@@ -29,18 +29,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int h = HIWORD(lParam);
             if (hwnd == gApp->hwnd) {
                 if (gApp->loadingOverlay) ResizeLoadingOverlay(hwnd, gApp->loadingOverlay);
+#if defined(BACKROOMS_GAME_EXE)
                 if (gApp->gameConfig) MoveWindow(gApp->gameConfig, 0, 0, std::max(1, w), std::max(1, h), TRUE);
+#endif
                 gApp->renderer.Resize(w, h);
+#if defined(BACKROOMS_GAME_EXE)
                 if (gApp->gameShell) {
                     LayoutGameControls(hwnd);
                     if (gApp->gameMouseCaptured) CaptureGameMouse(hwnd);
                 }
+#endif
             } else if (App::CloneOutput* clone = CloneForWindow(hwnd)) {
                 if (clone->loadingOverlay) ResizeLoadingOverlay(hwnd, clone->loadingOverlay);
                 clone->renderer.Resize(w, h);
             }
         }
         return 0;
+#if defined(BACKROOMS_GAME_EXE)
     case kGameConfigClosedMessage:
         if (gApp && gApp->gameShell && hwnd == gApp->hwnd) {
             if (gApp->gameSettingsReturnState == GameState::DebugScene) {
@@ -51,7 +56,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         break;
+#endif
     case WM_SETCURSOR:
+#if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell && gApp->gameState == GameState::PlayGame) {
             SetCursor(nullptr);
             return TRUE;
@@ -60,12 +67,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             SetCursor(LoadCursorW(nullptr, IDC_ARROW));
             return TRUE;
         }
+#endif
         if (gApp && !gApp->preview) {
             SetCursor(nullptr);
             return TRUE;
         }
         break;
     case WM_MOUSEMOVE:
+#if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell && gApp->gameState == GameState::PlayGame && hwnd == gApp->hwnd) {
             POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             if (gApp->gameRecenteringMouse) {
@@ -80,6 +89,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             SetCursorPos(center.x, center.y);
             return 0;
         }
+#endif
         if (gApp && !gApp->preview) {
             POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             if (gApp->firstMouse) {
@@ -97,6 +107,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_RBUTTONDOWN:
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
+#if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell) {
             if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
                 (gApp->gameState == GameState::PlayGame || gApp->gameState == GameState::DebugScene)) {
@@ -110,9 +121,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             return 0;
         }
+#endif
         if (gApp && !gApp->preview) QuitScreensaver(hwnd);
         return 0;
     case WM_COMMAND:
+#if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell && hwnd == gApp->hwnd) {
             int id = LOWORD(wParam);
             if (id == kGameSinglePlayerId) {
@@ -145,6 +158,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 return 0;
             }
         }
+#endif
         if (gApp && gEffectDebugViewer && hwnd == gApp->hwnd) {
             int id = LOWORD(wParam);
             if (id == kDebugPrevEffectId || id == kDebugNextEffectId || id == kDebugSizeId || id == kDebugResetId ||
@@ -174,15 +188,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_ACTIVATEAPP:
+#if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell) {
             if (wParam == FALSE) ReleaseGameMouse();
             else if (gApp->gameState == GameState::PlayGame) CaptureGameMouse(gApp->hwnd);
             return 0;
         }
+#endif
         if (gApp && !gApp->preview && wParam == FALSE) QuitScreensaver(hwnd);
         return 0;
     case WM_DESTROY:
+#if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell) ReleaseGameMouse();
+#endif
         PostQuitMessage(0);
         return 0;
     }
