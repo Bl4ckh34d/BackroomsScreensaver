@@ -567,7 +567,7 @@
     void AdvanceStepPhase(float metersMoved, float speedMetersPerSecond) {
         if (metersMoved <= 0.0001f || speedMetersPerSecond <= 0.0001f) return;
         float runBlend = Clamp01((speedMetersPerSecond - settings_.walkSpeed) / std::max(0.1f, settings_.runSpeed * 1.55f - settings_.walkSpeed));
-        float strideMeters = Lerp(0.82f, 0.62f, runBlend);
+        float strideMeters = Lerp(1.42f, 0.78f, runBlend);
         stepPhase_ += metersMoved * (kPi / std::max(0.25f, strideMeters));
         if (stepPhase_ > kPi * 128.0f) {
             stepPhase_ = std::fmod(stepPhase_, kPi * 2.0f);
