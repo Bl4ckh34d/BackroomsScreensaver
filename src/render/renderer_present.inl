@@ -344,7 +344,7 @@
             XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -1.34f);
             doorwayLightPos = Add3(exitDoorCenter_, throughDoor);
             doorwayLightPos.y = exitDoorCenter_.y + 1.02f;
-            doorwayLightStrength = exitDoorOpen * 42.0f;
+            doorwayLightStrength = exitDoorOpen * 24.0f;
             exitLightDir = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
         }
         cb.exitLight0 = {
