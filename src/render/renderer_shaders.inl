@@ -599,9 +599,8 @@ VSOut DSMain(HSConstData input, const OutputPatch<VSOut, 3> patch, float3 bary :
 
 float FixturePower(float3 worldPos, float time)
 {
-    float strideTiles = max(1.0, floor(gLighting0.w / max(0.001, gMaze1.w) + 0.5));
-    float2 stride = gMaze0.zw * strideTiles;
-    float2 lampOrigin = gMaze0.xy + gMaze0.zw * 1.5;
+    float2 stride = gMaze0.zw / 3.0;
+    float2 lampOrigin = gMaze0.xy + stride * 0.5;
     float2 cell = floor((worldPos.xz - lampOrigin) / stride + 0.5);
     float brokenZone = step(1.0 - gLighting1.w, Hash21(floor(cell / 3.0)));
     float h = Hash21(cell);
@@ -710,6 +709,7 @@ float LampAreaRayVisibility(float2 startXZ, float2 lampXZ, float2 dir, float2 pe
 float LampVisibility(float2 worldXZ, float3 worldN, float2 lampXZ)
 {
     float tileSize = gMaze1.w;
+    float sourceTileSize = tileSize / 3.0;
     float2 startXZ = worldXZ + worldN.xz * tileSize * 0.16;
     float2 delta = lampXZ - startXZ;
     float dist = max(length(delta), 0.001);
@@ -726,7 +726,7 @@ float LampVisibility(float2 worldXZ, float3 worldN, float2 lampXZ)
     float clearance = NearestClosedCellDistance(startCell);
     float cornerFeather = smoothstep(0.045, 0.44 + distFade * 0.20, clearance);
 
-    float rayArea = LampAreaRayVisibility(startXZ, lampXZ, dir, perp, tileSize, distFade);
+    float rayArea = LampAreaRayVisibility(startXZ, lampXZ, dir, perp, sourceTileSize, distFade);
     float raySoft = smoothstep(-0.04, 1.04, rayArea);
     raySoft = saturate(raySoft + rayArea * (1.0 - rayArea) * (0.18 + distFade * 0.12));
     float occludedBounce = 0.10 + cornerFeather * 0.12 + distFade * 0.045;
@@ -785,18 +785,17 @@ float LampRayClear(float2 startXZ, float2 endXZ)
 )" R"(
 float LocalLampLight(float3 worldPos, float3 worldN, float time)
 {
-    float strideTiles = max(1.0, floor(gLighting0.w / max(0.001, gMaze1.w) + 0.5));
-    float2 stride = gMaze0.zw * strideTiles;
-    float spacing = gMaze1.w * strideTiles;
-    float2 lampOrigin = gMaze0.xy + gMaze0.zw * 1.5;
+    float2 stride = gMaze0.zw / 3.0;
+    float spacing = gMaze1.w / 3.0;
+    float2 lampOrigin = gMaze0.xy + stride * 0.5;
     float2 baseCell = floor((worldPos.xz - lampOrigin) / stride + 0.5);
     float light = 0.0;
 
     [loop]
-    for (int yy = -1; yy <= 1; ++yy)
+    for (int yy = -3; yy <= 3; ++yy)
     {
         [loop]
-        for (int xx = -1; xx <= 1; ++xx)
+        for (int xx = -3; xx <= 3; ++xx)
         {
             float2 cell = baseCell + float2(xx, yy);
             float2 lampXZ = lampOrigin + cell * stride;
@@ -819,7 +818,7 @@ float LocalLampLight(float3 worldPos, float3 worldN, float time)
             float3 Ln = normalize(L);
             float diffuse = saturate(dot(worldN, Ln) * 0.65 + 0.35);
             float falloff = visibility * roomFootprint / (1.0 + d2 * 0.035);
-            light += power * falloff * diffuse;
+            light += power * falloff * diffuse * 0.24;
         }
     }
 

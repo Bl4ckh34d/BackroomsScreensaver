@@ -70,6 +70,7 @@
 
         bool threat = IsThreatVisible();
         UpdateChasePanic(dt, threat, monsterDist);
+        UpdateBrokenRuntimeLampSparks(dt, 3.0f, 9.5f, 0.12f);
         bool panicActive = threat || ChasePanicActive();
         float dangerTarget = threat ? Clamp01((8.0f - monsterDist) / 6.6f) : chasePanic_ * 0.38f;
         dangerLevel_ += (dangerTarget - dangerLevel_) * std::min(1.0f, dt * (dangerTarget > dangerLevel_ ? 2.2f : 0.85f));

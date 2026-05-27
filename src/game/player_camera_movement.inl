@@ -342,7 +342,8 @@
 
         if (menuSinglePlayerHover_) {
             if (menuBloodAmount_ <= 0.001f) {
-                bloodWorldActivationTime_ = time_ - 6.0f;
+                bloodWorldActivationTime_ = time_ - 0.35f;
+                menuLampBurstPending_ = true;
             }
             menuBloodAmount_ = 1.0f;
         }
@@ -370,6 +371,7 @@
             }
         }
 
+        UpdateBrokenRuntimeLampSparks(dt, 1.65f, 5.8f, 0.22f);
         UpdateSparks(dt);
         UpdateAirParticles(dt);
         UpdateAirParticleFocus(dt);

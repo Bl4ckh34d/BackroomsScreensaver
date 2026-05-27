@@ -103,12 +103,30 @@
         if (lamp.broken) return;
         lamp.broken = true;
         lamp.damage = 1.0f;
+        lamp.sparkTimer = RandRange(1.2f, 3.4f);
         MarkLampDamagePixel(lamp.tile, lamp.damage);
         if (settings_.sparkParticles) {
             float intensity = std::max(2.2f, PickBrokenLampSparkIntensity() * 1.18f);
             EmitSparkBurstAt(lamp.pos, intensity);
             ScheduleSparkChain(lamp.pos, intensity * settings_.effectBrokenLampChainIntensityScale,
                 std::max(2, PickBrokenLampChainBursts() + 1));
+        }
+    }
+
+    void UpdateBrokenRuntimeLampSparks(float dt, float minSeconds, float maxSeconds, float chainChance) {
+        if (dt <= 0.0f || !settings_.sparkParticles || runtimeLamps_.empty()) return;
+        for (RuntimeLampState& lamp : runtimeLamps_) {
+            if (!lamp.broken) continue;
+            lamp.sparkTimer -= dt;
+            if (lamp.sparkTimer > 0.0f) continue;
+
+            float intensity = RandRange(0.42f, 1.28f);
+            EmitSparkBurstAt(lamp.pos, intensity);
+            if (RandRange(0.0f, 1.0f) < chainChance) {
+                ScheduleSparkChain(lamp.pos, intensity * settings_.effectBrokenLampChainIntensityScale,
+                    std::max(1, PickBrokenLampChainBursts() / 2));
+            }
+            lamp.sparkTimer = RandRange(std::max(0.12f, minSeconds), std::max(minSeconds, maxSeconds));
         }
     }
 

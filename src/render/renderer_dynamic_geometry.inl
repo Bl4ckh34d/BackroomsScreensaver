@@ -188,12 +188,17 @@
         XMFLOAT3 right{1.0f, 0.0f, 0.0f};
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
         XMFLOAT3 inward{0.0f, 0.0f, -1.0f};
-        float z = c.z + maze_.tileD * 0.5f - 0.040f;
+        float wallZ = c.z + maze_.tileD * 0.5f;
+        float z = wallZ - 0.040f;
         float x = c.x + maze_.tileW * 0.14f;
         float startY = 1.50f;
-        XMFLOAT3 bloodCenter = Add3({x - 0.02f, 1.42f, z}, Scale3(inward, 0.088f));
-        XMFLOAT3 bloodHalfW = Scale3(right, 0.86f);
-        XMFLOAT3 bloodHalfH = Scale3(up, 0.76f);
+        float bloodTopY = settings_.wallHeightMeters - 0.006f;
+        float bloodBottomY = 0.34f;
+        float bloodCenterY = (bloodTopY + bloodBottomY) * 0.5f;
+        float bloodHalfHeight = std::max(0.40f, (bloodTopY - bloodBottomY) * 0.5f);
+        XMFLOAT3 bloodCenter{x + 0.22f, bloodCenterY, wallZ - 0.002f};
+        XMFLOAT3 bloodHalfW = Scale3(right, 0.74f);
+        XMFLOAT3 bloodHalfH = Scale3(up, bloodHalfHeight);
         AppendDynamicQuadUV(transparentVerts,
             Add3(bloodCenter, Add3(Scale3(bloodHalfW, -1.0f), Scale3(bloodHalfH, -1.0f))),
             Add3(bloodCenter, Add3(bloodHalfW, Scale3(bloodHalfH, -1.0f))),

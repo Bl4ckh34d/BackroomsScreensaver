@@ -108,7 +108,7 @@ const wchar_t* kConfigNotes[kConfigMaxTabCount] = {
     L"Flashlight shadows, lamp population, black haze, and procedural corner ambient occlusion.",
     L"Camera pathing, head movement, room scanning, and look-back behavior.",
     L"Independent flashlight motion, entrance fades, and the exit door transition.",
-    L"Paper, props, water damage, hanging broken lamps, and spark particles.",
+    L"Paper, props, water damage, in-ceiling lamp failures, and spark particles.",
     L"Monster scale, chase logic, dread response, and eye calibration. On this tab, right-drag the preview to orbit and use the wheel to zoom."
 };
 

@@ -746,11 +746,10 @@
         };
 
         auto nearestLampXZ = [&](float px, float pz) {
-            float strideTiles = std::max(1.0f, std::floor(settings_.lampSpacing / std::max(0.001f, tileAvg) + 0.5f));
-            float strideX = tileW * strideTiles;
-            float strideZ = tileD * strideTiles;
-            float originX = ox + tileW * 1.5f;
-            float originZ = oz + tileD * 1.5f;
+            float strideX = tileW / 3.0f;
+            float strideZ = tileD / 3.0f;
+            float originX = ox + strideX * 0.5f;
+            float originZ = oz + strideZ * 0.5f;
             float cellX = std::floor((px - originX) / std::max(0.001f, strideX) + 0.5f);
             float cellZ = std::floor((pz - originZ) / std::max(0.001f, strideZ) + 0.5f);
             return XMFLOAT2{originX + cellX * strideX, originZ + cellZ * strideZ};
@@ -3354,208 +3353,46 @@
             }
         }
 
-        const int lampStrideTiles = std::max(1, static_cast<int>(std::round(settings_.lampSpacing / std::max(0.001f, maze_.TileAverage()))));
-        const int lampParityX = maze_.start.x % lampStrideTiles;
-        const int lampParityY = maze_.start.y % lampStrideTiles;
-        auto pickCeilingLampMesh = [&](int cellX, int cellZ) -> const StaticPropMesh* {
-            std::array<const StaticPropMesh*, 4> candidates{};
-            int count = 0;
-            for (const StaticPropMesh& mesh : ceilingLampPropMeshes_) {
-                if (!mesh.vertices.empty()) {
-                    candidates[static_cast<size_t>(count++)] = &mesh;
-                }
-            }
-            if (count <= 0) return nullptr;
-            int index = std::min(count - 1, static_cast<int>(LampHash(static_cast<float>(cellX) + 13.7f,
-                static_cast<float>(cellZ) - 29.4f) * static_cast<float>(count)));
-            return candidates[static_cast<size_t>(index)];
-        };
-        struct LampFixtureFit {
-            float spanY = 0.12f;
-            float scale = 1.0f;
-            float actualW = 0.8f;
-            float actualD = 0.32f;
-            float actualH = 0.12f;
-            float aspect = 1.0f;
-            bool square = false;
-            bool hasMesh = false;
-        };
-        auto computeLampFixtureFit = [&](const StaticPropMesh* lampMesh, float halfW, float halfD) {
-            LampFixtureFit fit{};
-            fit.actualW = std::max(0.05f, halfW * 2.0f);
-            fit.actualD = std::max(0.05f, halfD * 2.0f);
-            fit.actualH = 0.12f;
-            fit.aspect = std::max(fit.actualW, fit.actualD) / std::max(0.001f, std::min(fit.actualW, fit.actualD));
-            fit.square = fit.aspect < 1.18f;
-            if (lampMesh && !lampMesh->vertices.empty()) {
-                float spanX = std::max(0.001f, propSpan(*lampMesh, 0));
-                fit.spanY = std::max(0.001f, propSpan(*lampMesh, 1));
-                float spanZ = std::max(0.001f, propSpan(*lampMesh, 2));
-                float targetW = (halfW + 0.105f) * 2.0f;
-                float targetD = (halfD + 0.085f) * 2.0f;
-                float fitW = spanZ;
-                float fitD = spanX;
-                fit.scale = std::min(targetW / fitW, targetD / fitD);
-                fit.scale = std::clamp(fit.scale, 0.05f, 4.0f);
-                fit.actualW = fitW * fit.scale;
-                fit.actualD = fitD * fit.scale;
-                fit.actualH = fit.spanY * fit.scale;
-                fit.aspect = std::max(fitW, fitD) / std::max(0.001f, std::min(fitW, fitD));
-                fit.square = fit.aspect < 1.18f;
-                fit.hasMesh = true;
-            }
-            return fit;
-        };
-        auto addLampFixture = [&](float cx, float ly, float cz, float halfW, float halfD, float fixtureYaw, float lampMaterial,
-                                  const StaticPropMesh* lampMesh, bool grounded = false) {
-            if (lampMesh && !lampMesh->vertices.empty()) {
-                LampFixtureFit fit = computeLampFixtureFit(lampMesh, halfW, halfD);
-                float meshYaw = fixtureYaw + kPi * 0.5f;
-                bool appended = grounded
-                    ? AppendStaticPropMeshGrounded(vertices, indices, *lampMesh, {cx, ly, cz}, meshYaw, fit.scale, fit.scale, fit.scale)
-                    : AppendStaticPropMesh(vertices, indices, *lampMesh, {cx, ly, cz}, meshYaw, fit.scale, fit.scale, fit.scale);
-                if (appended) {
-                    float diffuserY = grounded
-                        ? ly + std::max(0.020f, fit.actualH * 0.28f)
-                        : ly + lampMesh->min.y * fit.scale - 0.006f;
-                    float rodYaw = fixtureYaw;
-                    float rodLength = std::max(fit.actualW, fit.actualD);
-                    float rodCross = std::min(fit.actualW, fit.actualD);
-                    bool lengthAlongRight = fit.actualW >= fit.actualD;
-                    if (!lengthAlongRight) {
-                        rodYaw += kPi * 0.5f;
-                    }
-                    float c = std::cos(fixtureYaw);
-                    float s = std::sin(fixtureYaw);
-                    XMFLOAT3 forward{s, 0.0f, c};
-                    XMFLOAT3 right{c, 0.0f, -s};
-                    XMFLOAT3 spacingAxis = lengthAlongRight ? forward : right;
-                    int rodCount = 2;
-                    if (fit.aspect < 1.35f) {
-                        rodCount = 4;
-                    } else if (fit.aspect < 2.35f) {
-                        rodCount = 3;
-                    }
-                    float rodHalfLength = std::max(0.050f, rodLength * 0.490f);
-                    float rodHalfWidth = std::clamp(rodCross * 0.040f, 0.010f, 0.022f);
-                    float rodInset = std::clamp(rodCross * 0.14f, 0.018f, 0.055f);
-                    float usableCross = std::max(0.0f, rodCross * 0.5f - rodHalfWidth - rodInset);
-                    for (int rod = 0; rod < rodCount; ++rod) {
-                        float t = rodCount > 1
-                            ? (static_cast<float>(rod) / static_cast<float>(rodCount - 1)) * 2.0f - 1.0f
-                            : 0.0f;
-                        float offset = t * usableCross;
-                        XMFLOAT3 center = Add3({cx, diffuserY, cz}, Scale3(spacingAxis, offset));
-                        AddOrientedBox(vertices, indices, center,
-                            {rodHalfLength, 0.004f, rodHalfWidth}, rodYaw, lampMaterial);
-                    }
-                    return;
-                }
-            }
-            float c = std::cos(fixtureYaw);
-            float s = std::sin(fixtureYaw);
-            XMFLOAT3 right{c, 0.0f, -s};
-            XMFLOAT3 up{0.0f, 1.0f, 0.0f};
-            XMFLOAT3 forward{s, 0.0f, c};
-            auto fixturePos = [&](float x, float y, float z) {
-                return Add3({cx, ly, cz}, OrientedOffset(right, up, forward, x, y, z));
-            };
-            AddOrientedBox(vertices, indices, fixturePos(0.0f, 0.030f, 0.0f), {halfW + 0.105f, 0.016f, halfD + 0.085f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos(0.0f, 0.0f, 0.0f), {halfW, 0.018f, halfD}, fixtureYaw, lampMaterial);
-            AddOrientedBox(vertices, indices, fixturePos(-halfW - 0.035f, 0.006f, 0.0f), {0.035f, 0.043f, halfD + 0.075f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos( halfW + 0.035f, 0.006f, 0.0f), {0.035f, 0.043f, halfD + 0.075f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos(0.0f, 0.006f, -halfD - 0.035f), {halfW + 0.085f, 0.043f, 0.035f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos(0.0f, 0.006f,  halfD + 0.035f), {halfW + 0.085f, 0.043f, 0.035f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos(0.0f, -0.030f, 0.0f), {0.020f, 0.018f, halfD * 0.88f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos(0.0f, -0.036f, -halfD * 0.38f), {halfW * 0.94f, 0.010f, 0.018f}, fixtureYaw, lampMaterial);
-            AddOrientedBox(vertices, indices, fixturePos(0.0f, -0.036f,  halfD * 0.38f), {halfW * 0.94f, 0.010f, 0.018f}, fixtureYaw, lampMaterial);
-            AddOrientedBox(vertices, indices, fixturePos(-halfW * 0.84f, -0.034f, -halfD * 0.38f), {0.018f, 0.014f, 0.030f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos( halfW * 0.84f, -0.034f, -halfD * 0.38f), {0.018f, 0.014f, 0.030f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos(-halfW * 0.84f, -0.034f,  halfD * 0.38f), {0.018f, 0.014f, 0.030f}, fixtureYaw, 10.0f);
-            AddOrientedBox(vertices, indices, fixturePos( halfW * 0.84f, -0.034f,  halfD * 0.38f), {0.018f, 0.014f, 0.030f}, fixtureYaw, 10.0f);
-        };
         for (int tileY = 0; tileY < maze_.h; ++tileY) {
-            if ((tileY - lampParityY) % lampStrideTiles != 0) continue;
             for (int tileX = 0; tileX < maze_.w; ++tileX) {
-                if ((tileX - lampParityX) % lampStrideTiles != 0) continue;
                 if (!maze_.IsOpen(tileX, tileY)) continue;
 
                 Tile lampTile{tileX, tileY};
                 XMFLOAT3 lampCenter = maze_.WorldCenter(lampTile, 0.0f);
-                float cx = lampCenter.x;
-                float cz = lampCenter.z;
-                int cellX = (tileX - lampParityX) / lampStrideTiles;
-                int cellZ = (tileY - lampParityY) / lampStrideTiles;
-                bool brokenZone = LampBrokenZone(cellX, cellZ);
-                bool lampOn = !brokenZone && LampSeed(cellX, cellZ) >= 1.0f - settings_.lampOnRatio;
-                bool showDarkFixture = !brokenZone &&
-                    LampHash(static_cast<float>(cellX) + 73.1f, static_cast<float>(cellZ) - 41.7f) < settings_.darkLampVisibleRatio;
-                bool brokenFixture = brokenZone && settings_.sparkParticles &&
-                    LampHash(static_cast<float>(cellX) - 19.7f, static_cast<float>(cellZ) + 88.4f) < settings_.sparkEmitterRatio;
-                if (!lampOn && !showDarkFixture && !brokenFixture) continue;
+                for (int subY = 0; subY < 3; ++subY) {
+                    for (int subX = 0; subX < 3; ++subX) {
+                        int cellX = tileX * 3 + subX;
+                        int cellZ = tileY * 3 + subY;
+                        float seed = LampSeed(cellX, cellZ);
+                        bool brokenZone = LampBrokenZone(cellX, cellZ);
+                        bool lampOn = !brokenZone && seed >= 1.0f - settings_.lampOnRatio;
+                        bool showDarkPanel = !brokenZone &&
+                            LampHash(static_cast<float>(cellX) + 73.1f, static_cast<float>(cellZ) - 41.7f) < settings_.darkLampVisibleRatio;
+                        bool brokenPanel = brokenZone &&
+                            LampHash(static_cast<float>(cellX) - 19.7f, static_cast<float>(cellZ) + 88.4f) < settings_.sparkEmitterRatio;
+                        if (!lampOn && !showDarkPanel && !brokenPanel) continue;
 
-                float halfW = tileW * 0.34f;
-                float halfD = tileD * 0.12f;
-                float fixtureYaw = kPi * 0.5f;
-                float lampMaterial = lampOn
-                    ? 3.0f + LampSeed(cellX, cellZ) * 0.49f
-                    : 5.0f;
-                const StaticPropMesh* lampMesh = pickCeilingLampMesh(cellX, cellZ);
-                LampFixtureFit lampFit = computeLampFixtureFit(lampMesh, halfW, halfD);
-                float ly = lampMesh
-                    ? wallH - (brokenFixture ? 0.055f : 0.030f)
-                    : wallH - (brokenFixture ? 0.19f : 0.12f);
-                if (brokenFixture) {
-                    float bodyHalfW = std::max(0.055f, lampFit.actualW * 0.5f);
-                    float bodyHalfD = std::max(0.045f, lampFit.actualD * 0.5f);
-                    float dropYaw = fixtureYaw + kPi * 0.5f +
-                        (LampHash(static_cast<float>(cellX) + 113.9f, static_cast<float>(cellZ) - 57.4f) - 0.5f) * kPi * 1.35f;
-                    float footprintW = std::max((halfW + 0.17f) * 2.0f, lampFit.actualW + 0.24f);
-                    float footprintD = std::max((halfD + 0.14f) * 2.0f, lampFit.actualD + 0.24f);
-                    bool floorClear = reserveFloorFootprint(cx, cz, footprintW, footprintD, dropYaw, 0.060f);
-                    auto fixtureOffset = [&](float yaw, float x, float y, float z) {
-                        float c = std::cos(yaw);
-                        float s = std::sin(yaw);
-                        XMFLOAT3 right{c, 0.0f, -s};
-                        XMFLOAT3 up{0.0f, 1.0f, 0.0f};
-                        XMFLOAT3 forward{s, 0.0f, c};
-                        return Add3({cx, y, cz}, OrientedOffset(right, up, forward, x, 0.0f, z));
-                    };
-                    float cableX = std::min(bodyHalfW * 0.58f, std::max(0.035f, bodyHalfW - 0.035f));
-                    float cableZ = std::min(bodyHalfD * 0.50f, std::max(0.030f, bodyHalfD - 0.030f));
-                    auto addCeilingCable = [&](float x, float z, float halfLen, float thickness) {
-                        AddOrientedBox(vertices, indices,
-                            fixtureOffset(fixtureYaw, x, wallH - halfLen - 0.004f, z),
-                            {thickness, halfLen, thickness}, fixtureYaw, 10.0f);
-                    };
-                    addCeilingCable(-cableX, -cableZ * 0.55f, 0.22f, 0.0075f);
-                    addCeilingCable( cableX * 0.82f,  cableZ * 0.72f, 0.18f, 0.0070f);
-                    addCeilingCable(-cableX * 0.15f,  cableZ * 0.22f, 0.13f, 0.0060f);
-                    AddOrientedBox(vertices, indices,
-                        fixtureOffset(fixtureYaw, -cableX * 0.32f, wallH - 0.27f, cableZ * 0.10f),
-                        {std::max(0.030f, bodyHalfW * 0.18f), 0.0055f, 0.0055f}, fixtureYaw, 10.0f);
-                    if (floorClear) {
-                        float floorY = lampFit.square ? 0.075f : 0.108f;
-                        addLampFixture(cx, floorY, cz, halfW, halfD, dropYaw, 5.0f, lampMesh, true);
-                        AddOrientedBox(vertices, indices,
-                            fixtureOffset(dropYaw, -bodyHalfW * 0.58f, 0.060f, -bodyHalfD * 0.58f),
-                            {0.006f, 0.006f, std::max(0.030f, bodyHalfD * 0.38f)}, dropYaw, 10.0f);
-                        AddOrientedBox(vertices, indices,
-                            fixtureOffset(dropYaw,  bodyHalfW * 0.42f, 0.058f,  bodyHalfD * 0.54f),
-                            {std::max(0.035f, bodyHalfW * 0.24f), 0.006f, 0.006f}, dropYaw, 10.0f);
+                        float subW = tileW / 3.0f;
+                        float subD = tileD / 3.0f;
+                        float cx = lampCenter.x + (static_cast<float>(subX) - 1.0f) * subW;
+                        float cz = lampCenter.z + (static_cast<float>(subY) - 1.0f) * subD;
+                        float panelSize = std::min(subW, subD) * 0.46f;
+                        float material = lampOn ? 3.0f + seed * 0.49f : 5.0f;
+                        AddCeilingCard(vertices, indices, {cx, 0.0f, cz},
+                            panelSize, panelSize, 0.0f, wallH - 0.004f, material);
+
+                        if (lampOn) {
+                            runtimeLamps_.push_back({
+                                lampTile,
+                                {cx, wallH - 0.08f, cz},
+                                0.0f,
+                                RandRange(0.08f, 0.72f),
+                                false
+                            });
+                        } else if (brokenPanel && settings_.sparkParticles) {
+                            sparkEmitters_.push_back({{cx, wallH - 0.085f, cz}});
+                        }
                     }
-                    sparkEmitters_.push_back({fixtureOffset(fixtureYaw, -cableX, wallH - 0.40f, -cableZ * 0.55f)});
-                    continue;
-                }
-                addLampFixture(cx, ly, cz, halfW, halfD, fixtureYaw, lampMaterial, lampMesh);
-                if (lampOn) {
-                    runtimeLamps_.push_back({
-                        lampTile,
-                        {cx, wallH - 0.28f, cz},
-                        0.0f,
-                        RandRange(0.08f, 0.72f),
-                        false
-                    });
                 }
             }
         }
