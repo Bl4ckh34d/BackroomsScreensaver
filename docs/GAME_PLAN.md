@@ -15,6 +15,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 - [x] Change game resolution from width/height sliders to a monitor-mode dropdown.
 - [x] Start splitting game-domain code into `src/game/`.
 - [x] Tune manual player head bob down so walking and sprinting feel less exaggerated.
+- [x] Add atmospheric manual mouse-look smoothing and pitch-limit damping near +/-89 degrees.
 - [ ] Expand Debug into a full in-game test lab.
 - [ ] Add stealth/noise gameplay.
 - [ ] Replace placeholder monster with a procedural many-limbed creature.
@@ -43,6 +44,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 ## Player Roadmap
 
 - Current controls settings include mouse sensitivity and invert Y.
+- Manual mouse look is intentionally a little damped for atmosphere, especially near the vertical pitch limits.
 - Walking should create normal footstep noise.
 - Running should drain stamina and greatly increase monster hearing distance.
 - Crouching is a light stance change, not a full stealth simulation at first: lower camera height, slower speed, gentler vertical bob, almost no side bob.

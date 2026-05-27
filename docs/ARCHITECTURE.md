@@ -9,6 +9,8 @@ This project is currently in transition from a single-file screensaver into a sh
 - `src/game/player_camera_movement.inl`: camera/player/autopilot movement code moved out of the root source folder as the first game-domain extraction.
 - `docs/GAME_PLAN.md`: implementation checklist, backlog, and handoff notes for future agents.
 
+`src/main.cpp` is still intentionally large at this point. The refactor has started, but the monolith is not fully decomposed yet.
+
 ## Target Layout
 
 - `src/platform/`: Win32 window creation, message routing, cursor capture, loading overlay, process/restart helpers.

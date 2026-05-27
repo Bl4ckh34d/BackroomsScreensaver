@@ -10,6 +10,8 @@
         turnLookBlend_ = 0.0f;
         turnLookYaw_ = yaw_;
         lookPitch_ = -0.055f;
+        manualLookYawDelta_ = 0.0f;
+        manualLookPitchDelta_ = 0.0f;
         stepPhase_ = 0.0f;
         headScanTimer_ = 0.0f;
         headScanDuration_ = 0.0f;
@@ -2633,11 +2635,23 @@
 
         constexpr float kMouseYawScale = 0.0022f;
         constexpr float kMousePitchScale = 0.0018f;
+        constexpr float kManualPitchLimit = 1.55334f; // +/-89 degrees.
         float mouseScale = std::clamp(settings_.mouseSensitivity, 0.1f, 5.0f);
         float pitchSign = settings_.invertMouseY ? 1.0f : -1.0f;
-        yaw_ += gameInput_.lookDeltaX * kMouseYawScale * mouseScale;
+        float rawYawDelta = gameInput_.lookDeltaX * kMouseYawScale * mouseScale;
+        float rawPitchDelta = gameInput_.lookDeltaY * kMousePitchScale * mouseScale * pitchSign;
+        float lookSmoothing = 1.0f - std::exp(-dt * 26.0f);
+        manualLookYawDelta_ += (rawYawDelta - manualLookYawDelta_) * lookSmoothing;
+        manualLookPitchDelta_ += (rawPitchDelta - manualLookPitchDelta_) * std::min(1.0f, dt * 18.0f);
+
+        yaw_ += manualLookYawDelta_;
         bodyYaw_ = yaw_;
-        lookPitch_ = std::clamp(lookPitch_ + gameInput_.lookDeltaY * kMousePitchScale * mouseScale * pitchSign, -1.55334f, 1.55334f);
+        float pitchDelta = manualLookPitchDelta_;
+        if (pitchDelta * lookPitch_ > 0.0f) {
+            float edge = SmoothStep(0.64f, 1.0f, std::abs(lookPitch_) / kManualPitchLimit);
+            pitchDelta *= Lerp(1.0f, 0.16f, edge);
+        }
+        lookPitch_ = std::clamp(lookPitch_ + pitchDelta, -kManualPitchLimit, kManualPitchLimit);
 
         float inputX = std::clamp(gameInput_.moveX, -1.0f, 1.0f);
         float inputZ = std::clamp(gameInput_.moveZ, -1.0f, 1.0f);

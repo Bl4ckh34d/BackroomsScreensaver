@@ -2356,6 +2356,8 @@ private:
     float turnLookBlend_ = 0.0f;
     float turnLookYaw_ = 0.0f;
     float lookPitch_ = -0.055f;
+    float manualLookYawDelta_ = 0.0f;
+    float manualLookPitchDelta_ = 0.0f;
     float stepPhase_ = 0.0f;
     float headScanTimer_ = 0.0f;
     float headScanDuration_ = 0.0f;
