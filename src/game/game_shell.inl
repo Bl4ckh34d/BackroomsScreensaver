@@ -53,13 +53,12 @@ struct GameMenuButtonSpec {
     const wchar_t* label;
 };
 
-std::array<GameMenuButtonSpec, 4> ActiveGameMenuButtons() {
+std::array<GameMenuButtonSpec, 3> ActiveGameMenuButtons() {
     bool canResume = gApp && gApp->gameRunStarted && !gApp->gameDebugActive;
     return {{
         {kGameSinglePlayerId, canResume ? L"Resume" : L"Single Player"},
         {kGameSettingsId, L"Settings"},
-        {kGameDebugId, L"Debug"},
-        {kGameExitId, L"Exit"}
+        {kGameDebugId, L"Debug"}
     }};
 }
 
@@ -69,12 +68,8 @@ RECT GameMenuButtonRect(const RECT& client, int index) {
     bool rendererScene = gApp && gApp->rendererInitialized && gApp->gameState == GameState::MainMenu &&
         gApp->renderer.RuntimeMode() == RendererRuntimeMode::MainMenu;
     if (rendererScene) {
-        int buttonW = std::clamp(w * 32 / 100, 260, 360);
-        int buttonH = 48;
-        int gap = 13;
-        int left = std::clamp(w * 32 / 100, 28, std::max(28, w - buttonW - 28));
-        int top = std::clamp(h * 34 / 100, 136, std::max(136, h - 72 - (buttonH + gap) * 4));
-        return {left, top + index * (buttonH + gap), left + buttonW, top + index * (buttonH + gap) + buttonH};
+        RECT projected{};
+        if (gApp->renderer.MenuButtonScreenRect(index, projected)) return projected;
     }
     int buttonW = std::clamp(w * 34 / 100, 260, 420);
     int buttonH = 48;
@@ -83,6 +78,16 @@ RECT GameMenuButtonRect(const RECT& client, int index) {
     int top = std::max(178, h / 2 - 82);
     top = std::min(top, std::max(118, h - 78 - (buttonH + gap) * 4));
     return {left, top + index * (buttonH + gap), left + buttonW, top + index * (buttonH + gap) + buttonH};
+}
+
+RECT GameMenuExitDoorRect(const RECT& client) {
+    if (gApp && gApp->rendererInitialized && gApp->gameState == GameState::MainMenu &&
+        gApp->renderer.RuntimeMode() == RendererRuntimeMode::MainMenu) {
+        RECT projected{};
+        if (gApp->renderer.MenuExitDoorScreenRect(projected)) return projected;
+    }
+    int h = std::max<LONG>(1, client.bottom - client.top);
+    return {client.right - 118, h / 2 - 92, client.right - 56, h / 2 + 118};
 }
 
 int HitTestGameMenu(HWND hwnd, POINT p) {
@@ -95,6 +100,10 @@ int HitTestGameMenu(HWND hwnd, POINT p) {
         if (p.x >= br.left && p.x <= br.right && p.y >= br.top && p.y <= br.bottom) {
             return buttons[static_cast<size_t>(i)].id;
         }
+    }
+    RECT door = GameMenuExitDoorRect(rc);
+    if (p.x >= door.left && p.x <= door.right && p.y >= door.top && p.y <= door.bottom) {
+        return kGameExitId;
     }
     return 0;
 }
@@ -138,10 +147,19 @@ void PushGameMenuInteractionToRenderer(HWND hwnd) {
     int h = std::max<LONG>(1, rc.bottom - rc.top);
     float x = gApp->gameMenuHasMouse ? static_cast<float>(gApp->gameMenuMouse.x) / static_cast<float>(w) : 0.5f;
     float y = gApp->gameMenuHasMouse ? static_cast<float>(gApp->gameMenuMouse.y) / static_cast<float>(h) : 0.5f;
+    int hoverIndex = -1;
+    const auto buttons = ActiveGameMenuButtons();
+    for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
+        if (gApp->gameMenuHoverId == buttons[static_cast<size_t>(i)].id) {
+            hoverIndex = i;
+            break;
+        }
+    }
     gApp->renderer.SetMenuInteraction(x, y,
-        gApp->gameMenuHoverId != 0,
+        hoverIndex >= 0,
         gApp->gameMenuHoverId == kGameExitId,
         gApp->gameMenuHoverId == kGameSinglePlayerId);
+    gApp->renderer.SetMenuHoverButtonIndex(hoverIndex);
 }
 
 void DrawGameMenuButton(HDC dc, const RECT& rc, const wchar_t* label, bool hover) {

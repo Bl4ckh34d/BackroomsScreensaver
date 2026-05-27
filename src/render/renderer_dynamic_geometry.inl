@@ -177,9 +177,8 @@
         float z = c.z - maze_.tileD * 0.5f + 0.040f;
         float x = c.x + maze_.tileW * 0.16f;
         float startY = 1.66f;
-        for (int i = 0; i < 4; ++i) {
-            bool hover = (i == 0 && menuSinglePlayerHover_) || (i == 3 && menuExitHover_) ||
-                (menuButtonHover_ && !menuSinglePlayerHover_ && !menuExitHover_);
+        for (int i = 0; i < 3; ++i) {
+            bool hover = menuHoverButtonIndex_ == i;
             float y = startY - static_cast<float>(i) * 0.24f;
             float material = hover ? 10.72f : 9.70f;
             AppendDynamicBoxAxes(verts, {x, y, z}, right, up, inward, {0.43f, 0.070f, 0.024f}, material);

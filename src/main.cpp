@@ -297,10 +297,37 @@ public:
         menuButtonHover_ = buttonHover;
         menuExitHover_ = exitHover;
         menuSinglePlayerHover_ = singlePlayerHover;
+        menuHoverButtonIndex_ = -1;
+        if (buttonHover) {
+            if (singlePlayerHover) menuHoverButtonIndex_ = 0;
+        }
     }
 
     void TriggerMainMenuLampBurst() {
         menuLampBurstPending_ = true;
+    }
+
+    bool MenuButtonScreenRect(int index, RECT& out) const {
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu || index < 0 || index >= 3) return false;
+        XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
+        XMFLOAT3 center{
+            c.x + maze_.tileW * 0.16f,
+            1.66f - static_cast<float>(index) * 0.24f,
+            c.z - maze_.tileD * 0.5f + 0.064f
+        };
+        return ProjectMenuQuadToScreen(center, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.43f, 0.070f, out);
+    }
+
+    bool MenuExitDoorScreenRect(RECT& out) const {
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu) return false;
+        XMFLOAT3 center = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.035f));
+        return ProjectMenuQuadToScreen(center, exitDoorRight_, {0.0f, 1.0f, 0.0f}, 0.64f, 1.16f, out);
+    }
+
+    void SetMenuHoverButtonIndex(int index) {
+        menuHoverButtonIndex_ = index;
+        menuButtonHover_ = index >= 0;
+        menuSinglePlayerHover_ = index == 0;
     }
 
     void SetGameInput(const GameInputSnapshot& input) {
@@ -740,6 +767,7 @@ private:
     bool menuExitHover_ = false;
     bool menuSinglePlayerHover_ = false;
     bool menuLampBurstPending_ = false;
+    int menuHoverButtonIndex_ = -1;
     float playerHealth_ = 100.0f;
     float playerStamina_ = 100.0f;
     float playerVerticalOffset_ = 0.0f;
@@ -961,6 +989,58 @@ private:
         settings_.bloodWorldFlickerIntensity = std::max(settings_.bloodWorldFlickerIntensity, 0.88f);
         settings_.fogStartMeters = std::min(settings_.fogStartMeters, 2.6f);
         settings_.fogEndMeters = std::min(settings_.fogEndMeters, 7.5f);
+    }
+
+    bool ProjectMenuQuadToScreen(XMFLOAT3 center, XMFLOAT3 right, XMFLOAT3 up, float halfW, float halfH, RECT& out) const {
+        if (width_ <= 0 || height_ <= 0) return false;
+        right = Normalize3(right, {1.0f, 0.0f, 0.0f});
+        up = Normalize3(up, {0.0f, 1.0f, 0.0f});
+
+        XMFLOAT3 f = Forward();
+        XMVECTOR eye = XMLoadFloat3(&camera_);
+        XMVECTOR worldUp = XMVectorSet(0, 1, 0, 0);
+        XMVECTOR viewDir = XMVector3Normalize(XMVectorSet(f.x, lookPitch_, f.z, 0.0f));
+        XMMATRIX view = XMMatrixLookAtLH(eye, eye + viewDir, worldUp);
+        float aspect = static_cast<float>(std::max<LONG>(1, width_)) / static_cast<float>(std::max<LONG>(1, height_));
+        XMMATRIX proj = XMMatrixPerspectiveFovLH(70.0f * kPi / 180.0f, aspect, 0.045f, 42.0f);
+        XMMATRIX viewProj = view * proj;
+
+        auto p = [&](float x, float y) {
+            return Add3(center, Add3(Scale3(right, x * halfW), Scale3(up, y * halfH)));
+        };
+        std::array<XMFLOAT3, 4> corners = {{
+            p(-1.0f, -1.0f),
+            p( 1.0f, -1.0f),
+            p( 1.0f,  1.0f),
+            p(-1.0f,  1.0f)
+        }};
+
+        float minX = static_cast<float>(width_);
+        float minY = static_cast<float>(height_);
+        float maxX = 0.0f;
+        float maxY = 0.0f;
+        int visible = 0;
+        for (const XMFLOAT3& corner : corners) {
+            XMVECTOR clip = XMVector3TransformCoord(XMLoadFloat3(&corner), viewProj);
+            XMFLOAT3 ndc{};
+            XMStoreFloat3(&ndc, clip);
+            if (ndc.z < 0.0f || ndc.z > 1.0f) continue;
+            float sx = (ndc.x * 0.5f + 0.5f) * static_cast<float>(width_);
+            float sy = (0.5f - ndc.y * 0.5f) * static_cast<float>(height_);
+            minX = std::min(minX, sx);
+            minY = std::min(minY, sy);
+            maxX = std::max(maxX, sx);
+            maxY = std::max(maxY, sy);
+            ++visible;
+        }
+        if (visible < 3) return false;
+
+        constexpr LONG pad = 4;
+        out.left = std::clamp(static_cast<LONG>(std::floor(minX)) - pad, 0L, static_cast<LONG>(width_));
+        out.top = std::clamp(static_cast<LONG>(std::floor(minY)) - pad, 0L, static_cast<LONG>(height_));
+        out.right = std::clamp(static_cast<LONG>(std::ceil(maxX)) + pad, 0L, static_cast<LONG>(width_));
+        out.bottom = std::clamp(static_cast<LONG>(std::ceil(maxY)) + pad, 0L, static_cast<LONG>(height_));
+        return out.right > out.left && out.bottom > out.top;
     }
 
     bool CreateBackBuffer() {
