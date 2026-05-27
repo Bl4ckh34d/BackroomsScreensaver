@@ -48,6 +48,15 @@ struct App {
     GameState gameSettingsReturnState = GameState::MainMenu;
     bool gameSettingsKeyCaptureActive = false;
     bool gameSettingsEscapeConsumed = false;
+    int gameMenuHoverId = 0;
+    POINT gameMenuMouse{};
+    bool gameMenuHasMouse = false;
+    ULONGLONG gameMenuBloodStart = 0;
+    ULONGLONG gameMenuLampBurstStart = 0;
+    ULONGLONG gameMenuFadeStart = 0;
+    int gameMenuPendingCommand = 0;
+    bool gameMenuFadeOut = false;
+    bool gameMenuFadeIn = true;
     bool firstMouse = true;
     POINT initialMouse{};
     HWND hwnd = nullptr;

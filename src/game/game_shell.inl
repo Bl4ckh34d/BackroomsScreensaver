@@ -1,6 +1,11 @@
 // Game shell, menu state transitions, mouse capture, and input collection.
 // Included from main.cpp after App, Renderer, and ConfigDialogMode are declared.
 
+void EnterGamePlay(HWND hwnd);
+void EnterGameDebug(HWND hwnd);
+void EnterGameSettings(HWND hwnd, ConfigDialogMode mode, GameState returnState);
+void ReleaseGameMouse();
+
 void LayoutGameControls(HWND hwnd) {
     if (!gApp || !gApp->gameShell) return;
     RECT rc{};
@@ -22,7 +27,6 @@ void LayoutGameControls(HWND hwnd) {
 
 void SetGameMenuVisible(bool visible) {
     if (!gApp || !gApp->gameShell) return;
-    int show = visible ? SW_SHOW : SW_HIDE;
     HWND controls[] = {
         gApp->gameTitle,
         gApp->gameSinglePlayer,
@@ -31,8 +35,9 @@ void SetGameMenuVisible(bool visible) {
         gApp->gameExit
     };
     for (HWND control : controls) {
-        if (control) ShowWindow(control, show);
+        if (control) ShowWindow(control, SW_HIDE);
     }
+    if (gApp->hwnd) InvalidateRect(gApp->hwnd, nullptr, TRUE);
 }
 
 void UpdateGameMenuLabels() {
@@ -41,6 +46,410 @@ void UpdateGameMenuLabels() {
     if (gApp->gameSinglePlayer) {
         SetWindowTextW(gApp->gameSinglePlayer, canResume ? L"Resume" : L"Single Player");
     }
+}
+
+struct GameMenuButtonSpec {
+    int id;
+    const wchar_t* label;
+};
+
+std::array<GameMenuButtonSpec, 4> ActiveGameMenuButtons() {
+    bool canResume = gApp && gApp->gameRunStarted && !gApp->gameDebugActive;
+    return {{
+        {kGameSinglePlayerId, canResume ? L"Resume" : L"Single Player"},
+        {kGameSettingsId, L"Settings"},
+        {kGameDebugId, L"Debug"},
+        {kGameExitId, L"Exit"}
+    }};
+}
+
+RECT GameMenuButtonRect(const RECT& client, int index) {
+    int w = std::max<LONG>(1, client.right - client.left);
+    int h = std::max<LONG>(1, client.bottom - client.top);
+    int buttonW = std::clamp(w * 34 / 100, 260, 420);
+    int buttonH = 48;
+    int gap = 13;
+    int left = std::clamp(w / 2 - buttonW / 2, 34, std::max(34, w - buttonW - 34));
+    int top = std::max(178, h / 2 - 82);
+    top = std::min(top, std::max(118, h - 78 - (buttonH + gap) * 4));
+    return {left, top + index * (buttonH + gap), left + buttonW, top + index * (buttonH + gap) + buttonH};
+}
+
+int HitTestGameMenu(HWND hwnd, POINT p) {
+    if (!gApp || !gApp->gameShell || gApp->gameState != GameState::MainMenu) return 0;
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    auto buttons = ActiveGameMenuButtons();
+    for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
+        RECT br = GameMenuButtonRect(rc, i);
+        if (p.x >= br.left && p.x <= br.right && p.y >= br.top && p.y <= br.bottom) {
+            return buttons[static_cast<size_t>(i)].id;
+        }
+    }
+    return 0;
+}
+
+void DrawGameMenuText(HDC dc, const std::wstring& text, RECT rc, COLORREF color,
+    UINT format = DT_LEFT | DT_VCENTER | DT_SINGLELINE) {
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, color);
+    DrawTextW(dc, text.c_str(), -1, &rc, format);
+}
+
+void FillGameMenuRect(HDC dc, const RECT& rc, COLORREF color) {
+    HBRUSH brush = CreateSolidBrush(color);
+    FillRect(dc, &rc, brush);
+    DeleteObject(brush);
+}
+
+void FillGameMenuPolygon(HDC dc, const POINT* points, int count, COLORREF color) {
+    HBRUSH brush = CreateSolidBrush(color);
+    HGDIOBJ oldBrush = SelectObject(dc, brush);
+    HPEN pen = CreatePen(PS_SOLID, 1, color);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    Polygon(dc, points, count);
+    SelectObject(dc, oldPen);
+    SelectObject(dc, oldBrush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+}
+
+void DrawGameMenuButton(HDC dc, const RECT& rc, const wchar_t* label, bool hover) {
+    COLORREF outer = hover ? RGB(206, 169, 92) : RGB(112, 96, 64);
+    COLORREF fill = hover ? RGB(59, 49, 36) : RGB(31, 29, 24);
+    COLORREF inner = hover ? RGB(96, 76, 44) : RGB(55, 48, 35);
+    FillGameMenuRect(dc, rc, RGB(7, 7, 6));
+    RECT shadow{rc.left + 4, rc.top + 5, rc.right + 4, rc.bottom + 5};
+    FillGameMenuRect(dc, shadow, RGB(0, 0, 0));
+    FillGameMenuRect(dc, rc, outer);
+    RECT body = rc;
+    InflateRect(&body, -2, -2);
+    FillGameMenuRect(dc, body, fill);
+    RECT stripe{body.left, body.top, body.left + 5, body.bottom};
+    FillGameMenuRect(dc, stripe, hover ? RGB(202, 151, 58) : RGB(126, 96, 42));
+    HPEN pen = CreatePen(PS_SOLID, 1, inner);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    MoveToEx(dc, body.left + 14, body.bottom - 9, nullptr);
+    LineTo(dc, body.right - 14, body.bottom - 9);
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+
+    RECT text = body;
+    InflateRect(&text, -20, 0);
+    DrawGameMenuText(dc, label, text, hover ? RGB(255, 238, 188) : RGB(231, 224, 204),
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+}
+
+void DrawGameMenuBloodStreak(HDC dc, int x, int top, int length, int width, int ageMs) {
+    float age = Clamp01(static_cast<float>(ageMs) / 1600.0f);
+    int visibleLength = static_cast<int>(std::round(length * age));
+    if (visibleLength <= 1) return;
+    RECT main{x, top, x + width, top + visibleLength};
+    FillGameMenuRect(dc, main, RGB(74, 3, 2));
+    RECT highlight{x + std::max(1, width / 3), top + 2, x + std::max(2, width / 3 + 1), top + visibleLength};
+    FillGameMenuRect(dc, highlight, RGB(143, 15, 8));
+    int drop = std::min(visibleLength + 8, length + 12);
+    RECT bead{x - width / 2, top + drop - width, x + width + width / 2, top + drop + width / 2};
+    FillGameMenuRect(dc, bead, RGB(96, 5, 3));
+}
+
+void DrawGameMenuBlood(HDC dc, const RECT& client, ULONGLONG now) {
+    if (!gApp || gApp->gameMenuBloodStart == 0) return;
+    int ageMs = static_cast<int>(std::min<ULONGLONG>(6000, now - gApp->gameMenuBloodStart));
+    if (ageMs <= 0) return;
+    RECT first = GameMenuButtonRect(client, 0);
+    int wallTop = std::max<LONG>(130, first.top - 94);
+    int wallBottom = GameMenuButtonRect(client, 3).bottom + 40;
+    int seeds[] = {17, 43, 71, 109, 157, 193, 229};
+    for (int i = 0; i < 7; ++i) {
+        int x = first.left + (first.right - first.left) * (seeds[i] % 100) / 100;
+        int top = wallTop + (seeds[(i + 2) % 7] % 46);
+        int len = std::max(56, wallBottom - top - (i % 3) * 26);
+        int width = 3 + (i % 4);
+        DrawGameMenuBloodStreak(dc, x, top, len, width, ageMs - i * 120);
+    }
+    for (int i = 0; i < 4; ++i) {
+        RECT br = GameMenuButtonRect(client, i);
+        int localAge = ageMs - 220 - i * 105;
+        if (localAge <= 0) continue;
+        DrawGameMenuBloodStreak(dc, br.left + 30 + i * 37, br.top - 4, br.bottom - br.top + 24, 5, localAge);
+        DrawGameMenuBloodStreak(dc, br.right - 44 - i * 23, br.top - 2, br.bottom - br.top + 18, 4, localAge - 80);
+        RECT smear{br.left + 16, br.bottom - 10, br.right - 18, br.bottom - 6};
+        FillGameMenuRect(dc, smear, RGB(48, 2, 2));
+    }
+}
+
+void DrawGameMenuLampBurst(HDC dc, const RECT& client, ULONGLONG now) {
+    if (!gApp || gApp->gameMenuLampBurstStart == 0) return;
+    ULONGLONG elapsed = now - gApp->gameMenuLampBurstStart;
+    if (elapsed > 520) return;
+    RECT first = GameMenuButtonRect(client, 0);
+    int cx = (first.left + first.right) / 2;
+    int cy = std::max<LONG>(58, first.top - 116);
+    float t = static_cast<float>(elapsed) / 520.0f;
+    int sparkCount = 18;
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(255, 207, 98));
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    for (int i = 0; i < sparkCount; ++i) {
+        float a = static_cast<float>(i) * 2.399963f + t * 3.1f;
+        float len = (28.0f + static_cast<float>((i * 17) % 44)) * (1.0f - t * 0.35f);
+        int x1 = cx + static_cast<int>(std::cos(a) * 10.0f);
+        int y1 = cy + static_cast<int>(std::sin(a) * 5.0f);
+        int x2 = cx + static_cast<int>(std::cos(a) * len);
+        int y2 = cy + static_cast<int>(std::sin(a) * len * 0.55f + t * 34.0f);
+        MoveToEx(dc, x1, y1, nullptr);
+        LineTo(dc, x2, y2);
+    }
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+    RECT flash{cx - 90, cy - 30, cx + 90, cy + 36};
+    FillGameMenuRect(dc, flash, elapsed < 90 ? RGB(86, 65, 31) : RGB(34, 24, 12));
+}
+
+void DrawGameMenuExitDoor(HDC dc, const RECT& client, ULONGLONG now) {
+    if (!gApp) return;
+    int h = std::max<LONG>(1, client.bottom - client.top);
+    RECT door{client.right - 118, h / 2 - 92, client.right - 56, h / 2 + 118};
+    bool open = gApp->gameMenuHoverId == kGameExitId;
+    FillGameMenuRect(dc, door, open ? RGB(3, 3, 3) : RGB(24, 21, 15));
+    RECT edge = door;
+    edge.right = edge.left + 4;
+    FillGameMenuRect(dc, edge, RGB(111, 89, 44));
+    if (open) {
+        POINT hall[4] = {{door.left + 6, door.top + 6}, {door.right + 44, door.top - 18},
+            {door.right + 44, door.bottom + 16}, {door.left + 6, door.bottom - 6}};
+        FillGameMenuPolygon(dc, hall, 4, RGB(1, 1, 1));
+        HPEN pen = CreatePen(PS_SOLID, 1, RGB(35, 30, 17));
+        HGDIOBJ old = SelectObject(dc, pen);
+        for (int i = 0; i < 5; ++i) {
+            MoveToEx(dc, door.left + 12, door.top + 22 + i * 32, nullptr);
+            LineTo(dc, door.right + 36, door.top + 10 + i * 38);
+        }
+        SelectObject(dc, old);
+        DeleteObject(pen);
+    } else {
+        RECT knob{door.right - 16, (door.top + door.bottom) / 2 - 4, door.right - 8, (door.top + door.bottom) / 2 + 4};
+        FillGameMenuRect(dc, knob, RGB(152, 122, 58));
+    }
+}
+
+void DrawGameMenuFlashlight(HDC dc, const RECT& client, ULONGLONG now) {
+    if (!gApp || !gApp->gameMenuHasMouse) return;
+    int w = std::max<LONG>(1, client.right - client.left);
+    int h = std::max<LONG>(1, client.bottom - client.top);
+    float mx = static_cast<float>(gApp->gameMenuMouse.x) / static_cast<float>(w);
+    float my = static_cast<float>(gApp->gameMenuMouse.y) / static_cast<float>(h);
+    float jitterX = std::sin(static_cast<float>(now) * 0.0081f) * 0.018f + std::sin(static_cast<float>(now) * 0.021f) * 0.006f;
+    float jitterY = std::cos(static_cast<float>(now) * 0.0067f) * 0.012f + std::sin(static_cast<float>(now) * 0.017f) * 0.005f;
+    int cx = static_cast<int>((mx + jitterX) * w);
+    int cy = static_cast<int>((my + jitterY) * h);
+    bool flicker = gApp->gameMenuHoverId != 0;
+    int radius = flicker ? 168 : 205;
+    int rings = 9;
+    for (int i = rings; i >= 1; --i) {
+        int r = radius * i / rings;
+        int alphaShade = flicker && (now / 80) % 3 == 0 ? i * 3 : i * 4;
+        COLORREF color = RGB(std::min(70, 18 + alphaShade), std::min(61, 15 + alphaShade), std::min(38, 9 + alphaShade / 2));
+        RECT glow{cx - r, cy - r * 2 / 3, cx + r, cy + r * 2 / 3};
+        FillGameMenuRect(dc, glow, color);
+    }
+}
+
+void DrawGameMenuDust(HDC dc, const RECT& client, ULONGLONG now) {
+    int w = std::max<LONG>(1, client.right - client.left);
+    int h = std::max<LONG>(1, client.bottom - client.top);
+    int focusX = gApp && gApp->gameMenuHasMouse ? gApp->gameMenuMouse.x : w / 2;
+    int focusY = gApp && gApp->gameMenuHasMouse ? gApp->gameMenuMouse.y : h / 2;
+    constexpr int kDustCount = 120;
+    for (int i = 0; i < kDustCount; ++i) {
+        float seed = static_cast<float>(i);
+        float drift = static_cast<float>(now) * (0.000035f + std::fmod(seed * 0.017f, 0.00009f));
+        float xNorm = std::fmod(seed * 0.6180339f + drift, 1.0f);
+        float yNorm = std::fmod(seed * 0.3819660f + drift * (0.42f + std::fmod(seed, 5.0f) * 0.09f), 1.0f);
+        int x = static_cast<int>(xNorm * static_cast<float>(w));
+        int y = static_cast<int>(yNorm * static_cast<float>(h));
+        float dx = static_cast<float>(x - focusX) / std::max(1.0f, static_cast<float>(w) * 0.42f);
+        float dy = static_cast<float>(y - focusY) / std::max(1.0f, static_cast<float>(h) * 0.34f);
+        float beam = Clamp01(1.0f - std::sqrt(dx * dx + dy * dy));
+        if (beam <= 0.08f) continue;
+        int size = 1 + (i % 4 == 0 ? 1 : 0);
+        int shade = static_cast<int>(24.0f + beam * 46.0f);
+        RECT mote{x, y, x + size, y + size};
+        FillGameMenuRect(dc, mote, RGB(shade, shade - 4, std::max(8, shade - 18)));
+    }
+}
+
+float GameMenuFadeAmount(ULONGLONG now) {
+    if (!gApp) return 0.0f;
+    constexpr float kFadeInMs = 850.0f;
+    constexpr float kFadeOutMs = 360.0f;
+    if (gApp->gameMenuFadeOut) {
+        return Clamp01(static_cast<float>(now - gApp->gameMenuFadeStart) / kFadeOutMs);
+    }
+    if (gApp->gameMenuFadeIn) {
+        return 1.0f - Clamp01(static_cast<float>(now - gApp->gameMenuFadeStart) / kFadeInMs);
+    }
+    return 0.0f;
+}
+
+void DrawGameMenuFade(HDC dc, const RECT& rc, float amount) {
+    amount = Clamp01(amount);
+    if (amount <= 0.001f) return;
+    int period = 12;
+    int cover = std::clamp(static_cast<int>(std::round(period * amount)), 1, period);
+    for (int y = rc.top; y < rc.bottom; y += period) {
+        RECT stripe{rc.left, y, rc.right, std::min<LONG>(rc.bottom, y + cover)};
+        FillGameMenuRect(dc, stripe, RGB(0, 0, 0));
+    }
+    if (amount > 0.62f) {
+        int cover2 = std::clamp(static_cast<int>(std::round(period * (amount - 0.62f) / 0.38f)), 1, period);
+        for (int x = rc.left; x < rc.right; x += period) {
+            RECT stripe{x, rc.top, std::min<LONG>(rc.right, x + cover2), rc.bottom};
+            FillGameMenuRect(dc, stripe, RGB(0, 0, 0));
+        }
+    }
+}
+
+void PaintGameMainMenu(HWND hwnd, HDC dc) {
+    if (!gApp || !gApp->gameShell) return;
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    int w = std::max<LONG>(1, rc.right - rc.left);
+    int h = std::max<LONG>(1, rc.bottom - rc.top);
+    ULONGLONG now = GetTickCount64();
+
+    FillGameMenuRect(dc, rc, RGB(7, 7, 5));
+    for (int y = 0; y < h; y += 22) {
+        int shade = 10 + (y * 15 / std::max(1, h));
+        RECT band{0, y, w, std::min(y + 22, h)};
+        FillGameMenuRect(dc, band, RGB(shade, std::max(5, shade - 2), std::max(3, shade - 6)));
+    }
+    POINT floorPoly[4] = {{0, h}, {w, h}, {w * 62 / 100, h * 50 / 100}, {w * 38 / 100, h * 50 / 100}};
+    POINT ceilingPoly[4] = {{0, 0}, {w, 0}, {w * 62 / 100, h * 30 / 100}, {w * 38 / 100, h * 30 / 100}};
+    POINT leftWall[4] = {{0, 0}, {w * 38 / 100, h * 30 / 100}, {w * 38 / 100, h * 50 / 100}, {0, h}};
+    POINT rightWall[4] = {{w, 0}, {w * 62 / 100, h * 30 / 100}, {w * 62 / 100, h * 50 / 100}, {w, h}};
+    FillGameMenuPolygon(dc, ceilingPoly, 4, RGB(13, 12, 8));
+    FillGameMenuPolygon(dc, floorPoly, 4, RGB(18, 16, 11));
+    FillGameMenuPolygon(dc, leftWall, 4, RGB(10, 10, 7));
+    FillGameMenuPolygon(dc, rightWall, 4, RGB(9, 9, 7));
+
+    HPEN perspectivePen = CreatePen(PS_SOLID, 1, RGB(35, 30, 18));
+    HGDIOBJ oldPerspectivePen = SelectObject(dc, perspectivePen);
+    for (int i = 0; i <= 8; ++i) {
+        int x0 = i * w / 8;
+        MoveToEx(dc, x0, h, nullptr);
+        LineTo(dc, w / 2, h * 47 / 100);
+    }
+    for (int i = 0; i < 8; ++i) {
+        int yLine = h * (54 + i * 6) / 100;
+        MoveToEx(dc, 0, yLine, nullptr);
+        LineTo(dc, w, yLine);
+    }
+    SelectObject(dc, oldPerspectivePen);
+    DeleteObject(perspectivePen);
+
+    for (int i = 0; i < 12; ++i) {
+        int x = (i * 137 + 43) % std::max(1, w);
+        int panelW = 34 + (i % 4) * 18;
+        RECT panel{x - panelW / 2, 0, x + panelW / 2, h};
+        FillGameMenuRect(dc, panel, RGB(14 + i % 3, 13 + i % 2, 9));
+    }
+    for (int i = 0; i < 7; ++i) {
+        int lx = w / 2 - 310 + i * 104;
+        RECT lamp{lx, 28, lx + 54, 34};
+        FillGameMenuRect(dc, lamp, RGB(121, 105, 66));
+        RECT glow{lx - 24, 34, lx + 78, 124};
+        FillGameMenuRect(dc, glow, RGB(23, 20, 12));
+    }
+    RECT vignetteLeft{0, 0, w / 18, h};
+    RECT vignetteRight{w - w / 18, 0, w, h};
+    RECT vignetteTop{0, 0, w, h / 18};
+    RECT vignetteBottom{0, h - h / 12, w, h};
+    FillGameMenuRect(dc, vignetteLeft, RGB(2, 2, 1));
+    FillGameMenuRect(dc, vignetteRight, RGB(2, 2, 1));
+    FillGameMenuRect(dc, vignetteTop, RGB(2, 2, 1));
+    FillGameMenuRect(dc, vignetteBottom, RGB(3, 3, 2));
+    DrawGameMenuFlashlight(dc, rc, now);
+    DrawGameMenuDust(dc, rc, now);
+    DrawGameMenuExitDoor(dc, rc, now);
+    DrawGameMenuLampBurst(dc, rc, now);
+
+    HFONT titleFont = CreateFontW(46, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    HFONT bodyFont = CreateFontW(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    HFONT buttonFont = CreateFontW(19, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    HGDIOBJ oldFont = SelectObject(dc, titleFont);
+
+    RECT title{0, 64, w, 124};
+    DrawGameMenuText(dc, L"Backrooms Maze", title, RGB(239, 226, 182), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, bodyFont);
+    RECT subtitle{0, 118, w, 150};
+    DrawGameMenuText(dc, gApp->gameRunStarted && !gApp->gameDebugActive ? L"Paused" : L"Main Menu",
+        subtitle, RGB(154, 139, 102), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    SelectObject(dc, buttonFont);
+    auto buttons = ActiveGameMenuButtons();
+    for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
+        RECT br = GameMenuButtonRect(rc, i);
+        DrawGameMenuButton(dc, br, buttons[static_cast<size_t>(i)].label,
+            gApp->gameMenuHoverId == buttons[static_cast<size_t>(i)].id);
+    }
+    DrawGameMenuBlood(dc, rc, now);
+
+    SelectObject(dc, bodyFont);
+    RECT footer{26, h - 48, w - 26, h - 20};
+    DrawGameMenuText(dc, L"v0 prototype", footer, RGB(103, 94, 73), DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    DrawGameMenuFade(dc, rc, GameMenuFadeAmount(now));
+
+    SelectObject(dc, oldFont);
+    DeleteObject(titleFont);
+    DeleteObject(bodyFont);
+    DeleteObject(buttonFont);
+}
+
+void ActivateGameMenuCommand(HWND hwnd, int id) {
+    if (!gApp || !gApp->gameShell || hwnd != gApp->hwnd) return;
+    if (gApp->gameMenuFadeOut) return;
+    gApp->gameMenuPendingCommand = id;
+    gApp->gameMenuFadeOut = true;
+    gApp->gameMenuFadeIn = false;
+    gApp->gameMenuFadeStart = GetTickCount64();
+    if (id == kGameSinglePlayerId) {
+        gApp->gameMenuLampBurstStart = gApp->gameMenuFadeStart;
+    }
+    InvalidateRect(hwnd, nullptr, FALSE);
+}
+
+void ExecuteGameMenuCommand(HWND hwnd, int id) {
+    if (!gApp || !gApp->gameShell || hwnd != gApp->hwnd) return;
+    if (id == kGameSinglePlayerId) {
+        EnterGamePlay(hwnd);
+    } else if (id == kGameSettingsId) {
+        EnterGameSettings(hwnd, ConfigDialogMode::Game, GameState::MainMenu);
+    } else if (id == kGameDebugId) {
+        EnterGameDebug(hwnd);
+    } else if (id == kGameExitId) {
+        ReleaseGameMouse();
+        DestroyWindow(hwnd);
+    }
+}
+
+void UpdateGameMenuTransition(HWND hwnd) {
+    if (!gApp || !gApp->gameShell || gApp->gameState != GameState::MainMenu) return;
+    ULONGLONG now = GetTickCount64();
+    if (gApp->gameMenuFadeIn && now - gApp->gameMenuFadeStart >= 850) {
+        gApp->gameMenuFadeIn = false;
+    }
+    if (gApp->gameMenuFadeOut && now - gApp->gameMenuFadeStart >= 360) {
+        int pending = gApp->gameMenuPendingCommand;
+        gApp->gameMenuFadeOut = false;
+        gApp->gameMenuPendingCommand = 0;
+        ExecuteGameMenuCommand(hwnd, pending);
+        return;
+    }
+    InvalidateRect(hwnd, nullptr, FALSE);
 }
 
 void SetDebugControlsVisible(bool visible) {
@@ -133,6 +542,10 @@ void EnterGameMainMenu(HWND hwnd) {
     if (!gApp || !gApp->gameShell) return;
     ReleaseGameMouse();
     gApp->gameState = GameState::MainMenu;
+    gApp->gameMenuFadeIn = true;
+    gApp->gameMenuFadeOut = false;
+    gApp->gameMenuPendingCommand = 0;
+    gApp->gameMenuFadeStart = GetTickCount64();
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;
     SetGameMenuVisible(true);

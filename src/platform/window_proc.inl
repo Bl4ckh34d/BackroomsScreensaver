@@ -37,6 +37,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 if (gApp->gameShell) {
                     LayoutGameControls(hwnd);
                     if (gApp->gameMouseCaptured) CaptureGameMouse(hwnd);
+                    if (gApp->gameState == GameState::MainMenu) InvalidateRect(hwnd, nullptr, TRUE);
                 }
 #endif
             } else if (App::CloneOutput* clone = CloneForWindow(hwnd)) {
@@ -45,6 +46,22 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
         }
         return 0;
+#if defined(BACKROOMS_GAME_EXE)
+    case WM_ERASEBKGND:
+        if (gApp && gApp->gameShell && gApp->gameState == GameState::MainMenu && hwnd == gApp->hwnd) {
+            return 1;
+        }
+        break;
+    case WM_PAINT:
+        if (gApp && gApp->gameShell && gApp->gameState == GameState::MainMenu && hwnd == gApp->hwnd) {
+            PAINTSTRUCT ps{};
+            HDC dc = BeginPaint(hwnd, &ps);
+            PaintGameMainMenu(hwnd, dc);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        break;
+#endif
 #if defined(BACKROOMS_GAME_EXE)
     case kGameConfigClosedMessage:
         if (gApp && gApp->gameShell && hwnd == gApp->hwnd) {
@@ -89,6 +106,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             SetCursorPos(center.x, center.y);
             return 0;
         }
+        if (gApp && gApp->gameShell && gApp->gameState == GameState::MainMenu && hwnd == gApp->hwnd) {
+            POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+            int hover = HitTestGameMenu(hwnd, p);
+            gApp->gameMenuMouse = p;
+            gApp->gameMenuHasMouse = true;
+            if (hover == kGameSinglePlayerId && gApp->gameMenuBloodStart == 0) {
+                gApp->gameMenuBloodStart = GetTickCount64();
+            }
+            if (hover != gApp->gameMenuHoverId) {
+                gApp->gameMenuHoverId = hover;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
 #endif
         if (gApp && !gApp->preview) {
             POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
@@ -109,6 +141,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_SYSKEYDOWN:
 #if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell) {
+            if (msg == WM_LBUTTONDOWN && gApp->gameState == GameState::MainMenu && hwnd == gApp->hwnd) {
+                POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+                int id = HitTestGameMenu(hwnd, p);
+                if (id != 0) ActivateGameMenuCommand(hwnd, id);
+            }
             return 0;
         }
 #endif
@@ -119,15 +156,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (gApp && gApp->gameShell && hwnd == gApp->hwnd) {
             int id = LOWORD(wParam);
             if (id == kGameSinglePlayerId) {
-                EnterGamePlay(hwnd);
+                ActivateGameMenuCommand(hwnd, id);
                 return 0;
             }
             if (id == kGameSettingsId) {
-                EnterGameSettings(hwnd, ConfigDialogMode::Game, GameState::MainMenu);
+                ActivateGameMenuCommand(hwnd, id);
                 return 0;
             }
             if (id == kGameDebugId) {
-                EnterGameDebug(hwnd);
+                ActivateGameMenuCommand(hwnd, id);
                 return 0;
             }
             if (id == kGameBackId) {
@@ -143,8 +180,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 return 0;
             }
             if (id == kGameExitId) {
-                ReleaseGameMouse();
-                DestroyWindow(hwnd);
+                ActivateGameMenuCommand(hwnd, id);
                 return 0;
             }
         }

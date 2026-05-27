@@ -81,6 +81,9 @@ int RunGame(HINSTANCE hInstance) {
     for (HWND control : controls) ApplyDefaultGuiFont(control);
 
     LayoutGameControls(hwnd);
+    SetGameMenuVisible(true);
+    UpdateGameMenuLabels();
+    app.gameMenuFadeStart = GetTickCount64();
     SetDebugControlsVisible(false);
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
@@ -120,6 +123,10 @@ int RunGame(HINSTANCE hInstance) {
             }
         }
         escapeWasDown = pauseDown;
+
+        if (app.gameState == GameState::MainMenu) {
+            UpdateGameMenuTransition(hwnd);
+        }
 
         if (app.rendererInitialized &&
             (app.gameState == GameState::PlayGame || app.gameState == GameState::DebugScene)) {
