@@ -792,10 +792,10 @@ float LocalLampLight(float3 worldPos, float3 worldN, float time)
     float light = 0.0;
 
     [loop]
-    for (int yy = -1; yy <= 1; ++yy)
+    for (int yy = -2; yy <= 2; ++yy)
     {
         [loop]
-        for (int xx = -1; xx <= 1; ++xx)
+        for (int xx = -2; xx <= 2; ++xx)
         {
             float2 cell = baseCell + float2(xx, yy);
             float2 lampXZ = lampOrigin + cell * stride;
@@ -2139,12 +2139,16 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 lampBase = float3(0.72 + lens * 0.24 - edge * 0.18,
                                  0.76 + lens * 0.23 - edge * 0.16,
                                  0.70 + lens * 0.20 - edge * 0.12);
-        float3 offBase = float3(0.018 + lens * 0.012,
-                                0.018 + lens * 0.012,
-                                0.016 + lens * 0.010);
+        float3 offBase = float3(0.76 + lens * 0.13 - edge * 0.10,
+                                0.78 + lens * 0.13 - edge * 0.09,
+                                0.72 + lens * 0.11 - edge * 0.08);
         float3 base = materialId < 3.5 ? lampBase : offBase;
         float emit = materialId < 3.5 ? LampVisualPower(input.material, input.worldPos, time) * 2.6 * (1.0 - saturate(gTransition0.z)) : 0.0;
-        float3 color = base * (gLighting0.z + emit);
+        float passiveLight = materialId < 3.5
+            ? gLighting0.z
+            : max(gLighting0.z + FlashlightAmount(input.worldPos, N) * 0.34,
+                  0.16 + LocalLampLight(input.worldPos, N, time) * gLighting1.x * 0.20);
+        float3 color = base * (passiveLight + emit);
         float fog = saturate((length(input.worldPos - cam) - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 3.2);
         color = lerp(color, float3(0.0, 0.0, 0.0), fog * gFog0.z);
