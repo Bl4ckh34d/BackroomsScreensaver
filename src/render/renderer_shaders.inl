@@ -617,15 +617,9 @@ float FixturePower(float3 worldPos, float time)
 
 float LampVisualPower(float material, float3 worldPos, float time)
 {
-    float seed = frac(material);
-    float variation = lerp(0.86, 1.14, frac(seed * 23.71 + 0.31));
-    float flickerFixture = step(1.0 - gLighting1.z, frac(seed * 37.31 + 0.17));
-    float tick = floor(time * (1.3 + seed * 2.5));
-    float event = step(0.86, frac(seed * 19.17 + tick * 0.331));
-    float flutter = 0.18 + 0.82 * saturate(sin(time * (41.0 + seed * 50.0)) * 0.5 + 0.5);
-    float buzz = 0.98 + 0.02 * sin(time * (55.0 + seed * 80.0));
-    float basePower = lerp(1.0, flutter, flickerFixture * event) * buzz * variation;
-    return basePower * LampFailureMultiplier(LampDamageAtWorld(worldPos.xz), seed, time);
+    float materialSeed = frac(material);
+    float visualVariation = lerp(0.96, 1.06, frac(materialSeed * 23.71 + 0.31));
+    return FixturePower(worldPos, time) * visualVariation;
 }
 
 float2 MazeTile(float2 worldXZ)
