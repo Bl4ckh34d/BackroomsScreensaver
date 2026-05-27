@@ -2139,16 +2139,16 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 lampBase = float3(0.72 + lens * 0.24 - edge * 0.18,
                                  0.76 + lens * 0.23 - edge * 0.16,
                                  0.70 + lens * 0.20 - edge * 0.12);
-        float3 offBase = float3(0.76 + lens * 0.13 - edge * 0.10,
-                                0.78 + lens * 0.13 - edge * 0.09,
-                                0.72 + lens * 0.11 - edge * 0.08);
+        float3 offBase = float3(0.91 + lens * 0.07 - edge * 0.055,
+                                0.92 + lens * 0.07 - edge * 0.050,
+                                0.86 + lens * 0.06 - edge * 0.045);
         float3 base = materialId < 3.5 ? lampBase : offBase;
         float emit = materialId < 3.5 ? LampVisualPower(input.material, input.worldPos, time) * 2.6 * (1.0 - saturate(gTransition0.z)) : 0.0;
         float passiveLight = materialId < 3.5
             ? gLighting0.z
-            : gLighting0.z * 0.55 +
-              FlashlightAmount(input.worldPos, N) * 0.48 +
-              LocalLampLight(input.worldPos, N, time) * gLighting1.x * 0.14;
+            : gLighting0.z * 0.48 +
+              FlashlightAmount(input.worldPos, N) * 0.86 +
+              LocalLampLight(input.worldPos, N, time) * gLighting1.x * 0.22;
         float3 color = base * (passiveLight + emit);
         float fog = saturate((length(input.worldPos - cam) - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 3.2);
