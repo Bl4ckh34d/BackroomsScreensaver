@@ -215,10 +215,10 @@
     XMFLOAT2 CeilingUv(float x, float z) const {
         float scaleX = settings_.ceilingTextureMeters > 0.001f
             ? std::max(0.2f, settings_.ceilingTextureMeters)
-            : std::max(0.2f, maze_.tileW);
+            : std::max(0.2f, maze_.tileW * (2.0f / 3.0f));
         float scaleZ = settings_.ceilingTextureMeters > 0.001f
             ? std::max(0.2f, settings_.ceilingTextureMeters)
-            : std::max(0.2f, maze_.tileD);
+            : std::max(0.2f, maze_.tileD * (2.0f / 3.0f));
         float originX = -static_cast<float>(maze_.w) * maze_.tileW * 0.5f;
         float originZ = -static_cast<float>(maze_.h) * maze_.tileD * 0.5f;
         return {(x - originX) / scaleX, (z - originZ) / scaleZ};
@@ -746,10 +746,10 @@
         };
 
         auto nearestLampXZ = [&](float px, float pz) {
-            float strideX = tileW / 3.0f;
-            float strideZ = tileD / 3.0f;
-            float originX = ox + strideX * 0.5f;
-            float originZ = oz + strideZ * 0.5f;
+            float strideX = tileW;
+            float strideZ = tileD;
+            float originX = ox + tileW * 0.5f;
+            float originZ = oz + tileD * 0.5f;
             float cellX = std::floor((px - originX) / std::max(0.001f, strideX) + 0.5f);
             float cellZ = std::floor((pz - originZ) / std::max(0.001f, strideZ) + 0.5f);
             return XMFLOAT2{originX + cellX * strideX, originZ + cellZ * strideZ};
@@ -3359,40 +3359,28 @@
 
                 Tile lampTile{tileX, tileY};
                 XMFLOAT3 lampCenter = maze_.WorldCenter(lampTile, 0.0f);
-                for (int subY = 0; subY < 3; ++subY) {
-                    for (int subX = 0; subX < 3; ++subX) {
-                        int cellX = tileX * 3 + subX;
-                        int cellZ = tileY * 3 + subY;
-                        float seed = LampSeed(cellX, cellZ);
-                        bool brokenZone = LampBrokenZone(cellX, cellZ);
-                        bool lampOn = !brokenZone && seed >= 1.0f - settings_.lampOnRatio;
-                        bool showDarkPanel = !brokenZone &&
-                            LampHash(static_cast<float>(cellX) + 73.1f, static_cast<float>(cellZ) - 41.7f) < settings_.darkLampVisibleRatio;
-                        bool brokenPanel = brokenZone &&
-                            LampHash(static_cast<float>(cellX) - 19.7f, static_cast<float>(cellZ) + 88.4f) < settings_.sparkEmitterRatio;
-                        if (!lampOn && !showDarkPanel && !brokenPanel) continue;
+                int cellX = tileX;
+                int cellZ = tileY;
+                float seed = LampSeed(cellX, cellZ);
+                bool brokenZone = LampBrokenZone(cellX, cellZ);
+                bool lampOn = !brokenZone && seed >= 1.0f - settings_.lampOnRatio;
+                bool brokenPanel = brokenZone &&
+                    LampHash(static_cast<float>(cellX) - 19.7f, static_cast<float>(cellZ) + 88.4f) < settings_.sparkEmitterRatio;
+                float panelSize = std::min(tileW, tileD) * 0.285f;
+                float material = lampOn ? 3.0f + seed * 0.49f : 5.0f;
+                AddCeilingCard(vertices, indices, {lampCenter.x, 0.0f, lampCenter.z},
+                    panelSize, panelSize, 0.0f, wallH - 0.004f, material);
 
-                        float subW = tileW / 3.0f;
-                        float subD = tileD / 3.0f;
-                        float cx = lampCenter.x + (static_cast<float>(subX) - 1.0f) * subW;
-                        float cz = lampCenter.z + (static_cast<float>(subY) - 1.0f) * subD;
-                        float panelSize = std::min(subW, subD) * 0.46f;
-                        float material = lampOn ? 3.0f + seed * 0.49f : 5.0f;
-                        AddCeilingCard(vertices, indices, {cx, 0.0f, cz},
-                            panelSize, panelSize, 0.0f, wallH - 0.004f, material);
-
-                        if (lampOn) {
-                            runtimeLamps_.push_back({
-                                lampTile,
-                                {cx, wallH - 0.08f, cz},
-                                0.0f,
-                                RandRange(0.08f, 0.72f),
-                                false
-                            });
-                        } else if (brokenPanel && settings_.sparkParticles) {
-                            sparkEmitters_.push_back({{cx, wallH - 0.085f, cz}});
-                        }
-                    }
+                if (lampOn) {
+                    runtimeLamps_.push_back({
+                        lampTile,
+                        {lampCenter.x, wallH - 0.08f, lampCenter.z},
+                        0.0f,
+                        RandRange(0.08f, 0.72f),
+                        false
+                    });
+                } else if (brokenPanel && settings_.sparkParticles) {
+                    sparkEmitters_.push_back({{lampCenter.x, wallH - 0.085f, lampCenter.z}});
                 }
             }
         }
