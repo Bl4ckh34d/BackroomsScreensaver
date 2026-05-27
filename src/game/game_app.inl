@@ -88,6 +88,10 @@ int RunGame(HINSTANCE hInstance) {
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
     EnsureGameRenderer(hwnd, RendererRuntimeMode::MainMenu);
+    app.gameMenuFadeIn = true;
+    app.gameMenuFadeOut = false;
+    app.gameMenuFadeStart = GetTickCount64();
+    InvalidateRect(hwnd, nullptr, FALSE);
 
     MSG msg{};
     bool running = true;

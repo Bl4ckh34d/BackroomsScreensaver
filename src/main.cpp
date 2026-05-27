@@ -36,6 +36,7 @@ using namespace DirectX;
 
 extern "C" BOOLEAN NTAPI SystemFunction036(PVOID RandomBuffer, ULONG RandomBufferLength);
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "msimg32.lib")
 
 namespace {
 
