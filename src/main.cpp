@@ -2526,6 +2526,7 @@ private:
     bool monsterHasSound_ = false;
     bool monsterHasLastKnown_ = false;
     bool monsterChasingVisible_ = false;
+    bool monsterHeardPlayerNow_ = false;
     float monsterSearchTimer_ = 0.0f;
     float monsterRoamTimer_ = 0.0f;
     bool monsterRecognitionActive_ = false;
@@ -10624,6 +10625,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         monsterRepath_ -= dt;
         Tile mt = MonsterTile();
         Tile ct = CameraTile();
+        monsterHeardPlayerNow_ = false;
         if (!maze_.IsOpen(mt.x, mt.y)) {
             monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
             ClearMonsterPath();
@@ -10632,6 +10634,11 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         }
 
         bool seesPlayer = MonsterCanSeePlayer();
+        float hearingRadius = std::max(0.0f, playerNoiseRadiusMeters_);
+        if (!seesPlayer && hearingRadius > 0.05f && MonsterDistance() <= hearingRadius) {
+            monsterHeardPlayerNow_ = true;
+            AlertMonsterToSound({camera_.x, 0.0f, camera_.z});
+        }
         if (seesPlayer) {
             monsterChasingVisible_ = true;
             monsterHasLastKnown_ = true;
@@ -11996,7 +12003,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
     }
 
     void DrawMapOverlay() {
-        if (!settings_.mapOverlay || !overlayBuffer_ || !overlayVertexShader_ || !overlayPixelShader_ ||
+        if ((!settings_.mapOverlay && !settings_.debugAiMapOverlay) || !overlayBuffer_ || !overlayVertexShader_ || !overlayPixelShader_ ||
             width_ <= 0 || height_ <= 0 || maze_.w <= 0 || maze_.h <= 0 || maze_.open.empty()) {
             return;
         }
@@ -12068,13 +12075,16 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             float hearingRadius = std::max(0.0f, playerNoiseRadiusMeters_);
             if (hearingRadius > 0.05f) {
                 float radiusSq = hearingRadius * hearingRadius;
+                XMFLOAT4 hearingColor = monsterHeardPlayerNow_
+                    ? XMFLOAT4{1.0f, 0.02f, 0.02f, 0.30f}
+                    : XMFLOAT4{1.0f, 0.03f, 0.02f, 0.16f};
                 for (int y = 0; y < maze_.h; ++y) {
                     for (int x = 0; x < maze_.w; ++x) {
                         XMFLOAT3 center = maze_.WorldCenter({x, y}, 0.0f);
                         float dx = center.x - camera_.x;
                         float dz = center.z - camera_.z;
                         if (dx * dx + dz * dz <= radiusSq) {
-                            pushTile({x, y}, {1.0f, 0.03f, 0.02f, 0.18f}, 0.02f);
+                            pushTile({x, y}, hearingColor, 0.02f);
                         }
                     }
                 }
@@ -12090,6 +12100,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 color.w *= Lerp(1.0f, 0.46f, Clamp01(t));
                 pushTile(monsterPath_[i], color, 0.26f);
             }
+            if (monsterHeardPlayerNow_) markTile(CameraTile(), {1.0f, 0.0f, 0.0f, 1.0f}, 2.35f);
             if (monsterHasSound_) markTile(monsterSoundTile_, {1.0f, 0.02f, 0.02f, 0.96f}, 2.05f);
             if (monsterHasLastKnown_) markTile(monsterLastKnownTile_, {1.0f, 0.88f, 0.16f, 0.90f}, 1.85f);
             if (ValidMonsterTile(monsterGoal_)) markTile(monsterGoal_, {1.0f, 0.38f, 0.02f, 0.78f}, 1.62f);
@@ -12816,468 +12827,9 @@ HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance);
 void SetLoadingOverlayStatus(HWND overlay, const wchar_t* phase, const wchar_t* detail, bool complete);
 void LoadingProgressCallback(void* context, const StartupProgressUpdate& update);
 
-void LayoutGameControls(HWND hwnd) {
-    if (!gApp || !gApp->gameShell) return;
-    RECT rc{};
-    GetClientRect(hwnd, &rc);
-    int w = std::max(1L, rc.right - rc.left);
-    int h = std::max(1L, rc.bottom - rc.top);
-    int centerX = w / 2;
-    int buttonW = 220;
-    int buttonH = 38;
-    int gap = 12;
-    int top = std::max(90, h / 2 - 120);
-    if (gApp->gameTitle) MoveWindow(gApp->gameTitle, centerX - 240, top - 76, 480, 42, TRUE);
-    if (gApp->gameSinglePlayer) MoveWindow(gApp->gameSinglePlayer, centerX - buttonW / 2, top, buttonW, buttonH, TRUE);
-    if (gApp->gameSettings) MoveWindow(gApp->gameSettings, centerX - buttonW / 2, top + (buttonH + gap), buttonW, buttonH, TRUE);
-    if (gApp->gameDebug) MoveWindow(gApp->gameDebug, centerX - buttonW / 2, top + (buttonH + gap) * 2, buttonW, buttonH, TRUE);
-    if (gApp->gameExit) MoveWindow(gApp->gameExit, centerX - buttonW / 2, top + (buttonH + gap) * 3, buttonW, buttonH, TRUE);
-    if (gApp->gameBack) MoveWindow(gApp->gameBack, 12, 10, 104, 28, TRUE);
-}
+#include "game/game_shell.inl"
 
-void SetGameMenuVisible(bool visible) {
-    if (!gApp || !gApp->gameShell) return;
-    int show = visible ? SW_SHOW : SW_HIDE;
-    HWND controls[] = {
-        gApp->gameTitle,
-        gApp->gameSinglePlayer,
-        gApp->gameSettings,
-        gApp->gameDebug,
-        gApp->gameExit
-    };
-    for (HWND control : controls) {
-        if (control) ShowWindow(control, show);
-    }
-}
-
-void UpdateGameMenuLabels() {
-    if (!gApp || !gApp->gameShell) return;
-    bool canResume = gApp->gameRunStarted && !gApp->gameDebugActive;
-    if (gApp->gameSinglePlayer) {
-        SetWindowTextW(gApp->gameSinglePlayer, canResume ? L"Resume" : L"Single Player");
-    }
-}
-
-void SetDebugControlsVisible(bool visible) {
-    if (!gApp) return;
-    int show = visible ? SW_SHOW : SW_HIDE;
-    HWND controls[] = {
-        gApp->debugPrevEffect,
-        gApp->debugNextEffect,
-        gApp->debugSize,
-        gApp->debugReset,
-        gApp->debugPrevProp,
-        gApp->debugNextProp
-    };
-    for (HWND control : controls) {
-        if (control) ShowWindow(control, show);
-    }
-}
-
-void SetGameCursorVisible(bool visible) {
-    if (visible) {
-        while (ShowCursor(TRUE) < 0) {}
-    } else {
-        while (ShowCursor(FALSE) >= 0) {}
-    }
-}
-
-void ReleaseGameMouse() {
-    if (!gApp) return;
-    ClipCursor(nullptr);
-    if (gApp->gameMouseCaptured) {
-        ReleaseCapture();
-    }
-    SetGameCursorVisible(true);
-    gApp->gameMouseCaptured = false;
-}
-
-void CaptureGameMouse(HWND hwnd) {
-    if (!gApp || !gApp->gameShell || !hwnd) return;
-    RECT rc{};
-    GetClientRect(hwnd, &rc);
-    POINT tl{rc.left, rc.top};
-    POINT br{rc.right, rc.bottom};
-    ClientToScreen(hwnd, &tl);
-    ClientToScreen(hwnd, &br);
-    RECT clip{tl.x, tl.y, br.x, br.y};
-    ClipCursor(&clip);
-    if (!gApp->gameMouseCaptured) {
-        SetCapture(hwnd);
-        SetGameCursorVisible(false);
-    }
-    gApp->gameMouseCaptured = true;
-    gApp->gameMouseCenter = {(rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2};
-    POINT center = gApp->gameMouseCenter;
-    ClientToScreen(hwnd, &center);
-    gApp->gameRecenteringMouse = true;
-    SetCursorPos(center.x, center.y);
-}
-
-bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
-    if (!gApp || !gApp->gameShell) return false;
-    if (gApp->rendererInitialized) return true;
-    gApp->renderer.SetRuntimeMode(mode);
-    if (!gApp->loadingOverlay) {
-        gApp->loadingOverlay = CreateLoadingOverlay(hwnd, gApp->gameInstance);
-    }
-    if (gApp->loadingOverlay) {
-        SetLoadingOverlayStatus(gApp->loadingOverlay, L"Loading level", L"Preparing renderer and maze.", false);
-        UpdateWindow(gApp->loadingOverlay);
-    }
-    StartupProgressSink loadingProgress{LoadingProgressCallback, gApp->loadingOverlay};
-    if (!gApp->renderer.Initialize(hwnd, nullptr, false, MonsterPreviewView::Orbit,
-            gApp->loadingOverlay ? &loadingProgress : nullptr)) {
-        if (gApp->loadingOverlay) {
-            DestroyWindow(gApp->loadingOverlay);
-            gApp->loadingOverlay = nullptr;
-        }
-        MessageBoxW(hwnd, L"Direct3D initialization failed.", L"Backrooms Maze Game", MB_OK | MB_ICONERROR);
-        return false;
-    }
-    gApp->rendererInitialized = true;
-    if (gApp->loadingOverlay) {
-        SetLoadingOverlayStatus(gApp->loadingOverlay, L"Ready", L"Entering maze.", true);
-        DestroyWindow(gApp->loadingOverlay);
-        gApp->loadingOverlay = nullptr;
-    }
-    return true;
-}
-
-void EnterGameMainMenu(HWND hwnd) {
-    if (!gApp || !gApp->gameShell) return;
-    ReleaseGameMouse();
-    gApp->gameState = GameState::MainMenu;
-    gEffectDebugViewer = false;
-    gBloodDebugEveryWall = false;
-    SetGameMenuVisible(true);
-    UpdateGameMenuLabels();
-    SetDebugControlsVisible(false);
-    if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
-    SetWindowTextW(hwnd, L"Backrooms Maze");
-}
-
-void EnterGamePlay(HWND hwnd) {
-    if (!gApp || !gApp->gameShell) return;
-    gEffectDebugViewer = false;
-    gBloodDebugEveryWall = false;
-    if (!EnsureGameRenderer(hwnd, RendererRuntimeMode::PlayableGame)) return;
-    if (!gApp->gameRunStarted || gApp->gameDebugActive) {
-        if (!gApp->loadingOverlay) {
-            gApp->loadingOverlay = CreateLoadingOverlay(hwnd, gApp->gameInstance);
-        }
-        if (gApp->loadingOverlay) {
-            SetLoadingOverlayStatus(gApp->loadingOverlay, L"Loading level", L"Generating maze and scene geometry.", false);
-            UpdateWindow(gApp->loadingOverlay);
-        }
-        gApp->renderer.RestartGameRun();
-        if (gApp->loadingOverlay) {
-            SetLoadingOverlayStatus(gApp->loadingOverlay, L"Ready", L"Entering maze.", true);
-            DestroyWindow(gApp->loadingOverlay);
-            gApp->loadingOverlay = nullptr;
-        }
-        gApp->gameRunStarted = true;
-    } else {
-        gApp->renderer.SetRuntimeMode(RendererRuntimeMode::PlayableGame);
-    }
-    gApp->gameState = GameState::PlayGame;
-    gApp->gameDebugActive = false;
-    SetGameMenuVisible(false);
-    SetDebugControlsVisible(false);
-    if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
-    CaptureGameMouse(hwnd);
-    SetWindowTextW(hwnd, L"Backrooms Maze - Single Player");
-}
-
-void EnterGameDebug(HWND hwnd) {
-    if (!gApp || !gApp->gameShell) return;
-    gEffectDebugViewer = true;
-    gDebugSliceEffect = DebugSliceEffect::Blood;
-    gDebugSliceTiles = std::clamp(gDebugSliceTiles, 1, 5);
-    gBloodDebugEveryWall = true;
-    if (!EnsureGameRenderer(hwnd, RendererRuntimeMode::DebugViewer)) return;
-    gApp->renderer.EnterDebugViewer(gDebugSliceEffect, gDebugSliceTiles);
-    gApp->gameState = GameState::DebugScene;
-    gApp->gameDebugActive = true;
-    SetGameMenuVisible(false);
-    SetDebugControlsVisible(true);
-    if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_SHOW);
-    ReleaseGameMouse();
-    UpdateDebugSliceControls(hwnd);
-    RedrawDebugSliceControls();
-}
-
-void EnterGameSettings(HWND hwnd, ConfigDialogMode mode, GameState returnState) {
-    if (!gApp || !gApp->gameShell) return;
-    ReleaseGameMouse();
-    if (gApp->gameConfig) {
-        DestroyWindow(gApp->gameConfig);
-        gApp->gameConfig = nullptr;
-    }
-    gApp->gameSettingsReturnState = returnState;
-    gApp->gameState = GameState::Settings;
-    SetGameMenuVisible(false);
-    SetDebugControlsVisible(false);
-    if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
-    gApp->gameConfig = mode == ConfigDialogMode::Game
-        ? CreateGameSettingsPanel(hwnd)
-        : CreateEmbeddedConfig(hwnd, mode);
-    if (gApp->gameConfig) {
-        RECT rc{};
-        GetClientRect(hwnd, &rc);
-        MoveWindow(gApp->gameConfig, 0, 0, std::max(1L, rc.right - rc.left), std::max(1L, rc.bottom - rc.top), TRUE);
-        ShowWindow(gApp->gameConfig, SW_SHOW);
-        SetFocus(gApp->gameConfig);
-        SetWindowTextW(hwnd, mode == ConfigDialogMode::Debug ? L"Backrooms Maze - Debug Settings" : L"Backrooms Maze - Settings");
-    } else if (returnState == GameState::DebugScene) {
-        EnterGameDebug(hwnd);
-    } else {
-        EnterGameMainMenu(hwnd);
-    }
-}
-
-GameInputSnapshot CollectGameInput() {
-    GameInputSnapshot input{};
-    if (!gApp || gApp->gameState != GameState::PlayGame) return input;
-    auto down = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
-    input.moveX = (down('D') ? 1.0f : 0.0f) + (down('A') ? -1.0f : 0.0f);
-    input.moveZ = (down('W') ? 1.0f : 0.0f) + (down('S') ? -1.0f : 0.0f);
-    input.lookDeltaX = gApp->gameMouseDeltaX;
-    input.lookDeltaY = gApp->gameMouseDeltaY;
-    gApp->gameMouseDeltaX = 0.0f;
-    gApp->gameMouseDeltaY = 0.0f;
-    input.jump = down(VK_SPACE);
-    input.sprint = down(VK_SHIFT);
-    input.crouch = down(VK_CONTROL) || down('C');
-    input.interact = down('E');
-    input.pause = down(VK_ESCAPE);
-    return input;
-}
-
-constexpr int kLoadingOverlayTimerId = 6101;
-const wchar_t* kLoadingOverlayClass = L"BackroomsMazeLoadingOverlay";
-
-struct LoadingOverlayState {
-    std::wstring phase = L"Starting renderer";
-    std::wstring detail = L"";
-    int current = 0;
-    int total = 1;
-    int shaderDone = 0;
-    int shaderTotal = 0;
-    int shaderCompiled = 0;
-    int shaderCached = 0;
-    int frame = 0;
-};
-
-LoadingOverlayState* LoadingState(HWND hwnd) {
-    return reinterpret_cast<LoadingOverlayState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-}
-
-void DrawLoadingSpinner(HDC hdc, int cx, int cy, int radius, int frame) {
-    constexpr int dots = 12;
-    for (int i = 0; i < dots; ++i) {
-        float angle = (static_cast<float>(i) / static_cast<float>(dots)) * kPi * 2.0f;
-        int age = (i - frame) % dots;
-        if (age < 0) age += dots;
-        int intensity = 72 + (dots - age) * 13;
-        intensity = std::clamp(intensity, 72, 228);
-        int x = cx + static_cast<int>(std::cos(angle) * radius);
-        int y = cy + static_cast<int>(std::sin(angle) * radius);
-        int dotRadius = std::max(2, radius / 6);
-        HBRUSH brush = CreateSolidBrush(RGB(intensity, intensity - 8, intensity / 2));
-        HGDIOBJ oldBrush = SelectObject(hdc, brush);
-        HPEN pen = CreatePen(PS_NULL, 0, RGB(0, 0, 0));
-        HGDIOBJ oldPen = SelectObject(hdc, pen);
-        Ellipse(hdc, x - dotRadius, y - dotRadius, x + dotRadius + 1, y + dotRadius + 1);
-        SelectObject(hdc, oldPen);
-        SelectObject(hdc, oldBrush);
-        DeleteObject(pen);
-        DeleteObject(brush);
-    }
-}
-
-void DrawLoadingOverlay(HWND hwnd, HDC hdc) {
-    RECT rc{};
-    GetClientRect(hwnd, &rc);
-    int width = std::max(1, static_cast<int>(rc.right - rc.left));
-    int height = std::max(1, static_cast<int>(rc.bottom - rc.top));
-    LoadingOverlayState* state = LoadingState(hwnd);
-
-    HBRUSH bg = CreateSolidBrush(RGB(8, 8, 6));
-    FillRect(hdc, &rc, bg);
-    DeleteObject(bg);
-
-    int contentW = std::min(560, std::max(180, width - 48));
-    int left = (width - contentW) / 2;
-    int top = std::max(18, height / 2 - 82);
-    int spinnerRadius = std::clamp(std::min(width, height) / 18, 12, 24);
-    int spinnerCx = left + spinnerRadius + 8;
-    int spinnerCy = top + spinnerRadius + 4;
-    DrawLoadingSpinner(hdc, spinnerCx, spinnerCy, spinnerRadius, state ? state->frame : 0);
-
-    SetBkMode(hdc, TRANSPARENT);
-    HFONT titleFont = CreateFontW(-22, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    HFONT detailFont = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-
-    int textLeft = spinnerCx + spinnerRadius + 18;
-    RECT titleRect{textLeft, top - 1, left + contentW, top + 31};
-    SetTextColor(hdc, RGB(245, 235, 184));
-    HGDIOBJ oldFont = SelectObject(hdc, titleFont);
-    const std::wstring title = state && !state->phase.empty() ? state->phase : L"Loading";
-    DrawTextW(hdc, title.c_str(), -1, &titleRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
-
-    RECT detailRect{textLeft, top + 31, left + contentW, top + 58};
-    SelectObject(hdc, detailFont);
-    SetTextColor(hdc, RGB(184, 178, 137));
-    const std::wstring detail = state && !state->detail.empty() ? state->detail : L"Preparing startup tasks.";
-    DrawTextW(hdc, detail.c_str(), -1, &detailRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
-
-    int barTop = top + 75;
-    RECT barRect{left, barTop, left + contentW, barTop + 14};
-    HBRUSH barBg = CreateSolidBrush(RGB(34, 34, 27));
-    FillRect(hdc, &barRect, barBg);
-    DeleteObject(barBg);
-    FrameRect(hdc, &barRect, reinterpret_cast<HBRUSH>(GetStockObject(GRAY_BRUSH)));
-
-    int current = state ? state->current : 0;
-    int total = std::max(1, state ? state->total : 1);
-    float fraction = Clamp01(static_cast<float>(current) / static_cast<float>(total));
-    RECT fillRect = barRect;
-    fillRect.right = fillRect.left + static_cast<int>((barRect.right - barRect.left) * fraction);
-    InflateRect(&fillRect, -1, -1);
-    if (fillRect.right > fillRect.left) {
-        HBRUSH fill = CreateSolidBrush(RGB(215, 188, 72));
-        FillRect(hdc, &fillRect, fill);
-        DeleteObject(fill);
-    }
-
-    std::wostringstream summary;
-    summary << L"Startup " << current << L"/" << total;
-    if (state && state->shaderTotal > 0) {
-        summary << L"    Shaders " << state->shaderDone << L"/" << state->shaderTotal
-                << L" (compiled " << state->shaderCompiled << L", cached " << state->shaderCached << L")";
-    }
-    RECT summaryRect{left, barTop + 22, left + contentW, barTop + 48};
-    SetTextColor(hdc, RGB(132, 128, 102));
-    DrawTextW(hdc, summary.str().c_str(), -1, &summaryRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
-
-    SelectObject(hdc, oldFont);
-    DeleteObject(titleFont);
-    DeleteObject(detailFont);
-}
-
-LRESULT CALLBACK LoadingOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
-    case WM_NCCREATE: {
-        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
-        return TRUE;
-    }
-    case WM_CREATE:
-        SetTimer(hwnd, kLoadingOverlayTimerId, 120, nullptr);
-        return 0;
-    case WM_TIMER:
-        if (wParam == kLoadingOverlayTimerId) {
-            if (LoadingOverlayState* state = LoadingState(hwnd)) {
-                state->frame = (state->frame + 1) % 12;
-            }
-            InvalidateRect(hwnd, nullptr, FALSE);
-            return 0;
-        }
-        break;
-    case WM_ERASEBKGND:
-        return 1;
-    case WM_PAINT: {
-        PAINTSTRUCT ps{};
-        HDC hdc = BeginPaint(hwnd, &ps);
-        DrawLoadingOverlay(hwnd, hdc);
-        EndPaint(hwnd, &ps);
-        return 0;
-    }
-    case WM_NCDESTROY:
-        KillTimer(hwnd, kLoadingOverlayTimerId);
-        delete LoadingState(hwnd);
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-        return 0;
-    }
-    return DefWindowProcW(hwnd, msg, wParam, lParam);
-}
-
-void RegisterLoadingOverlayClass(HINSTANCE hInstance) {
-    static bool registered = false;
-    if (registered) return;
-    WNDCLASSW wc{};
-    wc.lpfnWndProc = LoadingOverlayWndProc;
-    wc.hInstance = hInstance;
-    wc.lpszClassName = kLoadingOverlayClass;
-    wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
-    RegisterClassW(&wc);
-    registered = true;
-}
-
-void ResizeLoadingOverlay(HWND parent, HWND overlay) {
-    if (!parent || !overlay) return;
-    RECT rc{};
-    GetClientRect(parent, &rc);
-    MoveWindow(overlay, 0, 0,
-        std::max(1, static_cast<int>(rc.right - rc.left)),
-        std::max(1, static_cast<int>(rc.bottom - rc.top)), TRUE);
-}
-
-HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance) {
-    RegisterLoadingOverlayClass(hInstance);
-    auto* state = new LoadingOverlayState();
-    RECT rc{};
-    GetClientRect(parent, &rc);
-    HWND overlay = CreateWindowExW(0, kLoadingOverlayClass, nullptr, WS_CHILD | WS_VISIBLE,
-        0, 0, std::max(1, static_cast<int>(rc.right - rc.left)),
-        std::max(1, static_cast<int>(rc.bottom - rc.top)),
-        parent, nullptr, hInstance, state);
-    if (!overlay) {
-        delete state;
-        return nullptr;
-    }
-    SetWindowPos(overlay, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    UpdateWindow(overlay);
-    return overlay;
-}
-
-void SetLoadingOverlayProgress(HWND overlay, const StartupProgressUpdate& update) {
-    if (!overlay) return;
-    LoadingOverlayState* state = LoadingState(overlay);
-    if (!state) return;
-    state->phase = update.phase ? update.phase : L"Loading";
-    state->detail = update.detail ? update.detail : L"";
-    state->current = std::clamp(update.current, 0, std::max(1, update.total));
-    state->total = std::max(1, update.total);
-    state->shaderDone = std::clamp(update.shaderDone, 0, std::max(0, update.shaderTotal));
-    state->shaderTotal = std::max(0, update.shaderTotal);
-    state->shaderCompiled = std::max(0, update.shaderCompiled);
-    state->shaderCached = std::max(0, update.shaderCached);
-    state->frame = (state->frame + 1) % 12;
-    RedrawWindow(overlay, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
-}
-
-void SetLoadingOverlayStatus(HWND overlay, const wchar_t* phase, const wchar_t* detail, bool complete) {
-    if (!overlay) return;
-    LoadingOverlayState* state = LoadingState(overlay);
-    if (!state) return;
-    int total = std::max(state->total + 1, state->current + 1);
-    state->phase = phase ? phase : L"Loading";
-    state->detail = detail ? detail : L"";
-    state->total = std::max(1, total);
-    state->current = complete ? state->total : std::max(0, state->total - 1);
-    state->frame = (state->frame + 1) % 12;
-    RedrawWindow(overlay, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
-}
-
-void LoadingProgressCallback(void* context, const StartupProgressUpdate& update) {
-    SetLoadingOverlayProgress(static_cast<HWND>(context), update);
-}
+#include "platform/loading_overlay.inl"
 
 void QuitScreensaver(HWND hwnd) {
     if (gApp && !gApp->preview && !gApp->quitting) {
@@ -15409,6 +14961,7 @@ int RunGame(HINSTANCE hInstance) {
 
     MSG msg{};
     bool running = true;
+    bool escapeWasDown = false;
     ULONGLONG lastTicks = GetTickCount64();
     while (running) {
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -15424,6 +14977,18 @@ int RunGame(HINSTANCE hInstance) {
         ULONGLONG now = GetTickCount64();
         float dt = std::min(0.05f, static_cast<float>(now - lastTicks) / 1000.0f);
         lastTicks = now;
+
+        bool escapeDown = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+        if (escapeDown && !escapeWasDown) {
+            if (app.gameState == GameState::PlayGame || app.gameState == GameState::DebugScene) {
+                EnterGameMainMenu(hwnd);
+            } else if (app.gameState == GameState::Settings && app.gameConfig) {
+                DestroyWindow(app.gameConfig);
+            } else if (app.gameState == GameState::MainMenu && app.gameRunStarted && !app.gameDebugActive) {
+                EnterGamePlay(hwnd);
+            }
+        }
+        escapeWasDown = escapeDown;
 
         if (app.rendererInitialized &&
             (app.gameState == GameState::PlayGame || app.gameState == GameState::DebugScene)) {

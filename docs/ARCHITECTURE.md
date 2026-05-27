@@ -5,8 +5,10 @@ This project is currently in transition from a single-file screensaver into a sh
 ## Current Layout
 
 - `src/main.cpp`: legacy application host, Win32 entry points, renderer, config dialog, game shell glue, and remaining screensaver systems.
+- `src/game/game_shell.inl`: game menu layout, state transitions, mouse capture, game renderer startup, and input collection.
 - `src/game/game_settings_panel.inl`: custom in-game settings screen used by `BackroomsMazeGame.exe`.
 - `src/game/player_camera_movement.inl`: camera/player/autopilot movement code moved out of the root source folder as the first game-domain extraction.
+- `src/platform/loading_overlay.inl`: loading overlay window, spinner/progress rendering, and startup-progress callback bridge.
 - `docs/GAME_PLAN.md`: implementation checklist, backlog, and handoff notes for future agents.
 
 `src/main.cpp` is still intentionally large at this point. The refactor has started, but the monolith is not fully decomposed yet.

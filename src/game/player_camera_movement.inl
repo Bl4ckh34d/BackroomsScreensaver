@@ -168,6 +168,7 @@
         monsterHasSound_ = false;
         monsterHasLastKnown_ = false;
         monsterChasingVisible_ = false;
+        monsterHeardPlayerNow_ = false;
         monsterSearchTimer_ = 0.0f;
         monsterRoamTimer_ = RandRange(0.8f, 2.4f);
         monsterRecognitionActive_ = false;
