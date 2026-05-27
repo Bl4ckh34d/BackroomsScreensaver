@@ -2872,6 +2872,7 @@
         float breathY = std::sin(breathPhase_) * (0.002f + runIntensity_ * 0.0045f + runEffort_ * 0.008f);
         float desiredY = eyeTarget + playerVerticalOffset_ + verticalBob + sideBob + breathY;
         camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 10.0f);
+        MarkVisited(CameraTile());
     }
 
     void UpdatePathFollower(float dt) {

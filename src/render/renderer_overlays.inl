@@ -162,6 +162,8 @@
         float pad = 7.0f;
         float x0 = static_cast<float>(width_) - mapW - pad - 18.0f;
         float y0 = static_cast<float>(height_) - mapH - pad - 18.0f;
+        Tile cameraTile = CameraTile();
+        bool playerExplorationMap = runtimeMode_ == RendererRuntimeMode::PlayableGame && !settings_.debugAiMapOverlay;
 
         pushRect(x0 - pad, y0 - pad, mapW + pad * 2.0f, mapH + pad * 2.0f, {0.0f, 0.0f, 0.0f, 0.32f});
         pushRect(x0 - 1.0f, y0 - 1.0f, mapW + 2.0f, mapH + 2.0f, {0.53f, 0.46f, 0.31f, 0.24f});
@@ -187,8 +189,9 @@
         for (int y = 0; y < maze_.h; ++y) {
             for (int x = 0; x < maze_.w; ++x) {
                 if (!maze_.IsOpen(x, y)) continue;
-                XMFLOAT4 color{0.74f, 0.66f, 0.47f, 0.36f};
                 Tile t{x, y};
+                if (playerExplorationMap && VisitCount(t) == 0 && !(t == cameraTile)) continue;
+                XMFLOAT4 color{0.74f, 0.66f, 0.47f, playerExplorationMap ? 0.30f : 0.36f};
                 if (t == maze_.exit) color = {0.20f, 0.88f, 0.38f, 0.78f};
                 float px = mapTileX(x);
                 float py = y0 + static_cast<float>(y) * cell;
@@ -235,10 +238,10 @@
             if (ValidMonsterTile(monsterRoamTile_) && !monsterHasSound_ && !monsterHasLastKnown_) {
                 markTile(monsterRoamTile_, {0.82f, 0.68f, 0.42f, 0.56f}, 1.42f);
             }
+            markTile(MonsterTile(), {0.88f, 0.04f, 0.05f, 0.64f}, 1.45f);
         }
 
-        markTile(CameraTile(), {0.20f, 0.72f, 1.0f, 0.82f}, 1.70f);
-        markTile(MonsterTile(), {0.88f, 0.04f, 0.05f, 0.64f}, 1.45f);
+        markTile(cameraTile, {0.20f, 0.72f, 1.0f, 0.82f}, 1.70f);
 
         DrawOverlayVertices(verts);
     }
