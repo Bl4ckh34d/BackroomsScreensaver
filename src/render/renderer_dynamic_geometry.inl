@@ -163,13 +163,13 @@
 
     void AppendDynamicDoor(std::vector<Vertex>& verts) {
         float halfW = 0.60f;
-        float halfH = 1.13f;
+        float halfH = 1.05f;
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
         float angle = exitDoorAngle_;
         XMFLOAT3 right = RotateYVec(exitDoorRight_, angle);
         XMFLOAT3 normal = RotateYVec(exitDoorNormal_, angle);
-        XMFLOAT3 center = Add3(exitDoorHinge_, Add3(Scale3(right, halfW), Scale3(normal, 0.018f)));
-        AppendDynamicBoxAxes(verts, center, right, up, normal, {halfW, halfH, 0.026f}, 6.0f);
+        XMFLOAT3 center = Add3(exitDoorHinge_, Add3(Scale3(right, halfW), Scale3(normal, 0.012f)));
+        AppendDynamicBoxAxes(verts, center, right, up, normal, {halfW, halfH, 0.032f}, 6.0f);
 
         XMFLOAT3 knobCenter = Add3(center, OrientedOffset(right, up, normal, halfW * 0.63f, -0.08f, 0.070f));
         XMFLOAT3 kr = Scale3(right, 0.050f);
@@ -270,10 +270,10 @@
             bool hover = menuHoverButtonIndex_ == i;
             float material = hover ? 10.72f : 9.70f;
             MenuPlaquePlacement plaque = MenuButtonPlacement(i);
-            AppendDynamicBoxAxes(verts, plaque.center, plaque.right, up, plaque.inward, {plaque.halfW, plaque.halfH, 0.070f}, material);
-            XMFLOAT3 capCenter = Add3(plaque.center, Add3(Scale3(plaque.right, -plaque.halfW + 0.012f), Scale3(plaque.inward, -0.035f)));
-            AppendDynamicBoxAxes(verts, capCenter, plaque.right, up, plaque.inward, {0.018f, plaque.halfH + 0.012f, 0.048f}, 10.0f);
-            XMFLOAT3 labelCenter = Add3(plaque.center, Scale3(plaque.inward, 0.071f));
+            AppendDynamicBoxAxes(verts, plaque.center, plaque.right, up, plaque.inward, {plaque.halfW, plaque.halfH, 0.034f}, material);
+            XMFLOAT3 capCenter = Add3(plaque.center, Add3(Scale3(plaque.right, -plaque.halfW + 0.012f), Scale3(plaque.inward, -0.017f)));
+            AppendDynamicBoxAxes(verts, capCenter, plaque.right, up, plaque.inward, {0.018f, plaque.halfH + 0.012f, 0.026f}, 10.0f);
+            XMFLOAT3 labelCenter = Add3(plaque.center, Scale3(plaque.inward, 0.036f));
             XMFLOAT3 hw = Scale3(plaque.right, std::min(plaque.halfW * 0.58f, 0.78f));
             XMFLOAT3 hh = Scale3(up, 0.112f);
             float v0 = (static_cast<float>(i) + 0.12f) / 3.0f;

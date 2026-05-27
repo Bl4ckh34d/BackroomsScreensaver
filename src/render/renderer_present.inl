@@ -338,7 +338,7 @@
         if (runtimeMode_ == RendererRuntimeMode::MainMenu && exitDoorAngle_ > 0.001f) {
             XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -1.18f);
             exitLightPos = Add3(exitDoorCenter_, throughDoor);
-            exitLightPos.y = std::max(exitDoorCenter_.y + 0.45f, settings_.wallHeightMeters - 0.22f);
+            exitLightPos.y = exitDoorCenter_.y + 1.02f;
             exitLightStrength = 1.0f + SmoothStep(0.03f, 0.95f, exitDoorAngle_ / 1.38f) * 13.0f;
         }
         cb.exitLight0 = {

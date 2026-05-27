@@ -330,7 +330,7 @@ public:
     bool MenuExitDoorScreenRect(RECT& out) const {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return false;
         XMFLOAT3 center = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.035f));
-        return ProjectMenuQuadToScreen(center, exitDoorRight_, {0.0f, 1.0f, 0.0f}, 0.67f, 1.18f, out);
+        return ProjectMenuQuadToScreen(center, exitDoorRight_, {0.0f, 1.0f, 0.0f}, 0.71f, 1.12f, out);
     }
 
     void SetMenuHoverButtonIndex(int index) {
@@ -1024,7 +1024,7 @@ private:
 
     MenuPlaquePlacement MenuButtonPlacement(int index) const {
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
-        const float northWallZ = c.z + maze_.tileD * 0.5f - 0.045f;
+        const float northWallZ = c.z + maze_.tileD * 0.5f - 0.034f;
         MenuPlaquePlacement plaque{};
         plaque.halfW = std::min(maze_.tileW * 0.86f, 1.42f);
         plaque.halfH = 0.168f;

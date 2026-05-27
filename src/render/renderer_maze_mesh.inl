@@ -377,12 +377,20 @@
         auto addExitDoorwayWall = [&]() {
             if (!exitPortal.valid) return;
             XMFLOAT3 up{0.0f, 1.0f, 0.0f};
-            float openingHalf = std::min(exitPortal.halfSpan * 0.68f, 0.76f);
-            float doorwayTop = std::min(wallH - 0.18f, 2.38f);
+            constexpr float kExitDoorHalfW = 0.60f;
+            constexpr float kExitDoorHalfH = 1.05f;
+            constexpr float kExitDoorCenterY = 1.05f;
+            constexpr float kExitFramePostHalfW = 0.055f;
+            constexpr float kExitFrameTopHalfH = 0.070f;
+            constexpr float kExitDoorwayHalfW = kExitDoorHalfW + kExitFramePostHalfW * 2.0f;
+            constexpr float kExitDoorwayTop = kExitDoorCenterY + kExitDoorHalfH + kExitFrameTopHalfH * 2.0f;
+            float openingHalf = std::min(exitPortal.halfSpan * 0.86f, kExitDoorwayHalfW);
+            float doorwayTop = std::min(wallH - 0.04f, kExitDoorwayTop);
+            float vestibuleH = doorwayTop;
             float vestibuleLength = std::min(
                 std::max(tileAvg * 7.5f, settings_.fogEndMeters + tileAvg * 3.0f),
                 tileAvg * 14.0f);
-            float vestibuleHalf = std::min(exitPortal.halfSpan * 0.72f, 0.82f);
+            float vestibuleHalf = openingHalf;
 
             auto wallPoint = [&](float along, float y, float push = 0.0f) {
                 return Add3(exitPortal.wallCenter,
@@ -419,10 +427,10 @@
                 FloorUv(Add3(farCenter, Scale3(exitPortal.right, vestibuleHalf)).x, Add3(farCenter, Scale3(exitPortal.right, vestibuleHalf)).z),
                 FloorUv(Add3(farCenter, Scale3(exitPortal.right, -vestibuleHalf)).x, Add3(farCenter, Scale3(exitPortal.right, -vestibuleHalf)).z),
                 1.0f);
-            XMFLOAT3 vc0 = p(-vestibuleHalf, wallH, vestibuleLength);
-            XMFLOAT3 vc1 = p(vestibuleHalf, wallH, vestibuleLength);
-            XMFLOAT3 vc2 = p(vestibuleHalf, wallH, 0.0f);
-            XMFLOAT3 vc3 = p(-vestibuleHalf, wallH, 0.0f);
+            XMFLOAT3 vc0 = p(-vestibuleHalf, vestibuleH, vestibuleLength);
+            XMFLOAT3 vc1 = p(vestibuleHalf, vestibuleH, vestibuleLength);
+            XMFLOAT3 vc2 = p(vestibuleHalf, vestibuleH, 0.0f);
+            XMFLOAT3 vc3 = p(-vestibuleHalf, vestibuleH, 0.0f);
             AddQuadUV(vertices, indices,
                 vc0, vc1, vc2, vc3,
                 {0, -1, 0}, exitPortal.right,
@@ -433,17 +441,17 @@
                 XMFLOAT3 normal = Scale3(exitPortal.right, -side);
                 AddQuadUV(vertices, indices,
                     p(side * vestibuleHalf, 0.0f, vestibuleLength), p(side * vestibuleHalf, 0.0f, 0.0f),
-                    p(side * vestibuleHalf, wallH, 0.0f), p(side * vestibuleHalf, wallH, vestibuleLength),
+                    p(side * vestibuleHalf, vestibuleH, 0.0f), p(side * vestibuleHalf, vestibuleH, vestibuleLength),
                     normal, Scale3(outward, -1.0f),
                     {0, 0}, {vestibuleLength / settings_.wallTextureMeters, 0},
-                    {vestibuleLength / settings_.wallTextureMeters, wallH / settings_.wallTextureMeters}, {0, wallH / settings_.wallTextureMeters},
+                    {vestibuleLength / settings_.wallTextureMeters, vestibuleH / settings_.wallTextureMeters}, {0, vestibuleH / settings_.wallTextureMeters},
                     0.0f);
             };
             addVestibuleSide(-1.0f);
             addVestibuleSide(1.0f);
             AddQuadUV(vertices, indices,
                 p(vestibuleHalf, 0.0f, vestibuleLength), p(-vestibuleHalf, 0.0f, vestibuleLength),
-                p(-vestibuleHalf, wallH, vestibuleLength), p(vestibuleHalf, wallH, vestibuleLength),
+                p(-vestibuleHalf, vestibuleH, vestibuleLength), p(vestibuleHalf, vestibuleH, vestibuleLength),
                 Scale3(outward, -1.0f), Scale3(exitPortal.right, -1.0f),
                 {0, 0}, {1, 0}, {1, 1}, {0, 1}, 10.0f);
         };
@@ -1510,22 +1518,25 @@
             XMFLOAT3 inward = exitPortal.inward;
             XMFLOAT3 up{0.0f, 1.0f, 0.0f};
             XMFLOAT3 right = exitPortal.right;
-            constexpr float fixedDoorCenterY = 1.13f;
+            constexpr float fixedDoorCenterY = 1.05f;
             constexpr float fixedDoorHalfW = 0.60f;
-            constexpr float fixedDoorHalfH = 1.13f;
-            XMFLOAT3 doorCenter{bx + inward.x * 0.075f, fixedDoorCenterY, bz + inward.z * 0.075f};
+            constexpr float fixedDoorHalfH = 1.05f;
+            constexpr float fixedFramePostHalfW = 0.055f;
+            constexpr float fixedFrameTopHalfH = 0.070f;
+            XMFLOAT3 doorCenter{bx + inward.x * 0.026f, fixedDoorCenterY, bz + inward.z * 0.026f};
             XMFLOAT3 forward = inward;
             exitDoorCenter_ = doorCenter;
             exitDoorNormal_ = inward;
             exitDoorRight_ = right;
             exitDoorHinge_ = Add3(doorCenter, OrientedOffset(right, up, forward, -fixedDoorHalfW, 0.0f, 0.0f));
-            constexpr float frameHalfW = fixedDoorHalfW + 0.040f;
-            constexpr float frameHalfH = fixedDoorHalfH + 0.050f;
-            float frameCenterY = frameHalfH;
-            float frameYOffset = frameCenterY - doorCenter.y;
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, -frameHalfW, frameYOffset, 0.0f)), {0.045f, frameHalfH, 0.060f}, exitPortal.yaw, 10.0f);
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, frameHalfW, frameYOffset, 0.0f)), {0.045f, frameHalfH, 0.060f}, exitPortal.yaw, 10.0f);
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, frameYOffset + frameHalfH + 0.055f, 0.0f)), {frameHalfW + 0.045f, 0.055f, 0.060f}, exitPortal.yaw, 10.0f);
+            constexpr float framePostCenterX = fixedDoorHalfW + fixedFramePostHalfW;
+            constexpr float framePostHalfH = (fixedDoorCenterY + fixedDoorHalfH + fixedFrameTopHalfH * 2.0f) * 0.5f;
+            constexpr float framePostCenterY = framePostHalfH;
+            constexpr float frameTopCenterY = fixedDoorCenterY + fixedDoorHalfH + fixedFrameTopHalfH;
+            constexpr float frameOuterHalfW = fixedDoorHalfW + fixedFramePostHalfW * 2.0f;
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, -framePostCenterX, framePostCenterY - doorCenter.y, 0.0f)), {fixedFramePostHalfW, framePostHalfH, 0.038f}, exitPortal.yaw, 10.0f);
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, framePostCenterX, framePostCenterY - doorCenter.y, 0.0f)), {fixedFramePostHalfW, framePostHalfH, 0.038f}, exitPortal.yaw, 10.0f);
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, frameTopCenterY - doorCenter.y, 0.0f)), {frameOuterHalfW, fixedFrameTopHalfH, 0.038f}, exitPortal.yaw, 10.0f);
             constexpr float fixedSignTargetH = 0.28f;
             float signY = doorCenter.y + fixedDoorHalfH + fixedSignTargetH * 0.5f + 0.24f;
             signY = std::min(signY, wallH - fixedSignTargetH * 0.5f - 0.12f);
