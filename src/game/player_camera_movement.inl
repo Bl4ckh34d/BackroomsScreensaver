@@ -2902,9 +2902,10 @@
 
         float eyeTarget = crouching ? 1.12f : 1.45f;
         float configuredBob = std::min(settings_.headBobAmount, 0.075f);
-        float bobAmount = configuredBob * Lerp(0.08f, 0.34f, moveBlend) * (crouching ? 0.16f : 1.0f);
-        float verticalBob = std::sin(stepPhase_ * 2.0f) * bobAmount;
-        float sideBob = crouching ? 0.0f : std::sin(stepPhase_) * (0.0025f + runEffort_ * 0.0045f);
+        float bobAmount = configuredBob * Lerp(0.045f, 0.22f, moveBlend) * (crouching ? 0.10f : 1.0f);
+        float stepWave = std::sin(stepPhase_ * 2.0f);
+        float verticalBob = stepWave * bobAmount;
+        float sideBob = crouching ? 0.0f : stepWave * (0.00055f + runEffort_ * 0.0011f);
         float breathY = std::sin(breathPhase_) * (0.002f + runIntensity_ * 0.0045f + runEffort_ * 0.008f);
         float desiredY = eyeTarget + playerVerticalOffset_ + verticalBob + sideBob + breathY;
         camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 10.0f);

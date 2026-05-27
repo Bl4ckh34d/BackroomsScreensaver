@@ -2195,13 +2195,17 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 offBase = float3(0.91 + lens * 0.07 - edge * 0.055,
                                 0.92 + lens * 0.07 - edge * 0.050,
                                 0.86 + lens * 0.06 - edge * 0.045);
-        float3 base = materialId < 3.5 ? lampBase : offBase;
-        float emit = materialId < 3.5 ? LampVisualPower(input.material, input.worldPos, time) * 2.6 * (1.0 - saturate(gTransition0.z)) : 0.0;
-        float passiveLight = materialId < 3.5
-            ? gLighting0.z
-            : gLighting0.z * 0.48 +
-              FlashlightAmount(input.worldPos, N) * 0.86 +
-              LocalLampLight(input.worldPos, N, time) * gLighting1.x * 0.22;
+        float lampDamage = LampDamageAtWorld(input.worldPos.xz);
+        float brokenVisual = materialId < 3.5 ? smoothstep(0.985, 0.995, lampDamage) : 1.0;
+        float3 base = lerp(lampBase, offBase, brokenVisual);
+        float emit = materialId < 3.5
+            ? LampVisualPower(input.material, input.worldPos, time) * 2.6 * (1.0 - saturate(gTransition0.z)) * (1.0 - brokenVisual)
+            : 0.0;
+        float passiveOn = gLighting0.z;
+        float passiveOff = gLighting0.z * 0.48 +
+            FlashlightAmount(input.worldPos, N) * 0.86 +
+            LocalLampLight(input.worldPos, N, time) * gLighting1.x * 0.22;
+        float passiveLight = lerp(passiveOn, passiveOff, brokenVisual);
         float3 color = base * (passiveLight + emit);
         float fog = saturate((length(input.worldPos - cam) - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 3.2);

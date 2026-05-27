@@ -35,12 +35,13 @@
         float deathFocus = deathActive_ ? SmoothStep(0.0f, 0.24f, deathTimer_) : 0.0f;
         XMFLOAT3 f = Forward();
         float stepPhase = stepPhase_;
-        float runCameraMotion = 1.0f + runIntensity_ * 1.05f + runEffort_ * 1.25f;
-        float sideSway = std::sin(stepPhase) * settings_.sideSwayAmount * runCameraMotion * (1.0f - deathFocus);
+        float runCameraMotion = 1.0f + runIntensity_ * 0.42f + runEffort_ * 0.55f;
+        float stepWave = std::sin(stepPhase * 2.0f);
+        float sideSway = stepWave * settings_.sideSwayAmount * 0.26f * runCameraMotion * (1.0f - deathFocus);
         XMVECTOR right = XMVectorSet(std::cos(bodyYaw_), 0.0f, -std::sin(bodyYaw_), 0.0f);
         XMVECTOR eye = XMLoadFloat3(&camera_) + right * sideSway;
         XMVECTOR worldUp = XMVectorSet(0, 1, 0, 0);
-        float bobPitch = std::sin(stepPhase * 0.5f) * 0.020f * runCameraMotion * (1.0f - deathFocus);
+        float bobPitch = stepWave * 0.0045f * runCameraMotion * (1.0f - deathFocus);
         XMVECTOR viewDir = XMVector3Normalize(XMVectorSet(f.x, lookPitch_ + bobPitch, f.z, 0.0f));
         XMVECTOR viewRight = XMVector3Normalize(XMVector3Cross(worldUp, viewDir));
         if (monsterPreview_ && monsterPreviewView_ == MonsterPreviewView::Top) {
