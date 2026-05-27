@@ -8,10 +8,12 @@ if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
-add_executable(BackroomsMaze WIN32
+set(BACKROOMS_SOURCES
     src/main.cpp
     src/app.rc
 )
+
+add_executable(BackroomsMaze WIN32 ${BACKROOMS_SOURCES})
 
 target_compile_definitions(BackroomsMaze PRIVATE
     UNICODE
@@ -35,6 +37,34 @@ target_link_libraries(BackroomsMaze PRIVATE
 set_target_properties(BackroomsMaze PROPERTIES
     OUTPUT_NAME "BackroomsMaze"
     SUFFIX ".scr"
+)
+
+add_executable(BackroomsMazeGame WIN32 ${BACKROOMS_SOURCES})
+add_dependencies(BackroomsMazeGame BackroomsMaze)
+
+target_compile_definitions(BackroomsMazeGame PRIVATE
+    UNICODE
+    _UNICODE
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+    BACKROOMS_GAME_EXE
+)
+
+target_link_libraries(BackroomsMazeGame PRIVATE
+    d3d11
+    dxgi
+    d3dcompiler
+    windowscodecs
+    ole32
+    comctl32
+    user32
+    gdi32
+    shell32
+)
+
+set_target_properties(BackroomsMazeGame PROPERTIES
+    OUTPUT_NAME "BackroomsMazeGame"
+    SUFFIX ".exe"
 )
 
 foreach(helper Config PreviewTest Profile BloodDebug Test)
@@ -75,5 +105,23 @@ elseif(BACKROOMS_DEFAULT_INI)
             "${BACKROOMS_DEFAULT_INI}"
             "$<TARGET_FILE_DIR:BackroomsMaze>/BackroomsMaze.ini"
         COMMENT "Copying preferred BackroomsMaze.ini defaults"
+    )
+endif()
+
+if(BACKROOMS_DEFAULT_INI AND BACKROOMS_POWERSHELL)
+    add_custom_command(TARGET BackroomsMazeGame POST_BUILD
+        COMMAND "${BACKROOMS_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass
+            -File "${CMAKE_SOURCE_DIR}/tools/merge-ini-defaults.ps1"
+            -ScrPath "$<TARGET_FILE:BackroomsMaze>"
+            -PreferredIni "${BACKROOMS_DEFAULT_INI}"
+            -OutputIni "$<TARGET_FILE_DIR:BackroomsMazeGame>/BackroomsMaze.ini"
+        COMMENT "Merging preferred BackroomsMaze.ini defaults for game"
+    )
+elseif(BACKROOMS_DEFAULT_INI)
+    add_custom_command(TARGET BackroomsMazeGame POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${BACKROOMS_DEFAULT_INI}"
+            "$<TARGET_FILE_DIR:BackroomsMazeGame>/BackroomsMaze.ini"
+        COMMENT "Copying preferred BackroomsMaze.ini defaults for game"
     )
 endif()

@@ -264,6 +264,25 @@ struct OverlayVertex {
     XMFLOAT4 color;
 };
 
+enum class RendererRuntimeMode {
+    ScreensaverAutopilot,
+    PlayableGame,
+    DebugViewer,
+    Preview
+};
+
+struct GameInputSnapshot {
+    float moveX = 0.0f;
+    float moveZ = 0.0f;
+    float lookDeltaX = 0.0f;
+    float lookDeltaY = 0.0f;
+    bool jump = false;
+    bool sprint = false;
+    bool crouch = false;
+    bool interact = false;
+    bool pause = false;
+};
+
 struct SceneConstants {
     XMFLOAT4X4 viewProj;
     XMFLOAT4X4 lightViewProj;
@@ -1689,6 +1708,8 @@ public:
         settings_ = settingsOverride ? *settingsOverride : LoadSettings();
         monsterPreview_ = monsterPreview;
         monsterPreviewView_ = monsterPreviewView;
+        runtimeMode_ = monsterPreview_ ? RendererRuntimeMode::Preview :
+            (gEffectDebugViewer ? RendererRuntimeMode::DebugViewer : runtimeMode_);
         profile.Mark(L"LoadSettings");
         ReportStartupStep(L"Settings loaded", L"Creating Direct3D device.");
         hwnd_ = hwnd;
@@ -1760,6 +1781,7 @@ public:
 
         runtimeSeed_ = ResolveRuntimeSeed(settings_.mazeSeed);
         ApplyRuntimeVariation(settings_, runtimeSeed_);
+        gameplaySettings_ = settings_;
         if (gEffectDebugViewer) ApplyDebugSliceSettings();
         LoadMonsterSkullMesh();
         profile.Mark(L"LoadMonsterSkullMesh");
@@ -1845,6 +1867,38 @@ public:
 
     bool LastPresentCompleted() const {
         return lastPresentCompleted_;
+    }
+
+    void SetRuntimeMode(RendererRuntimeMode mode) {
+        runtimeMode_ = mode;
+    }
+
+    RendererRuntimeMode RuntimeMode() const {
+        return runtimeMode_;
+    }
+
+    void SetGameInput(const GameInputSnapshot& input) {
+        gameInput_ = input;
+    }
+
+    void RestartGameRun() {
+        gEffectDebugViewer = false;
+        gBloodDebugEveryWall = false;
+        runtimeMode_ = RendererRuntimeMode::PlayableGame;
+        settings_ = gameplaySettings_;
+        maze_.w = settings_.mazeWidth;
+        maze_.h = settings_.mazeHeight;
+        maze_.tileW = settings_.tileWidthMeters;
+        maze_.tileD = settings_.tileLengthMeters;
+        maze_.exit = {maze_.w - 2, maze_.h - 2};
+        RestartMaze();
+    }
+
+    void EnterDebugViewer(DebugSliceEffect effect = DebugSliceEffect::Blood, int tiles = 3) {
+        runtimeMode_ = RendererRuntimeMode::DebugViewer;
+        gEffectDebugViewer = true;
+        gBloodDebugEveryWall = effect == DebugSliceEffect::Blood || DebugSliceEffectIsWater(effect);
+        ConfigureDebugSlice(effect, tiles);
     }
 
     void SetMonsterPreviewOrbit(float yaw, float pitch, float distance) {
@@ -2220,6 +2274,15 @@ private:
     StaticPropMesh airVentPropMesh_;
     StaticPropMesh exitSignPropMesh_;
     std::array<StaticPropMesh, 4> ceilingLampPropMeshes_;
+    RendererRuntimeMode runtimeMode_ = RendererRuntimeMode::ScreensaverAutopilot;
+    GameInputSnapshot gameInput_{};
+    Settings gameplaySettings_{};
+    float playerHealth_ = 100.0f;
+    float playerStamina_ = 100.0f;
+    float playerVerticalOffset_ = 0.0f;
+    float playerVerticalVelocity_ = 0.0f;
+    float playerStaminaRegenDelay_ = 0.0f;
+    bool playerGrounded_ = true;
     bool monsterPreview_ = false;
     MonsterPreviewView monsterPreviewView_ = MonsterPreviewView::Orbit;
     bool monsterPreviewManualOrbit_ = false;
@@ -2590,7 +2653,7 @@ private:
 
     uint64_t TextureCacheHash() const {
         uint64_t hash = 1469598103934665603ull;
-        const char* version = "BackroomsMazeTextureCacheV9";
+        const char* version = "BackroomsMazeTextureCacheV10";
         hash = Fnv1aAppend(hash, version, std::strlen(version));
         hash = Fnv1aAppend(hash, &kTextureSize, sizeof(kTextureSize));
         hash = Fnv1aAppend(hash, &kMaterialCount, sizeof(kMaterialCount));
@@ -2644,7 +2707,11 @@ private:
     }
 
     static std::wstring TextureCacheFileName() {
+#if defined(BACKROOMS_GAME_EXE)
+        return L"BackroomsMazeGame_textures.bin";
+#else
         return L"BackroomsMaze_textures.bin";
+#endif
     }
 
     static std::filesystem::path TextureCachePath() {
@@ -3512,7 +3579,7 @@ float3 BackroomsBaseColor(float3 base, float materialId)
     if (materialId < 0.5)
     {
         float3 classicWall = float3(0.94, 0.74, 0.29) * (0.68 + luma * 0.68);
-        return saturate(lerp(base * 1.12, classicWall, 0.46));
+        return saturate(lerp(base * 1.08, classicWall, 0.14));
     }
     if (materialId > 0.5 && materialId < 1.5)
     {
@@ -5593,6 +5660,7 @@ float4 PSMain(VSOut input) : SV_TARGET
     if (materialId > 14.5 && materialId < 15.5)
     {
         float variant = frac(input.material);
+        float particleFade = smoothstep(0.055, 0.24, variant);
         float3 toLight = input.worldPos - gShadow0.xyz;
         float lightDist = length(toLight);
         float focus = max(0.45, gAir0.x);
@@ -5633,7 +5701,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float lightFade = smoothstep(0.35, 1.10, lightDist) * (1.0 - smoothstep(gShadow2.y * 0.46, gShadow2.y * 0.82, lightDist));
         float depthFade = 1.0 - smoothstep(gFog0.y * 0.72, gFog0.y, length(input.worldPos - cam));
         float focusAlpha = lerp(1.0, 0.46, blur);
-        float alpha = shape * flashlight * centerBoost * lightFade * depthFade * focusAlpha * (0.20 + variant * 0.12) * (1.0 - saturate(gTransition0.z));
+        float alpha = shape * flashlight * centerBoost * lightFade * depthFade * focusAlpha * (0.20 + variant * 0.12) * particleFade * (1.0 - saturate(gTransition0.z));
         if (alpha < 0.010) discard;
         float3 color = float3(0.72, 0.78, 0.72) * (0.20 + flashlight * (1.08 + centerLine * 0.82));
         color += float3(0.42, 0.48, 0.44) * shell * (0.08 + blur * 0.08 + centerLine * 0.08) * flashlightScale;
@@ -11070,6 +11138,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         UpdateMonsterLampDamage(dt);
         float monsterDist = MonsterDistance();
         if (monsterDist < settings_.monsterKillDistance && maze_.LineClear(CameraTile(), MonsterTile())) {
+            playerHealth_ = 0.0f;
             BeginDeath();
             UpdateDeath(dt);
             UpdateFlashlightAim(dt);
@@ -11122,7 +11191,11 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             chaseLookBackCooldown_ = std::max(0.0f, chaseLookBackCooldown_ - dt);
             stumbleTimer_ = std::max(0.0f, stumbleTimer_ - dt * 2.0f);
         }
-        UpdatePathFollower(dt);
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame) {
+            UpdateManualPlayer(dt);
+        } else {
+            UpdatePathFollower(dt);
+        }
         UpdateFlashlightAim(dt);
         UpdateAirParticles(dt);
         UpdateAirParticleFocus(dt);
@@ -11558,7 +11631,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         float coneHalf = std::clamp(settings_.flashlightConeDegrees, 20.0f, 140.0f) * 0.5f * kPi / 180.0f;
         float coneOuter = std::cos(coneHalf);
         float coneInner = std::cos(std::max(3.0f * kPi / 180.0f, coneHalf * 0.50f));
-        int maxParticles = std::min<int>(static_cast<int>(airParticles_.size()), std::clamp(static_cast<int>(6800.0f * std::clamp(settings_.airParticleDensity, 0.0f, 4.0f)), 0, 22000));
+        int maxParticles = std::min<int>(static_cast<int>(airParticles_.size()), std::clamp(static_cast<int>(3400.0f * std::clamp(settings_.airParticleDensity, 0.0f, 4.0f)), 0, 11000));
         int emitted = 0;
         XMFLOAT3 worldUp{0.0f, 1.0f, 0.0f};
         for (const AirParticle& p : airParticles_) {
@@ -11585,7 +11658,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             if (p.nearLayer < 0.5f && projectedPixels < 0.22f) continue;
             float lifeFade = SmoothStep(0.0f, 2.8f, p.age) * (1.0f - SmoothStep(p.life - 5.2f, p.life, p.age));
             if (lifeFade <= 0.01f) continue;
-            size *= Lerp(0.55f, 1.0f, lifeFade);
+            size *= Lerp(0.18f, 1.0f, lifeFade);
             XMFLOAT3 toCam = Normalize3(Sub3(camera_, pos), Scale3(lightDir, -1.0f));
             XMFLOAT3 right = Normalize3(Cross3(worldUp, toCam), {1.0f, 0.0f, 0.0f});
             XMFLOAT3 up = Normalize3(Cross3(toCam, right), worldUp);
@@ -11596,7 +11669,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             float halfH = size * (0.82f + (1.0f / std::max(0.60f, p.aspect)) * 0.10f);
             XMFLOAT3 hw = Scale3(side, halfW);
             XMFLOAT3 hh = Scale3(vertical, halfH);
-            float material = 15.0f + std::min(0.985f, p.seed * 0.78f);
+            float material = 15.0f + std::min(0.985f, lifeFade * 0.94f + p.seed * 0.035f);
             AppendDynamicQuad(verts,
                 Add3(pos, Add3(Scale3(hw, -1.0f), Scale3(hh, -1.0f))),
                 Add3(pos, Add3(hw, Scale3(hh, -1.0f))),
@@ -11811,6 +11884,47 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         pushRect(x - 2.0f, y - 2.0f, 1.0f, h + 4.0f, {0.33f, 0.055f, 0.052f, 0.86f});
         pushRect(x + w + 1.0f, y - 2.0f, 1.0f, h + 4.0f, {0.33f, 0.055f, 0.052f, 0.86f});
 
+        DrawOverlayVertices(verts);
+    }
+
+    void DrawGameHudOverlay() {
+        if (runtimeMode_ != RendererRuntimeMode::PlayableGame || !overlayBuffer_ ||
+            !overlayVertexShader_ || !overlayPixelShader_ || width_ <= 0 || height_ <= 0) {
+            return;
+        }
+
+        std::vector<OverlayVertex> verts;
+        verts.reserve(96);
+        auto ndcX = [&](float px) { return px / static_cast<float>(width_) * 2.0f - 1.0f; };
+        auto ndcY = [&](float py) { return 1.0f - py / static_cast<float>(height_) * 2.0f; };
+        auto pushRect = [&](float x, float y, float w, float h, XMFLOAT4 color) {
+            float l = ndcX(x);
+            float r = ndcX(x + w);
+            float t = ndcY(y);
+            float b = ndcY(y + h);
+            verts.push_back({{l, b}, color});
+            verts.push_back({{l, t}, color});
+            verts.push_back({{r, t}, color});
+            verts.push_back({{l, b}, color});
+            verts.push_back({{r, t}, color});
+            verts.push_back({{r, b}, color});
+        };
+        auto pushBar = [&](float x, float y, float w, float h, float fill, XMFLOAT4 fillColor) {
+            fill = Clamp01(fill);
+            pushRect(x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f, {0.015f, 0.014f, 0.012f, 0.78f});
+            pushRect(x, y, w, h, {0.03f, 0.028f, 0.024f, 0.84f});
+            float fillW = std::round(w * fill);
+            if (fillW > 0.5f) {
+                pushRect(x, y, fillW, h, fillColor);
+                pushRect(x, y, fillW, std::max(1.0f, h * 0.22f), {1.0f, 1.0f, 1.0f, 0.16f});
+            }
+        };
+
+        float x = 24.0f;
+        float y = static_cast<float>(height_) - 58.0f;
+        float w = std::clamp(static_cast<float>(width_) * 0.22f, 180.0f, 290.0f);
+        pushBar(x, y, w, 14.0f, playerHealth_ / 100.0f, {0.72f, 0.05f, 0.045f, 0.92f});
+        pushBar(x, y + 24.0f, w, 10.0f, playerStamina_ / 100.0f, {0.88f, 0.72f, 0.23f, 0.88f});
         DrawOverlayVertices(verts);
     }
 
@@ -12418,6 +12532,9 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             StartupProfileLine(L"Render before DrawDreadMeterOverlay");
             DrawDreadMeterOverlay();
             renderProfile.Mark(L"DreadOverlay");
+            StartupProfileLine(L"Render before DrawGameHudOverlay");
+            DrawGameHudOverlay();
+            renderProfile.Mark(L"GameHudOverlay");
         }
 
         context_->PSSetShaderResources(0, 7, nullSrvs);
@@ -12451,9 +12568,34 @@ enum class RunMode {
     GenerateIni
 };
 
+enum class GameState {
+    MainMenu,
+    PlayGame,
+    DebugScene,
+    Settings,
+    Exit
+};
+
 struct App {
     Renderer renderer;
     bool preview = false;
+    bool gameShell = false;
+    bool rendererInitialized = false;
+    bool gameRunStarted = false;
+    bool gameDebugActive = false;
+    HINSTANCE gameInstance = nullptr;
+    GameState gameState = GameState::MainMenu;
+    bool gameMouseCaptured = false;
+    bool gameRecenteringMouse = false;
+    POINT gameMouseCenter{};
+    float gameMouseDeltaX = 0.0f;
+    float gameMouseDeltaY = 0.0f;
+    HWND gameTitle = nullptr;
+    HWND gameSinglePlayer = nullptr;
+    HWND gameSettings = nullptr;
+    HWND gameDebug = nullptr;
+    HWND gameBack = nullptr;
+    HWND gameExit = nullptr;
     bool firstMouse = true;
     POINT initialMouse{};
     HWND hwnd = nullptr;
@@ -12496,6 +12638,11 @@ constexpr int kDebugSizeId = 5103;
 constexpr int kDebugResetId = 5104;
 constexpr int kDebugPrevPropId = 5105;
 constexpr int kDebugNextPropId = 5106;
+constexpr int kGameSinglePlayerId = 5201;
+constexpr int kGameSettingsId = 5202;
+constexpr int kGameDebugId = 5203;
+constexpr int kGameBackId = 5204;
+constexpr int kGameExitId = 5205;
 
 DebugSliceEffect StepDebugSliceEffect(DebugSliceEffect effect, int delta) {
     int count = static_cast<int>(DebugSliceEffect::Count);
@@ -12541,6 +12688,208 @@ void RedrawDebugSliceControls() {
         RedrawWindow(control, nullptr, nullptr,
             RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
     }
+}
+
+void ShowConfig(HWND owner);
+HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance);
+void SetLoadingOverlayStatus(HWND overlay, const wchar_t* phase, const wchar_t* detail, bool complete);
+void LoadingProgressCallback(void* context, const StartupProgressUpdate& update);
+
+void LayoutGameControls(HWND hwnd) {
+    if (!gApp || !gApp->gameShell) return;
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    int w = std::max(1L, rc.right - rc.left);
+    int h = std::max(1L, rc.bottom - rc.top);
+    int centerX = w / 2;
+    int buttonW = 220;
+    int buttonH = 38;
+    int gap = 12;
+    int top = std::max(90, h / 2 - 120);
+    if (gApp->gameTitle) MoveWindow(gApp->gameTitle, centerX - 240, top - 76, 480, 42, TRUE);
+    if (gApp->gameSinglePlayer) MoveWindow(gApp->gameSinglePlayer, centerX - buttonW / 2, top, buttonW, buttonH, TRUE);
+    if (gApp->gameSettings) MoveWindow(gApp->gameSettings, centerX - buttonW / 2, top + (buttonH + gap), buttonW, buttonH, TRUE);
+    if (gApp->gameDebug) MoveWindow(gApp->gameDebug, centerX - buttonW / 2, top + (buttonH + gap) * 2, buttonW, buttonH, TRUE);
+    if (gApp->gameExit) MoveWindow(gApp->gameExit, centerX - buttonW / 2, top + (buttonH + gap) * 3, buttonW, buttonH, TRUE);
+    if (gApp->gameBack) MoveWindow(gApp->gameBack, 12, 10, 104, 28, TRUE);
+}
+
+void SetGameMenuVisible(bool visible) {
+    if (!gApp || !gApp->gameShell) return;
+    int show = visible ? SW_SHOW : SW_HIDE;
+    HWND controls[] = {
+        gApp->gameTitle,
+        gApp->gameSinglePlayer,
+        gApp->gameSettings,
+        gApp->gameDebug,
+        gApp->gameExit
+    };
+    for (HWND control : controls) {
+        if (control) ShowWindow(control, show);
+    }
+}
+
+void UpdateGameMenuLabels() {
+    if (!gApp || !gApp->gameShell) return;
+    bool canResume = gApp->gameRunStarted && !gApp->gameDebugActive;
+    if (gApp->gameSinglePlayer) {
+        SetWindowTextW(gApp->gameSinglePlayer, canResume ? L"Resume" : L"Single Player");
+    }
+}
+
+void SetDebugControlsVisible(bool visible) {
+    if (!gApp) return;
+    int show = visible ? SW_SHOW : SW_HIDE;
+    HWND controls[] = {
+        gApp->debugPrevEffect,
+        gApp->debugNextEffect,
+        gApp->debugSize,
+        gApp->debugReset,
+        gApp->debugPrevProp,
+        gApp->debugNextProp
+    };
+    for (HWND control : controls) {
+        if (control) ShowWindow(control, show);
+    }
+}
+
+void ReleaseGameMouse() {
+    if (!gApp || !gApp->gameMouseCaptured) return;
+    ClipCursor(nullptr);
+    ReleaseCapture();
+    ShowCursor(TRUE);
+    gApp->gameMouseCaptured = false;
+}
+
+void CaptureGameMouse(HWND hwnd) {
+    if (!gApp || !gApp->gameShell || !hwnd) return;
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    POINT tl{rc.left, rc.top};
+    POINT br{rc.right, rc.bottom};
+    ClientToScreen(hwnd, &tl);
+    ClientToScreen(hwnd, &br);
+    RECT clip{tl.x, tl.y, br.x, br.y};
+    ClipCursor(&clip);
+    SetCapture(hwnd);
+    ShowCursor(FALSE);
+    gApp->gameMouseCaptured = true;
+    gApp->gameMouseCenter = {(rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2};
+    POINT center = gApp->gameMouseCenter;
+    ClientToScreen(hwnd, &center);
+    gApp->gameRecenteringMouse = true;
+    SetCursorPos(center.x, center.y);
+}
+
+bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
+    if (!gApp || !gApp->gameShell) return false;
+    if (gApp->rendererInitialized) return true;
+    gApp->renderer.SetRuntimeMode(mode);
+    if (!gApp->loadingOverlay) {
+        gApp->loadingOverlay = CreateLoadingOverlay(hwnd, gApp->gameInstance);
+    }
+    if (gApp->loadingOverlay) {
+        SetLoadingOverlayStatus(gApp->loadingOverlay, L"Loading level", L"Preparing renderer and maze.", false);
+        UpdateWindow(gApp->loadingOverlay);
+    }
+    StartupProgressSink loadingProgress{LoadingProgressCallback, gApp->loadingOverlay};
+    if (!gApp->renderer.Initialize(hwnd, nullptr, false, MonsterPreviewView::Orbit,
+            gApp->loadingOverlay ? &loadingProgress : nullptr)) {
+        if (gApp->loadingOverlay) {
+            DestroyWindow(gApp->loadingOverlay);
+            gApp->loadingOverlay = nullptr;
+        }
+        MessageBoxW(hwnd, L"Direct3D initialization failed.", L"Backrooms Maze Game", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    gApp->rendererInitialized = true;
+    if (gApp->loadingOverlay) {
+        SetLoadingOverlayStatus(gApp->loadingOverlay, L"Ready", L"Entering maze.", true);
+        DestroyWindow(gApp->loadingOverlay);
+        gApp->loadingOverlay = nullptr;
+    }
+    return true;
+}
+
+void EnterGameMainMenu(HWND hwnd) {
+    if (!gApp || !gApp->gameShell) return;
+    ReleaseGameMouse();
+    gApp->gameState = GameState::MainMenu;
+    gEffectDebugViewer = false;
+    gBloodDebugEveryWall = false;
+    SetGameMenuVisible(true);
+    UpdateGameMenuLabels();
+    SetDebugControlsVisible(false);
+    if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
+    SetWindowTextW(hwnd, L"Backrooms Maze");
+}
+
+void EnterGamePlay(HWND hwnd) {
+    if (!gApp || !gApp->gameShell) return;
+    gEffectDebugViewer = false;
+    gBloodDebugEveryWall = false;
+    if (!EnsureGameRenderer(hwnd, RendererRuntimeMode::PlayableGame)) return;
+    if (!gApp->gameRunStarted || gApp->gameDebugActive) {
+        if (!gApp->loadingOverlay) {
+            gApp->loadingOverlay = CreateLoadingOverlay(hwnd, gApp->gameInstance);
+        }
+        if (gApp->loadingOverlay) {
+            SetLoadingOverlayStatus(gApp->loadingOverlay, L"Loading level", L"Generating maze and scene geometry.", false);
+            UpdateWindow(gApp->loadingOverlay);
+        }
+        gApp->renderer.RestartGameRun();
+        if (gApp->loadingOverlay) {
+            SetLoadingOverlayStatus(gApp->loadingOverlay, L"Ready", L"Entering maze.", true);
+            DestroyWindow(gApp->loadingOverlay);
+            gApp->loadingOverlay = nullptr;
+        }
+        gApp->gameRunStarted = true;
+    } else {
+        gApp->renderer.SetRuntimeMode(RendererRuntimeMode::PlayableGame);
+    }
+    gApp->gameState = GameState::PlayGame;
+    gApp->gameDebugActive = false;
+    SetGameMenuVisible(false);
+    SetDebugControlsVisible(false);
+    if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
+    CaptureGameMouse(hwnd);
+    SetWindowTextW(hwnd, L"Backrooms Maze - Single Player");
+}
+
+void EnterGameDebug(HWND hwnd) {
+    if (!gApp || !gApp->gameShell) return;
+    gEffectDebugViewer = true;
+    gDebugSliceEffect = DebugSliceEffect::Blood;
+    gDebugSliceTiles = std::clamp(gDebugSliceTiles, 1, 5);
+    gBloodDebugEveryWall = true;
+    if (!EnsureGameRenderer(hwnd, RendererRuntimeMode::DebugViewer)) return;
+    gApp->renderer.EnterDebugViewer(gDebugSliceEffect, gDebugSliceTiles);
+    gApp->gameState = GameState::DebugScene;
+    gApp->gameDebugActive = true;
+    SetGameMenuVisible(false);
+    SetDebugControlsVisible(true);
+    if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_SHOW);
+    ReleaseGameMouse();
+    UpdateDebugSliceControls(hwnd);
+    RedrawDebugSliceControls();
+}
+
+GameInputSnapshot CollectGameInput() {
+    GameInputSnapshot input{};
+    if (!gApp || gApp->gameState != GameState::PlayGame) return input;
+    auto down = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
+    input.moveX = (down('D') ? 1.0f : 0.0f) + (down('A') ? -1.0f : 0.0f);
+    input.moveZ = (down('W') ? 1.0f : 0.0f) + (down('S') ? -1.0f : 0.0f);
+    input.lookDeltaX = gApp->gameMouseDeltaX;
+    input.lookDeltaY = gApp->gameMouseDeltaY;
+    gApp->gameMouseDeltaX = 0.0f;
+    gApp->gameMouseDeltaY = 0.0f;
+    input.jump = down(VK_SPACE);
+    input.sprint = down(VK_SHIFT);
+    input.crouch = down(VK_CONTROL) || down('C');
+    input.interact = down('E');
+    input.pause = down(VK_ESCAPE);
+    return input;
 }
 
 constexpr int kLoadingOverlayTimerId = 6101;
@@ -12797,6 +13146,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (hwnd == gApp->hwnd) {
                 if (gApp->loadingOverlay) ResizeLoadingOverlay(hwnd, gApp->loadingOverlay);
                 gApp->renderer.Resize(w, h);
+                if (gApp->gameShell) {
+                    LayoutGameControls(hwnd);
+                    if (gApp->gameMouseCaptured) CaptureGameMouse(hwnd);
+                }
             } else if (App::CloneOutput* clone = CloneForWindow(hwnd)) {
                 if (clone->loadingOverlay) ResizeLoadingOverlay(hwnd, clone->loadingOverlay);
                 clone->renderer.Resize(w, h);
@@ -12804,12 +13157,30 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         return 0;
     case WM_SETCURSOR:
+        if (gApp && gApp->gameShell && gApp->gameState == GameState::PlayGame) {
+            SetCursor(nullptr);
+            return TRUE;
+        }
         if (gApp && !gApp->preview) {
             SetCursor(nullptr);
             return TRUE;
         }
         break;
     case WM_MOUSEMOVE:
+        if (gApp && gApp->gameShell && gApp->gameState == GameState::PlayGame && hwnd == gApp->hwnd) {
+            POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+            if (gApp->gameRecenteringMouse) {
+                gApp->gameRecenteringMouse = false;
+                return 0;
+            }
+            gApp->gameMouseDeltaX += static_cast<float>(p.x - gApp->gameMouseCenter.x);
+            gApp->gameMouseDeltaY += static_cast<float>(p.y - gApp->gameMouseCenter.y);
+            POINT center = gApp->gameMouseCenter;
+            ClientToScreen(hwnd, &center);
+            gApp->gameRecenteringMouse = true;
+            SetCursorPos(center.x, center.y);
+            return 0;
+        }
         if (gApp && !gApp->preview) {
             POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             if (gApp->firstMouse) {
@@ -12827,9 +13198,46 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_RBUTTONDOWN:
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
+        if (gApp && gApp->gameShell) {
+            if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
+                (gApp->gameState == GameState::PlayGame || gApp->gameState == GameState::DebugScene)) {
+                EnterGameMainMenu(hwnd);
+            } else if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
+                gApp->gameState == GameState::MainMenu && gApp->gameRunStarted && !gApp->gameDebugActive) {
+                EnterGamePlay(hwnd);
+            }
+            return 0;
+        }
         if (gApp && !gApp->preview) QuitScreensaver(hwnd);
         return 0;
     case WM_COMMAND:
+        if (gApp && gApp->gameShell && hwnd == gApp->hwnd) {
+            int id = LOWORD(wParam);
+            if (id == kGameSinglePlayerId) {
+                EnterGamePlay(hwnd);
+                return 0;
+            }
+            if (id == kGameSettingsId) {
+                ReleaseGameMouse();
+                gApp->gameState = GameState::Settings;
+                ShowConfig(hwnd);
+                EnterGameMainMenu(hwnd);
+                return 0;
+            }
+            if (id == kGameDebugId) {
+                EnterGameDebug(hwnd);
+                return 0;
+            }
+            if (id == kGameBackId) {
+                EnterGameMainMenu(hwnd);
+                return 0;
+            }
+            if (id == kGameExitId) {
+                ReleaseGameMouse();
+                DestroyWindow(hwnd);
+                return 0;
+            }
+        }
         if (gApp && gEffectDebugViewer && hwnd == gApp->hwnd) {
             int id = LOWORD(wParam);
             if (id == kDebugPrevEffectId || id == kDebugNextEffectId || id == kDebugSizeId || id == kDebugResetId ||
@@ -12859,9 +13267,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_ACTIVATEAPP:
+        if (gApp && gApp->gameShell) {
+            if (wParam == FALSE) ReleaseGameMouse();
+            else if (gApp->gameState == GameState::PlayGame) CaptureGameMouse(gApp->hwnd);
+            return 0;
+        }
         if (gApp && !gApp->preview && wParam == FALSE) QuitScreensaver(hwnd);
         return 0;
     case WM_DESTROY:
+        if (gApp && gApp->gameShell) ReleaseGameMouse();
         PostQuitMessage(0);
         return 0;
     }
@@ -14416,10 +14830,124 @@ int RunSelfTest(HINSTANCE hInstance) {
     return ok ? 0 : 3;
 }
 
+void ApplyDefaultGuiFont(HWND hwnd) {
+    if (!hwnd) return;
+    HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+}
+
+int RunGame(HINSTANCE hInstance) {
+    const wchar_t* cls = L"BackroomsMazeGameWindow";
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.lpszClassName = cls;
+    wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    RegisterClassW(&wc);
+
+    App app;
+    app.preview = true;
+    app.gameShell = true;
+    app.gameInstance = hInstance;
+    gApp = &app;
+
+    int w = 1280;
+    int h = 760;
+    int x = std::max(0, (GetSystemMetrics(SM_CXSCREEN) - w) / 2);
+    int y = std::max(0, (GetSystemMetrics(SM_CYSCREEN) - h) / 2);
+    HWND hwnd = CreateWindowExW(0, cls, L"Backrooms Maze", WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+        x, y, w, h, nullptr, nullptr, hInstance, nullptr);
+    if (!hwnd) {
+        gApp = nullptr;
+        return 1;
+    }
+    app.hwnd = hwnd;
+
+    app.gameTitle = CreateWindowW(L"STATIC", L"Backrooms Maze", WS_CHILD | WS_VISIBLE | SS_CENTER,
+        0, 0, 10, 10, hwnd, nullptr, hInstance, nullptr);
+    app.gameSinglePlayer = CreateWindowW(L"BUTTON", L"Single Player", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kGameSinglePlayerId)), hInstance, nullptr);
+    app.gameSettings = CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kGameSettingsId)), hInstance, nullptr);
+    app.gameDebug = CreateWindowW(L"BUTTON", L"Debug", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kGameDebugId)), hInstance, nullptr);
+    app.gameExit = CreateWindowW(L"BUTTON", L"Exit", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kGameExitId)), hInstance, nullptr);
+    app.gameBack = CreateWindowW(L"BUTTON", L"Back", WS_CHILD | BS_PUSHBUTTON,
+        0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kGameBackId)), hInstance, nullptr);
+
+    app.debugPrevEffect = CreateWindowW(L"BUTTON", L"< Effect", WS_CHILD | BS_PUSHBUTTON,
+        12, 10, 92, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugPrevEffectId)), hInstance, nullptr);
+    app.debugNextEffect = CreateWindowW(L"BUTTON", L"Effect >", WS_CHILD | BS_PUSHBUTTON,
+        110, 10, 92, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugNextEffectId)), hInstance, nullptr);
+    app.debugSize = CreateWindowW(L"BUTTON", L"Grid: 3x3", WS_CHILD | BS_PUSHBUTTON,
+        210, 10, 104, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugSizeId)), hInstance, nullptr);
+    app.debugReset = CreateWindowW(L"BUTTON", L"Reset anim", WS_CHILD | BS_PUSHBUTTON,
+        322, 10, 104, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugResetId)), hInstance, nullptr);
+    app.debugPrevProp = CreateWindowW(L"BUTTON", L"< Prop", WS_CHILD | BS_PUSHBUTTON,
+        434, 10, 84, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugPrevPropId)), hInstance, nullptr);
+    app.debugNextProp = CreateWindowW(L"BUTTON", L"Prop >", WS_CHILD | BS_PUSHBUTTON,
+        526, 10, 84, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugNextPropId)), hInstance, nullptr);
+
+    HWND controls[] = {
+        app.gameTitle, app.gameSinglePlayer, app.gameSettings, app.gameDebug, app.gameExit, app.gameBack,
+        app.debugPrevEffect, app.debugNextEffect, app.debugSize, app.debugReset, app.debugPrevProp, app.debugNextProp
+    };
+    for (HWND control : controls) ApplyDefaultGuiFont(control);
+
+    LayoutGameControls(hwnd);
+    SetDebugControlsVisible(false);
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+
+    MSG msg{};
+    bool running = true;
+    ULONGLONG lastTicks = GetTickCount64();
+    while (running) {
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
+                running = false;
+                break;
+            }
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        if (!running) break;
+
+        ULONGLONG now = GetTickCount64();
+        float dt = std::min(0.05f, static_cast<float>(now - lastTicks) / 1000.0f);
+        lastTicks = now;
+
+        if (app.rendererInitialized &&
+            (app.gameState == GameState::PlayGame || app.gameState == GameState::DebugScene)) {
+            if (app.gameState == GameState::PlayGame) {
+                GameInputSnapshot input = CollectGameInput();
+                app.renderer.SetGameInput(input);
+            } else {
+                app.renderer.SetGameInput({});
+            }
+            app.renderer.TickFixed(dt);
+            if (app.gameState == GameState::DebugScene) RedrawDebugSliceControls();
+        } else {
+            Sleep(10);
+        }
+        Sleep(1);
+    }
+
+    ReleaseGameMouse();
+    gApp = nullptr;
+    gEffectDebugViewer = false;
+    gBloodDebugEveryWall = false;
+    return static_cast<int>(msg.wParam);
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     SetProcessDPIAware();
+#if defined(BACKROOMS_GAME_EXE)
+    return RunGame(hInstance);
+#else
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     HWND previewParent = nullptr;
@@ -14439,4 +14967,5 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     }
 
     return RunScreensaver(hInstance, mode, previewParent);
+#endif
 }

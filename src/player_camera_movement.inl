@@ -147,6 +147,12 @@
         exitDoorAngle_ = 0.0f;
         deathActive_ = false;
         deathTimer_ = 0.0f;
+        playerHealth_ = 100.0f;
+        playerStamina_ = 100.0f;
+        playerVerticalOffset_ = 0.0f;
+        playerVerticalVelocity_ = 0.0f;
+        playerStaminaRegenDelay_ = 0.0f;
+        playerGrounded_ = true;
         monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
         monsterPath_.clear();
         monsterPathIndex_ = 0;
@@ -268,6 +274,11 @@
         } else if (gBloodDebugEveryWall) {
             maze_.GenerateBloodDebugCorridor();
         } else {
+            maze_.w = settings_.mazeWidth;
+            maze_.h = settings_.mazeHeight;
+            maze_.tileW = settings_.tileWidthMeters;
+            maze_.tileD = settings_.tileLengthMeters;
+            maze_.exit = {maze_.w - 2, maze_.h - 2};
             maze_.Generate(settings_);
         }
         CreateMazeMaskTexture();
@@ -976,7 +987,7 @@
         if (!settings_.airParticles || settings_.airParticleDensity <= 0.001f || monsterPreview_) return 0;
         float density = std::clamp(settings_.airParticleDensity, 0.0f, 4.0f);
         float budget = std::clamp(airParticleBudgetScale_, 0.34f, 1.0f);
-        return std::clamp(static_cast<int>(std::round(6800.0f * density * budget)), 0, 22000);
+        return std::clamp(static_cast<int>(std::round(3400.0f * density * budget)), 0, 11000);
     }
 
     void RespawnAirParticle(AirParticle& p, bool initial) {
@@ -2612,6 +2623,103 @@
         float follow = std::min(1.0f, dt * 2.35f);
         chaseLookBackYaw_ += AngleWrap(liveYaw - chaseLookBackYaw_) * follow;
         chaseLookBackPitch_ += (livePitch - chaseLookBackPitch_) * follow;
+    }
+
+    void UpdateManualPlayer(float dt) {
+        dt = std::clamp(dt, 0.0f, 0.05f);
+        if (!CameraFootprintOpen(camera_.x, camera_.z)) {
+            RecoverCameraToOpenTile();
+        }
+
+        constexpr float kMouseYawScale = 0.0022f;
+        constexpr float kMousePitchScale = 0.0018f;
+        yaw_ += gameInput_.lookDeltaX * kMouseYawScale;
+        bodyYaw_ = yaw_;
+        lookPitch_ = std::clamp(lookPitch_ - gameInput_.lookDeltaY * kMousePitchScale, -1.55334f, 1.55334f);
+
+        float inputX = std::clamp(gameInput_.moveX, -1.0f, 1.0f);
+        float inputZ = std::clamp(gameInput_.moveZ, -1.0f, 1.0f);
+        float inputLen = std::sqrt(inputX * inputX + inputZ * inputZ);
+        if (inputLen > 1.0f) {
+            inputX /= inputLen;
+            inputZ /= inputLen;
+            inputLen = 1.0f;
+        }
+
+        bool wantsMove = inputLen > 0.001f;
+        bool crouching = gameInput_.crouch;
+        bool wantsSprint = gameInput_.sprint && wantsMove && !crouching && playerStamina_ > 10.0f;
+        float walkSpeed = settings_.walkSpeed;
+        float sprintSpeed = std::max(settings_.runSpeed, walkSpeed * 1.35f);
+        float targetSpeed = wantsSprint ? sprintSpeed : walkSpeed;
+        if (crouching) targetSpeed *= 0.52f;
+
+        if (wantsSprint) {
+            playerStamina_ = std::max(0.0f, playerStamina_ - 24.0f * dt);
+            playerStaminaRegenDelay_ = 0.75f;
+            if (playerStamina_ <= 0.0f) {
+                wantsSprint = false;
+                targetSpeed = walkSpeed;
+            }
+        } else {
+            playerStaminaRegenDelay_ = std::max(0.0f, playerStaminaRegenDelay_ - dt);
+            if (playerStaminaRegenDelay_ <= 0.0f) {
+                playerStamina_ = std::min(100.0f, playerStamina_ + 18.0f * dt);
+            }
+        }
+
+        smoothedMoveSpeed_ = MoveTowards(smoothedMoveSpeed_, wantsMove ? targetSpeed : 0.0f,
+            (wantsMove ? 8.0f : 10.0f) * dt);
+        float moveDistance = smoothedMoveSpeed_ * dt;
+        if (wantsMove && moveDistance > 0.0001f) {
+            XMFLOAT3 forward = Forward();
+            XMFLOAT3 right{std::cos(yaw_), 0.0f, -std::sin(yaw_)};
+            XMFLOAT3 moveDir = Normalize3(Add3(Scale3(right, inputX), Scale3(forward, inputZ)), forward);
+            MoveCameraSafely(moveDir.x * moveDistance, moveDir.z * moveDistance,
+                moveDistance, std::max(0.1f, smoothedMoveSpeed_), CameraTile(), true);
+        }
+
+        if (gameInput_.jump && playerGrounded_ && !crouching) {
+            playerVerticalVelocity_ = 4.2f;
+            playerGrounded_ = false;
+        }
+        if (!playerGrounded_) {
+            playerVerticalVelocity_ -= 9.81f * dt;
+            playerVerticalOffset_ += playerVerticalVelocity_ * dt;
+            if (playerVerticalOffset_ <= 0.0f) {
+                playerVerticalOffset_ = 0.0f;
+                playerVerticalVelocity_ = 0.0f;
+                playerGrounded_ = true;
+            }
+        }
+
+        if (gameInput_.interact && !exitTransitionActive_) {
+            Tile cur = CameraTile();
+            float exitDistSq = TileDistanceSq(cur, maze_.exit);
+            if (exitDistSq <= 2.0f && VisibleInFront(maze_.exit)) {
+                BeginExitTransition();
+            }
+        }
+
+        float moveBlend = Clamp01(smoothedMoveSpeed_ / std::max(0.1f, sprintSpeed));
+        runIntensity_ += ((wantsSprint ? moveBlend : moveBlend * 0.45f) - runIntensity_) *
+            std::min(1.0f, dt * 5.0f);
+        runEffort_ += ((wantsSprint ? moveBlend : 0.0f) - runEffort_) *
+            std::min(1.0f, dt * 3.0f);
+        if (wantsMove) {
+            AdvanceStepPhase(moveDistance, std::max(0.1f, smoothedMoveSpeed_));
+        }
+        breathPhase_ += dt * (1.15f + runEffort_ * 4.6f + runIntensity_ * 1.25f) * kPi;
+        if (breathPhase_ > kPi * 128.0f) {
+            breathPhase_ = std::fmod(breathPhase_, kPi * 2.0f);
+        }
+
+        float eyeTarget = crouching ? 1.12f : 1.45f;
+        float bobAmount = settings_.headBobAmount * Lerp(0.24f, 1.85f, moveBlend) * (crouching ? 0.30f : 1.0f);
+        float sideBob = crouching ? 0.0f : std::sin(stepPhase_ * 0.5f) * (0.008f + runEffort_ * 0.018f);
+        float breathY = std::sin(breathPhase_) * (0.0035f + runIntensity_ * 0.015f + runEffort_ * 0.034f);
+        float desiredY = eyeTarget + playerVerticalOffset_ + std::abs(std::sin(stepPhase_)) * bobAmount + sideBob + breathY;
+        camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 14.0f);
     }
 
     void UpdatePathFollower(float dt) {
