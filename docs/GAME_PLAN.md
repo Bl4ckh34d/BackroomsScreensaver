@@ -18,6 +18,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 - [x] Add atmospheric manual mouse-look smoothing and pitch-limit damping near +/-89 degrees.
 - [x] Add debug AI minimap overlay for player hearing radius, monster path, and monster sound/target tiles.
 - [x] Move game shell and loading overlay code out of `main.cpp`.
+- [x] Move app state, game app loop, window procedure, and CLI mode parsing out of `main.cpp`.
 - [ ] Expand Debug into a full in-game test lab.
 - [ ] Add stealth/noise gameplay.
 - [ ] Replace placeholder monster with a procedural many-limbed creature.

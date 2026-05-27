@@ -1,0 +1,144 @@
+// App-wide run modes, game state, window handles, and debug toolbar helpers.
+// Included from main.cpp after Renderer is defined.
+
+enum class RunMode {
+    Fullscreen,
+    Preview,
+    Configure,
+    SelfTest,
+    MonsterPreview,
+    MonsterPreviewFront,
+    MonsterPreviewSide,
+    MonsterPreviewLeftSide,
+    MonsterPreviewTop,
+    BloodDebug,
+    GenerateIni
+};
+
+enum class GameState {
+    MainMenu,
+    PlayGame,
+    DebugScene,
+    Settings,
+    Exit
+};
+
+struct App {
+    Renderer renderer;
+    bool preview = false;
+    bool gameShell = false;
+    bool rendererInitialized = false;
+    bool gameRunStarted = false;
+    bool gameDebugActive = false;
+    HINSTANCE gameInstance = nullptr;
+    GameState gameState = GameState::MainMenu;
+    bool gameMouseCaptured = false;
+    bool gameRecenteringMouse = false;
+    POINT gameMouseCenter{};
+    float gameMouseDeltaX = 0.0f;
+    float gameMouseDeltaY = 0.0f;
+    HWND gameTitle = nullptr;
+    HWND gameSinglePlayer = nullptr;
+    HWND gameSettings = nullptr;
+    HWND gameDebug = nullptr;
+    HWND gameBack = nullptr;
+    HWND gameExit = nullptr;
+    HWND gameConfig = nullptr;
+    GameState gameSettingsReturnState = GameState::MainMenu;
+    bool firstMouse = true;
+    POINT initialMouse{};
+    HWND hwnd = nullptr;
+    HWND debugPrevEffect = nullptr;
+    HWND debugNextEffect = nullptr;
+    HWND debugSize = nullptr;
+    HWND debugReset = nullptr;
+    HWND debugPrevProp = nullptr;
+    HWND debugNextProp = nullptr;
+    HWND debugSettings = nullptr;
+    HWND loadingOverlay = nullptr;
+    bool loadingWarmupPending = false;
+    ULONGLONG loadingWarmupStart = 0;
+    int loadingWarmupAttempts = 0;
+    bool quitting = false;
+
+    struct CloneOutput {
+        HWND hwnd = nullptr;
+        HWND loadingOverlay = nullptr;
+        Renderer renderer;
+        bool loadingWarmupPending = false;
+        ULONGLONG loadingWarmupStart = 0;
+        int loadingWarmupAttempts = 0;
+    };
+    std::vector<std::unique_ptr<CloneOutput>> clones;
+};
+
+App* gApp = nullptr;
+
+App::CloneOutput* CloneForWindow(HWND hwnd) {
+    if (!gApp) return nullptr;
+    for (auto& clone : gApp->clones) {
+        if (clone && clone->hwnd == hwnd) return clone.get();
+    }
+    return nullptr;
+}
+
+constexpr int kDebugPrevEffectId = 5101;
+constexpr int kDebugNextEffectId = 5102;
+constexpr int kDebugSizeId = 5103;
+constexpr int kDebugResetId = 5104;
+constexpr int kDebugPrevPropId = 5105;
+constexpr int kDebugNextPropId = 5106;
+constexpr int kDebugSettingsId = 5107;
+constexpr int kGameSinglePlayerId = 5201;
+constexpr int kGameSettingsId = 5202;
+constexpr int kGameDebugId = 5203;
+constexpr int kGameBackId = 5204;
+constexpr int kGameExitId = 5205;
+constexpr UINT kGameConfigClosedMessage = WM_APP + 31;
+
+DebugSliceEffect StepDebugSliceEffect(DebugSliceEffect effect, int delta) {
+    int count = static_cast<int>(DebugSliceEffect::Count);
+    int index = (static_cast<int>(effect) + delta) % count;
+    if (index < 0) index += count;
+    return static_cast<DebugSliceEffect>(index);
+}
+
+void UpdateDebugSliceControls(HWND hwnd) {
+    if (!gApp || !gEffectDebugViewer) return;
+    wchar_t title[160]{};
+    if (gDebugSliceEffect == DebugSliceEffect::Props) {
+        swprintf_s(title, L"Backrooms Maze Effect Slice Debug - Props - %s (%d/%d)",
+            DebugPropName(gDebugPropIndex), WrapDebugPropIndex(gDebugPropIndex) + 1, kDebugPropCount);
+    } else {
+        swprintf_s(title, L"Backrooms Maze Effect Slice Debug - %s - %dx%d",
+            DebugSliceEffectName(gDebugSliceEffect), gDebugSliceTiles, gDebugSliceTiles);
+    }
+    SetWindowTextW(hwnd, title);
+    if (gApp->debugSize) {
+        wchar_t sizeText[48]{};
+        swprintf_s(sizeText, L"Grid: %dx%d", gDebugSliceTiles, gDebugSliceTiles);
+        SetWindowTextW(gApp->debugSize, sizeText);
+    }
+    if (gApp->debugPrevProp) EnableWindow(gApp->debugPrevProp, TRUE);
+    if (gApp->debugNextProp) EnableWindow(gApp->debugNextProp, TRUE);
+}
+
+void RedrawDebugSliceControls() {
+    if (!gApp || !gEffectDebugViewer) return;
+    HWND controls[] = {
+        gApp->debugPrevEffect,
+        gApp->debugNextEffect,
+        gApp->debugSize,
+        gApp->debugReset,
+        gApp->debugPrevProp,
+        gApp->debugNextProp,
+        gApp->debugSettings
+    };
+    for (HWND control : controls) {
+        if (!control) continue;
+        SetWindowPos(control, HWND_TOP, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        RedrawWindow(control, nullptr, nullptr,
+            RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+    }
+}
