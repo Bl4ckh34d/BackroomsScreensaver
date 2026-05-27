@@ -101,6 +101,8 @@ struct SceneConstants {
     XMFLOAT4 blood8;
     XMFLOAT4 air0;
     XMFLOAT4 exitLight0;
+    XMFLOAT4 exitLight1;
+    XMFLOAT4 exitLight2;
     XMFLOAT4 monsterFog0;
 };
 

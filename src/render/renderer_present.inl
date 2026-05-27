@@ -335,17 +335,35 @@
         };
         XMFLOAT3 exitLightPos = exitSignLightPos_;
         float exitLightStrength = exitSignLightStrength_;
+        XMFLOAT3 exitLightDir{0.0f, 0.0f, 0.0f};
+        float exitDoorOpen = 0.0f;
+        XMFLOAT3 doorwayLightPos{0.0f, 0.0f, 0.0f};
+        float doorwayLightStrength = 0.0f;
         if (runtimeMode_ == RendererRuntimeMode::MainMenu && exitDoorAngle_ > 0.001f) {
-            XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -1.18f);
-            exitLightPos = Add3(exitDoorCenter_, throughDoor);
-            exitLightPos.y = exitDoorCenter_.y + 1.02f;
-            exitLightStrength = 1.0f + SmoothStep(0.03f, 0.95f, exitDoorAngle_ / 1.38f) * 13.0f;
+            exitDoorOpen = SmoothStep(0.03f, 0.95f, exitDoorAngle_ / 1.38f);
+            XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -1.34f);
+            doorwayLightPos = Add3(exitDoorCenter_, throughDoor);
+            doorwayLightPos.y = exitDoorCenter_.y + 1.02f;
+            doorwayLightStrength = exitDoorOpen * 42.0f;
+            exitLightDir = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
         }
         cb.exitLight0 = {
             exitLightPos.x,
             exitLightPos.y,
             exitLightPos.z,
             exitLightStrength
+        };
+        cb.exitLight1 = {
+            exitLightDir.x,
+            exitLightDir.y,
+            exitLightDir.z,
+            exitDoorOpen
+        };
+        cb.exitLight2 = {
+            doorwayLightPos.x,
+            doorwayLightPos.y,
+            doorwayLightPos.z,
+            doorwayLightStrength
         };
         float monsterFogRadius = std::max(maze_.TileAverage() * 2.60f, 5.80f);
         float monsterFogStrength = (monsterPreview_ || gEffectDebugViewer || gBloodDebugEveryWall || settings_.bloodStudyView)

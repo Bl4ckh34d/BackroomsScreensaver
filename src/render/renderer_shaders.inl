@@ -37,6 +37,8 @@ float4 gSparkLight1;
     float4 gBlood8;
     float4 gAir0;
     float4 gExitLight0;
+    float4 gExitLight1;
+    float4 gExitLight2;
     float4 gMonsterFog0;
 };
 
@@ -938,26 +940,48 @@ float SparkLight(float3 worldPos, float3 worldN)
 float3 ExitSignLight(float3 worldPos, float3 worldN)
 {
     float strength = gExitLight0.w * (1.0 - saturate(gTransition0.z));
-    if (strength <= 0.001)
+    float3 result = float3(0.0, 0.0, 0.0);
+    if (strength > 0.001)
     {
-        return float3(0.0, 0.0, 0.0);
+        float3 L = gExitLight0.xyz - worldPos;
+        float d = length(L);
+        if (d > 0.001 && d <= 3.65)
+        {
+            float visibility = LampRayClear(worldPos.xz + worldN.xz * 0.035, gExitLight0.xz);
+            float3 Ln = L / d;
+            float diffuse = saturate(dot(worldN, Ln) * 0.72 + 0.28);
+            float falloff = pow(saturate(1.0 - d / 3.65), 2.0) / (1.0 + d * d * 0.62);
+            result += float3(0.045, 0.92, 0.34) * strength * falloff * diffuse * visibility;
+        }
     }
-    float3 L = gExitLight0.xyz - worldPos;
-    float d = length(L);
-    float daylight = saturate((strength - 1.4) / 10.5);
-    float reach = lerp(3.65, 9.2, daylight);
-    if (d <= 0.001 || d > reach)
+
+    float doorStrength = gExitLight2.w * (1.0 - saturate(gTransition0.z));
+    float doorOpen = saturate(gExitLight1.w);
+    if (doorStrength > 0.001 && doorOpen > 0.001)
     {
-        return float3(0.0, 0.0, 0.0);
+        float3 L = gExitLight2.xyz - worldPos;
+        float d = length(L);
+        float reach = 14.5;
+        if (d > 0.001 && d <= reach)
+        {
+            float3 Ln = L / d;
+            float diffuse = saturate(dot(worldN, Ln) * 0.56 + 0.52);
+            float3 doorDir = normalize(gExitLight1.xyz + float3(0.0001, 0.0, 0.0001));
+            float3 fromSource = worldPos - gExitLight2.xyz;
+            float axial = dot(fromSource, doorDir);
+            float side = length(fromSource - doorDir * axial);
+            float cone = smoothstep(-0.08, 0.74, axial) * smoothstep(2.65 + axial * 0.46, 0.16, side);
+            float floorWash = smoothstep(0.12, 3.40, axial) * smoothstep(2.35 + axial * 0.40, 0.14, side) *
+                smoothstep(1.18, 0.05, worldPos.y);
+            float spill = saturate(cone * 1.75 + floorWash * 1.30 + 0.04);
+            float falloff = pow(saturate(1.0 - d / reach), 0.68) / (1.0 + d * d * 0.030);
+            float3 warmDaylight = float3(1.0, 0.94, 0.76);
+            float angelicLift = smoothstep(0.16, 2.80, axial);
+            result += warmDaylight * doorStrength * falloff * diffuse * spill;
+            result += warmDaylight * doorStrength * falloff * angelicLift * spill * 0.18;
+        }
     }
-    float visibility = LampRayClear(worldPos.xz + worldN.xz * 0.035, gExitLight0.xz);
-    float3 Ln = L / d;
-    float diffuse = saturate(dot(worldN, Ln) * 0.72 + 0.28);
-    float falloff = pow(saturate(1.0 - d / reach), lerp(2.0, 1.22, daylight)) /
-        (1.0 + d * d * lerp(0.62, 0.13, daylight));
-    float3 signGreen = float3(0.045, 0.92, 0.34);
-    float3 warmDaylight = float3(1.0, 0.84, 0.52);
-    return lerp(signGreen, warmDaylight, daylight) * strength * falloff * diffuse * visibility;
+    return result;
 }
 
 float3 ApplyPost(float3 color)
@@ -2298,15 +2322,15 @@ float4 PSMain(VSOut input) : SV_TARGET
     {
         float strength = smoothstep(0.58, 0.94, frac(input.material));
         float2 p = uv * 2.0 - 1.0;
-        float edge = smoothstep(1.12, 0.18, abs(p.x)) * smoothstep(1.12, 0.10, abs(p.y));
+        float edge = smoothstep(1.20, 0.10, abs(p.x)) * smoothstep(1.20, 0.02, abs(p.y));
         float haze = Fbm3(float3(input.worldPos.xz * 1.35 + p * 0.34, time * 0.045));
-        float streak = smoothstep(0.88, 0.24, abs(p.x + (haze - 0.5) * 0.26));
+        float streak = smoothstep(1.02, 0.16, abs(p.x + (haze - 0.5) * 0.34));
         float dist = length(input.worldPos - cam);
-        float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.42), 1.45);
-        float alpha = edge * lerp(0.10, 0.28, strength) * (0.62 + streak * 0.55) * fogVisibility;
+        float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.22), 1.12);
+        float alpha = edge * lerp(0.24, 0.62, strength) * (0.74 + streak * 0.78) * fogVisibility;
         if (alpha < 0.008) discard;
-        float3 color = float3(1.0, 0.86, 0.56) * (2.4 + strength * 5.2) * (0.76 + haze * 0.32);
-        return float4(saturate(ApplyPost(color) + color * 0.12), saturate(alpha));
+        float3 color = float3(1.0, 0.94, 0.78) * (5.8 + strength * 13.0) * (0.82 + haze * 0.38);
+        return float4(saturate(ApplyPost(color) + color * 0.22), saturate(alpha));
     }
 
     if (input.material > 10.50 && input.material < 10.90)
