@@ -985,10 +985,15 @@ float3 ExitSignLight(float3 worldPos, float3 worldN)
             float throughPortal = step(0.0, hitT) * step(hitT, 1.0) * step(0.0, denom) * insideX * insideY;
             float axial = dot(worldPos - gExitLight3.xyz, doorDir);
             float roomSide = smoothstep(-0.03, 0.12, axial);
+            float lateral = dot(worldPos - gExitLight3.xyz, doorRight);
+            float corridorWidth = smoothstep(doorHalfW + 0.86, doorHalfW - 0.02, abs(lateral));
+            float corridorHeight = smoothstep(doorHalfH + 0.18, doorHalfH - 0.05, abs(worldPos.y - doorHalfH));
+            float corridorSide = (1.0 - smoothstep(-0.10, 0.08, axial)) * corridorWidth * corridorHeight;
             float grazing = saturate(dot(worldN, Ln) * 0.45 + 0.62);
             float falloff = 1.0 / (1.0 + d * d * 0.045);
             float3 warmDaylight = float3(0.94, 0.97, 1.0);
             result += warmDaylight * doorStrength * falloff * diffuse * grazing * throughPortal * roomSide;
+            result += warmDaylight * doorStrength * falloff * (1.14 + diffuse * 0.46) * corridorSide * 2.15;
         }
     }
     return result;
