@@ -70,9 +70,9 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
     const ImageRGBA& logo = LoadingOverlayLogo();
     int width = std::max<LONG>(1, rc.right - rc.left);
     int height = std::max<LONG>(1, rc.bottom - rc.top);
-    int logoSize = std::clamp(std::min(width, height) / 3, 190, 330);
+    int logoSize = std::clamp(static_cast<int>(std::min(width, height) * 0.46f), 240, 430);
     int x = rc.left + (width - logoSize) / 2;
-    int y = rc.top + height / 2 - logoSize / 2 - std::clamp(height / 22, 16, 38);
+    int y = rc.top + height / 2 - logoSize / 2 - std::clamp(height / 30, 10, 26);
 
     if (logo.Valid()) {
         static std::vector<uint8_t> tinted;

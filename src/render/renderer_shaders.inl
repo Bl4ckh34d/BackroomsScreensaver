@@ -2382,19 +2382,22 @@ float4 PSMain(VSOut input) : SV_TARGET
     if (materialId > 5.5 && materialId < 6.5)
     {
         float2 p = uv;
-        float verticalFrame = max(1.0 - smoothstep(0.010, 0.038, abs(p.x - 0.12)),
-                                  1.0 - smoothstep(0.010, 0.038, abs(p.x - 0.88)));
-        float horizontalFrame = max(1.0 - smoothstep(0.010, 0.036, abs(p.y - 0.17)),
-                                    1.0 - smoothstep(0.010, 0.036, abs(p.y - 0.83)));
-        float midRail = 1.0 - smoothstep(0.012, 0.042, abs(p.y - 0.50));
-        float insetShadow = saturate(max(max(verticalFrame, horizontalFrame), midRail));
-        float grain = Fbm3(float3(p * float2(7.0, 12.0), 4.7));
-        float grime = Fbm3(float3(input.worldPos.xz * 1.4 + p * 1.8, 21.0));
-        float3 base = float3(0.24, 0.18, 0.115);
-        base += (grain - 0.5) * float3(0.035, 0.028, 0.020);
-        base -= insetShadow * float3(0.055, 0.045, 0.030);
-        base -= smoothstep(0.58, 0.94, grime) * float3(0.040, 0.036, 0.027);
-        float3 worldN = normalize(N + T * (grain - 0.5) * 0.035);
+        float outerBevel = max(max(1.0 - smoothstep(0.0, 0.055, p.x),
+                                   1.0 - smoothstep(0.0, 0.055, 1.0 - p.x)),
+                               max(1.0 - smoothstep(0.0, 0.055, p.y),
+                                   1.0 - smoothstep(0.0, 0.055, 1.0 - p.y)));
+        float panelInset = max(1.0 - smoothstep(0.018, 0.050, abs(p.x - 0.18)),
+                               1.0 - smoothstep(0.018, 0.050, abs(p.x - 0.82)));
+        panelInset = max(panelInset, max(1.0 - smoothstep(0.018, 0.050, abs(p.y - 0.24)),
+                                         1.0 - smoothstep(0.018, 0.050, abs(p.y - 0.76))));
+        panelInset *= 0.35;
+        float grain = Fbm3(float3(p * float2(3.4, 5.2), 4.7));
+        float grime = Fbm3(float3(input.worldPos.xz * 0.7 + p * 0.55, 21.0));
+        float3 base = float3(0.27, 0.205, 0.135);
+        base += (grain - 0.5) * float3(0.018, 0.014, 0.010);
+        base -= (outerBevel * 0.38 + panelInset) * float3(0.038, 0.030, 0.020);
+        base -= smoothstep(0.72, 0.97, grime) * float3(0.026, 0.023, 0.017);
+        float3 worldN = normalize(N + T * (grain - 0.5) * 0.012);
         float dist = length(input.worldPos - cam);
         float flashlight = FlashlightAmount(input.worldPos, worldN);
         float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
