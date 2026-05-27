@@ -72,12 +72,22 @@ bool LoadImageWic(const std::filesystem::path& path, int targetW, int targetH, I
     hr = decoder->GetFrame(0, &frame);
     if (FAILED(hr)) return false;
 
+    UINT sourceW = 0;
+    UINT sourceH = 0;
+    hr = frame->GetSize(&sourceW, &sourceH);
+    if (FAILED(hr) || sourceW == 0 || sourceH == 0) return false;
+    if (targetW <= 0) targetW = static_cast<int>(sourceW);
+    if (targetH <= 0) targetH = static_cast<int>(sourceH);
+    if (targetW <= 0 || targetH <= 0) return false;
+
     ComPtr<IWICBitmapSource> source = frame;
     ComPtr<IWICBitmapScaler> scaler;
-    hr = factory->CreateBitmapScaler(&scaler);
-    if (SUCCEEDED(hr)) {
-        hr = scaler->Initialize(frame.Get(), targetW, targetH, WICBitmapInterpolationModeFant);
-        if (SUCCEEDED(hr)) source = scaler;
+    if (targetW != static_cast<int>(sourceW) || targetH != static_cast<int>(sourceH)) {
+        hr = factory->CreateBitmapScaler(&scaler);
+        if (SUCCEEDED(hr)) {
+            hr = scaler->Initialize(frame.Get(), targetW, targetH, WICBitmapInterpolationModeFant);
+            if (SUCCEEDED(hr)) source = scaler;
+        }
     }
 
     ComPtr<IWICFormatConverter> converter;

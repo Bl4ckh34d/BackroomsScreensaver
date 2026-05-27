@@ -3366,10 +3366,11 @@
                 bool lampOn = !brokenZone && seed >= 1.0f - settings_.lampOnRatio;
                 bool brokenPanel = brokenZone &&
                     LampHash(static_cast<float>(cellX) - 19.7f, static_cast<float>(cellZ) + 88.4f) < settings_.sparkEmitterRatio;
-                float panelSize = std::min(tileW, tileD) * 0.285f;
+                float panelW = tileW * (1.01f / 3.0f);
+                float panelD = tileD * (1.01f / 3.0f);
                 float material = lampOn ? 3.0f + seed * 0.49f : 5.0f;
                 AddCeilingCard(vertices, indices, {lampCenter.x, 0.0f, lampCenter.z},
-                    panelSize, panelSize, 0.0f, wallH - 0.004f, material);
+                    panelW, panelD, 0.0f, wallH - 0.004f, material);
 
                 if (lampOn) {
                     runtimeLamps_.push_back({

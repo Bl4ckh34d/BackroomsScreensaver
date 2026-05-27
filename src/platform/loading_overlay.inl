@@ -78,6 +78,16 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
             tintedW = logo.width;
             tintedH = logo.height;
             tinted.assign(static_cast<size_t>(tintedW) * static_cast<size_t>(tintedH) * 4, 0);
+            bool hasTransparency = false;
+            for (int py = 0; py < tintedH && !hasTransparency; ++py) {
+                for (int px = 0; px < tintedW; ++px) {
+                    size_t src = static_cast<size_t>((py * tintedW + px) * 4);
+                    if (logo.pixels[src + 3] < 250) {
+                        hasTransparency = true;
+                        break;
+                    }
+                }
+            }
             for (int py = 0; py < tintedH; ++py) {
                 for (int px = 0; px < tintedW; ++px) {
                     size_t src = static_cast<size_t>((py * tintedW + px) * 4);
@@ -86,7 +96,8 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
                     uint8_t r = logo.pixels[src + 2];
                     uint8_t srcA = logo.pixels[src + 3];
                     uint8_t rgbCoverage = std::max(r, std::max(g, b));
-                    uint8_t a = srcA < 250 ? srcA : rgbCoverage;
+                    uint8_t darkCoverage = static_cast<uint8_t>(255 - std::min(r, std::min(g, b)));
+                    uint8_t a = hasTransparency ? srcA : std::max(rgbCoverage, darkCoverage);
                     size_t dst = src;
                     tinted[dst + 0] = a;
                     tinted[dst + 1] = a;
