@@ -487,6 +487,42 @@
         if (visitedTiles_[index] < 65535) ++visitedTiles_[index];
     }
 
+    void RevealVisibleMapTiles() {
+        Tile cameraTile = CameraTile();
+        MarkVisited(cameraTile);
+        if (runtimeMode_ != RendererRuntimeMode::PlayableGame || visitedTiles_.empty()) return;
+
+        XMFLOAT3 forward = Normalize3(Forward(), {0.0f, 0.0f, 1.0f});
+        float maxDistance = std::max(maze_.TileMinimum(), settings_.fogEndMeters);
+        float maxDistanceSq = maxDistance * maxDistance;
+        float halfConeRadians = 52.0f * kPi / 180.0f;
+        float baseCos = std::cos(halfConeRadians);
+        XMFLOAT3 eye{camera_.x, 0.0f, camera_.z};
+        float tileRadius = maze_.TileAverage() * 0.50f;
+
+        for (int y = 0; y < maze_.h; ++y) {
+            for (int x = 0; x < maze_.w; ++x) {
+                Tile t{x, y};
+                if (!maze_.IsOpen(t.x, t.y)) continue;
+                XMFLOAT3 center = maze_.WorldCenter(t, 0.0f);
+                XMFLOAT3 toTile{center.x - eye.x, 0.0f, center.z - eye.z};
+                float distSq = toTile.x * toTile.x + toTile.z * toTile.z;
+                if (distSq > maxDistanceSq) continue;
+                float dist = std::sqrt(std::max(0.0f, distSq));
+                if (dist <= tileRadius) {
+                    MarkVisited(t);
+                    continue;
+                }
+                XMFLOAT3 dir{toTile.x / dist, 0.0f, toTile.z / dist};
+                float angularPadding = std::atan2(tileRadius, std::max(tileRadius, dist));
+                float requiredCos = std::cos(halfConeRadians + angularPadding);
+                if (Dot3(forward, dir) < std::min(baseCos, requiredCos)) continue;
+                if (!maze_.LineClear(cameraTile, t)) continue;
+                MarkVisited(t);
+            }
+        }
+    }
+
     float RandRange(float a, float b) {
         std::uniform_real_distribution<float> dist(a, b);
         return dist(rng_);
@@ -2872,7 +2908,7 @@
         float breathY = std::sin(breathPhase_) * (0.002f + runIntensity_ * 0.0045f + runEffort_ * 0.008f);
         float desiredY = eyeTarget + playerVerticalOffset_ + verticalBob + sideBob + breathY;
         camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 10.0f);
-        MarkVisited(CameraTile());
+        RevealVisibleMapTiles();
     }
 
     void UpdatePathFollower(float dt) {
