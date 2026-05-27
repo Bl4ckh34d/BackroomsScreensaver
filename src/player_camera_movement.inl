@@ -2633,9 +2633,11 @@
 
         constexpr float kMouseYawScale = 0.0022f;
         constexpr float kMousePitchScale = 0.0018f;
-        yaw_ += gameInput_.lookDeltaX * kMouseYawScale;
+        float mouseScale = std::clamp(settings_.mouseSensitivity, 0.1f, 5.0f);
+        float pitchSign = settings_.invertMouseY ? 1.0f : -1.0f;
+        yaw_ += gameInput_.lookDeltaX * kMouseYawScale * mouseScale;
         bodyYaw_ = yaw_;
-        lookPitch_ = std::clamp(lookPitch_ - gameInput_.lookDeltaY * kMousePitchScale, -1.55334f, 1.55334f);
+        lookPitch_ = std::clamp(lookPitch_ + gameInput_.lookDeltaY * kMousePitchScale * mouseScale * pitchSign, -1.55334f, 1.55334f);
 
         float inputX = std::clamp(gameInput_.moveX, -1.0f, 1.0f);
         float inputZ = std::clamp(gameInput_.moveZ, -1.0f, 1.0f);

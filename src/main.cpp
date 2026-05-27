@@ -680,6 +680,14 @@ struct Settings {
     float exitFadeSeconds = 1.10f;
     float exitStepDistance = 2.35f;
     float fadeInSeconds = 1.25f;
+    float mouseSensitivity = 1.0f;
+    bool invertMouseY = false;
+
+    bool audioMuted = false;
+    float audioMasterVolume = 1.0f;
+    float audioEffectsVolume = 1.0f;
+    float audioAmbienceVolume = 1.0f;
+    float audioMonsterVolume = 1.0f;
 
     float paperDensity = 1.0f;
     float hallwayPaperRunDensity = 1.0f;
@@ -914,6 +922,16 @@ std::wstring DefaultConfigText() {
       << L"ExitFadeSeconds=1.1\r\n"
       << L"ExitStepDistance=2.35\r\n"
       << L"FadeInSeconds=1.25\r\n\r\n"
+      << L"[Controls]\r\n"
+      << L"MouseSensitivity=1\r\n"
+      << L"InvertMouseY=0\r\n\r\n"
+      << L"[Audio]\r\n"
+      << L"; Reserved for the game audio engine. Values are saved now so the settings UI is ready.\r\n"
+      << L"Muted=0\r\n"
+      << L"MasterVolume=1\r\n"
+      << L"EffectsVolume=1\r\n"
+      << L"AmbienceVolume=1\r\n"
+      << L"MonsterVolume=1\r\n\r\n"
       << L"[Atmosphere]\r\n"
       << L"PaperDensity=1\r\n"
       << L"HallwayPaperRunDensity=1\r\n"
@@ -1155,6 +1173,14 @@ Settings LoadSettings() {
     s.exitFadeSeconds = std::clamp(IniFloat(L"CameraFX", L"ExitFadeSeconds", s.exitFadeSeconds), 0.2f, 8.0f);
     s.exitStepDistance = std::clamp(IniFloat(L"CameraFX", L"ExitStepDistance", s.exitStepDistance), 0.0f, 8.0f);
     s.fadeInSeconds = std::clamp(IniFloat(L"CameraFX", L"FadeInSeconds", s.fadeInSeconds), 0.0f, 8.0f);
+    s.mouseSensitivity = std::clamp(IniFloat(L"Controls", L"MouseSensitivity", s.mouseSensitivity), 0.1f, 5.0f);
+    s.invertMouseY = IniInt(L"Controls", L"InvertMouseY", s.invertMouseY ? 1 : 0) != 0;
+
+    s.audioMuted = IniInt(L"Audio", L"Muted", s.audioMuted ? 1 : 0) != 0;
+    s.audioMasterVolume = std::clamp(IniFloat(L"Audio", L"MasterVolume", s.audioMasterVolume), 0.0f, 1.0f);
+    s.audioEffectsVolume = std::clamp(IniFloat(L"Audio", L"EffectsVolume", s.audioEffectsVolume), 0.0f, 1.0f);
+    s.audioAmbienceVolume = std::clamp(IniFloat(L"Audio", L"AmbienceVolume", s.audioAmbienceVolume), 0.0f, 1.0f);
+    s.audioMonsterVolume = std::clamp(IniFloat(L"Audio", L"MonsterVolume", s.audioMonsterVolume), 0.0f, 1.0f);
 
     s.paperDensity = std::clamp(IniFloat(L"Atmosphere", L"PaperDensity", s.paperDensity), 0.0f, 4.0f);
     s.hallwayPaperRunDensity = std::clamp(IniFloat(L"Atmosphere", L"HallwayPaperRunDensity", s.hallwayPaperRunDensity), 0.0f, 4.0f);
@@ -12605,6 +12631,7 @@ struct App {
     HWND debugReset = nullptr;
     HWND debugPrevProp = nullptr;
     HWND debugNextProp = nullptr;
+    HWND debugSettings = nullptr;
     HWND loadingOverlay = nullptr;
     bool loadingWarmupPending = false;
     ULONGLONG loadingWarmupStart = 0;
@@ -12638,6 +12665,7 @@ constexpr int kDebugSizeId = 5103;
 constexpr int kDebugResetId = 5104;
 constexpr int kDebugPrevPropId = 5105;
 constexpr int kDebugNextPropId = 5106;
+constexpr int kDebugSettingsId = 5107;
 constexpr int kGameSinglePlayerId = 5201;
 constexpr int kGameSettingsId = 5202;
 constexpr int kGameDebugId = 5203;
@@ -12679,7 +12707,8 @@ void RedrawDebugSliceControls() {
         gApp->debugSize,
         gApp->debugReset,
         gApp->debugPrevProp,
-        gApp->debugNextProp
+        gApp->debugNextProp,
+        gApp->debugSettings
     };
     for (HWND control : controls) {
         if (!control) continue;
@@ -12690,7 +12719,12 @@ void RedrawDebugSliceControls() {
     }
 }
 
-void ShowConfig(HWND owner);
+enum class ConfigDialogMode {
+    Full,
+    Game,
+    Debug
+};
+void ShowConfig(HWND owner, ConfigDialogMode mode = ConfigDialogMode::Full);
 HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance);
 void SetLoadingOverlayStatus(HWND overlay, const wchar_t* phase, const wchar_t* detail, bool complete);
 void LoadingProgressCallback(void* context, const StartupProgressUpdate& update);
@@ -13236,7 +13270,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (id == kGameSettingsId) {
                 ReleaseGameMouse();
                 gApp->gameState = GameState::Settings;
-                ShowConfig(hwnd);
+                ShowConfig(hwnd, ConfigDialogMode::Game);
                 EnterGameMainMenu(hwnd);
                 return 0;
             }
@@ -13246,6 +13280,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             if (id == kGameBackId) {
                 EnterGameMainMenu(hwnd);
+                return 0;
+            }
+            if (id == kDebugSettingsId) {
+                ReleaseGameMouse();
+                ShowConfig(hwnd, ConfigDialogMode::Debug);
+                if (gApp && gApp->gameState == GameState::DebugScene) {
+                    EnterGameDebug(hwnd);
+                }
                 return 0;
             }
             if (id == kGameExitId) {
@@ -13344,10 +13386,17 @@ constexpr int kConfigScrollId = 2007;
 constexpr int kConfigPreviewUpdateId = 2008;
 constexpr int kConfigFieldBaseId = 3000;
 constexpr int kConfigEyeSliderBaseId = 4200;
-constexpr int kConfigTabCount = 8;
+constexpr int kConfigMaxTabCount = 8;
 constexpr int kConfigContentTop = 92;
 constexpr int kConfigContentBottom = 646;
 constexpr int kConfigScrollStep = 42;
+constexpr int kConfigMouseSensitivityId = kConfigFieldBaseId + 166;
+constexpr int kConfigInvertMouseYId = kConfigFieldBaseId + 167;
+constexpr int kConfigAudioMutedId = kConfigFieldBaseId + 168;
+constexpr int kConfigAudioMasterVolumeId = kConfigFieldBaseId + 169;
+constexpr int kConfigAudioEffectsVolumeId = kConfigFieldBaseId + 170;
+constexpr int kConfigAudioAmbienceVolumeId = kConfigFieldBaseId + 171;
+constexpr int kConfigAudioMonsterVolumeId = kConfigFieldBaseId + 172;
 
 enum class ConfigFieldKind {
     Text,
@@ -13393,9 +13442,14 @@ struct ConfigState {
     HWND previewUpdateButton = nullptr;
     std::vector<ConfigHeaderUi> headers;
     std::vector<ConfigFieldUi> fields;
-    std::array<int, kConfigTabCount> scrollOffset{};
-    std::array<int, kConfigTabCount> contentHeight{};
+    std::vector<ConfigFieldDef> fieldDefs;
+    std::vector<std::wstring> tabLabels;
+    std::vector<std::wstring> tabNotes;
+    std::array<int, kConfigMaxTabCount> scrollOffset{};
+    std::array<int, kConfigMaxTabCount> contentHeight{};
     std::unique_ptr<Renderer> previewRenderer;
+    ConfigDialogMode mode = ConfigDialogMode::Full;
+    int tabCount = 0;
     int activeTab = 0;
     bool loadingControls = false;
     bool previewPending = false;
@@ -13408,7 +13462,7 @@ struct ConfigState {
     float previewOrbitDistance = 3.15f;
 };
 
-const wchar_t* kConfigTabs[kConfigTabCount] = {
+const wchar_t* kConfigTabs[kConfigMaxTabCount] = {
     L"Renderer",
     L"Maze",
     L"Textures",
@@ -13419,7 +13473,7 @@ const wchar_t* kConfigTabs[kConfigTabCount] = {
     L"Monster"
 };
 
-const wchar_t* kConfigNotes[kConfigTabCount] = {
+const wchar_t* kConfigNotes[kConfigMaxTabCount] = {
     L"Renderer device policy. Keep WARP disabled to require hardware GPU rendering.",
     L"Maze dimensions are forced odd. Per-run variation jitters Camera AI, Flashlight Motion, and non-blood/flesh Atmosphere values by up to 15%; room +/- fields are explicit integer ranges.",
     L"PBR stems refer to files like <stem>_color_4k.jpg. Empty floor/ceiling stems use built-in textures.",
@@ -13603,6 +13657,153 @@ const ConfigFieldDef kConfigFields[] = {
     {7, 1, kConfigFieldBaseId + 99, L"Dread Response", L"Dread", L"FlashlightFlicker", L"Flashlight flicker", L"1", ConfigFieldKind::Text, 90},
 };
 
+const ConfigFieldDef* FindBaseConfigField(const wchar_t* section, const wchar_t* key) {
+    for (const auto& def : kConfigFields) {
+        if (std::wcscmp(def.section, section) == 0 && std::wcscmp(def.key, key) == 0) return &def;
+    }
+    return nullptr;
+}
+
+void AddConfigFieldCopy(std::vector<ConfigFieldDef>& fields, const wchar_t* section, const wchar_t* key,
+    int tab, int column, const wchar_t* group, const wchar_t* labelOverride = nullptr) {
+    const ConfigFieldDef* base = FindBaseConfigField(section, key);
+    if (!base) return;
+    ConfigFieldDef copy = *base;
+    copy.tab = tab;
+    copy.column = column;
+    copy.group = group;
+    if (labelOverride) copy.label = labelOverride;
+    fields.push_back(copy);
+}
+
+void AddCustomConfigField(std::vector<ConfigFieldDef>& fields, int tab, int column, int id,
+    const wchar_t* group, const wchar_t* section, const wchar_t* key, const wchar_t* label,
+    const wchar_t* fallback, ConfigFieldKind kind, int width) {
+    fields.push_back({tab, column, id, group, section, key, label, fallback, kind, width});
+}
+
+void BuildFullConfigModel(ConfigState* state) {
+    state->tabLabels.assign(std::begin(kConfigTabs), std::end(kConfigTabs));
+    state->tabNotes.assign(std::begin(kConfigNotes), std::end(kConfigNotes));
+    state->fieldDefs.assign(std::begin(kConfigFields), std::end(kConfigFields));
+}
+
+void BuildGameConfigModel(ConfigState* state) {
+    state->tabLabels = {L"System", L"Graphics", L"Game", L"Controls", L"Audio"};
+    state->tabNotes = {
+        L"Game runtime and launch policy. These settings apply to the playable executable and shared INI.",
+        L"Rendering, textures, lighting, post processing, particles, and visual atmosphere.",
+        L"Maze generation, scare density, monster pressure, dread, and exit pacing.",
+        L"Manual player control tuning. Key rebinding is planned after this settings split.",
+        L"Audio settings are persisted now; the audio engine will consume them in a later milestone."
+    };
+
+    auto& f = state->fieldDefs;
+    AddConfigFieldCopy(f, L"Renderer", L"AllowWarpFallback", 0, 0, L"System");
+    AddConfigFieldCopy(f, L"Randomization", L"RunVariation", 0, 0, L"Runtime");
+    AddConfigFieldCopy(f, L"Maze", L"RandomSeed", 0, 1, L"Runtime");
+
+    const wchar_t* textureKeys[] = {L"AssetFolder", L"WallStem", L"FloorStem", L"CeilingStem", L"FleshStem",
+        L"WallScaleMeters", L"FloorScaleMeters", L"CeilingScaleMeters", L"UseExternalNormals", L"MaxNormalMapMB"};
+    for (const wchar_t* key : textureKeys) AddConfigFieldCopy(f, L"Textures", key, 1, key == textureKeys[0] || key == textureKeys[1] || key == textureKeys[2] || key == textureKeys[3] || key == textureKeys[4] ? 0 : 1, L"Textures");
+    const wchar_t* lightingKeys[] = {L"FlashlightIntensity", L"FlashlightAttenuation", L"FlashlightConeDegrees", L"AmbientLight",
+        L"FlashlightShadows", L"FlashlightShadowStrength", L"FlashlightShadowDistanceMeters", L"FlashlightShadowBias", L"FlashlightShadowMapSize",
+        L"LampIntensity", L"LampSpacing", L"LampOnRatio", L"LampFlickerRatio", L"BrokenZoneRatio", L"DarkLampVisibleRatio",
+        L"FogStartMeters", L"FogEndMeters", L"FogDarkness", L"CornerAOIntensity", L"CornerAORadius", L"FloorCeilingAOIntensity",
+        L"Exposure", L"Gamma", L"MotionBlurAmount", L"BloomAmount", L"LensDirtAmount"};
+    for (const wchar_t* key : lightingKeys) AddConfigFieldCopy(f, L"Lighting", key, 1,
+        (std::wcsstr(key, L"Lamp") || std::wcsstr(key, L"AO")) ? 1 : 0,
+        std::wcsstr(key, L"Exposure") || std::wcsstr(key, L"Gamma") || std::wcsstr(key, L"Blur") || std::wcsstr(key, L"Bloom") || std::wcsstr(key, L"Lens")
+            ? L"Post Processing" : L"Lighting");
+    const wchar_t* visualAtmosphereKeys[] = {L"SparkParticles", L"SparkEmitterRatio", L"SparkMaxParticles", L"SparkSize",
+        L"AirParticles", L"AirParticleDensity", L"AirParticleSize", L"AirParticleBlur",
+        L"BloodWetness", L"BloodShaderQuality", L"FleshWetness", L"FleshParallaxScale"};
+    for (const wchar_t* key : visualAtmosphereKeys) AddConfigFieldCopy(f, L"Atmosphere", key, 1, std::wcsstr(key, L"Air") ? 1 : 0, L"Visual Effects");
+
+    const wchar_t* mazeKeys[] = {L"Width", L"Height", L"TileWidthMeters", L"TileLengthMeters", L"WallHeightMeters",
+        L"RoomCount", L"RoomMinRadius", L"RoomMaxRadius", L"RoomCountRange", L"RoomMinRadiusRange", L"RoomMaxRadiusRange"};
+    for (const wchar_t* key : mazeKeys) AddConfigFieldCopy(f, L"Maze", key, 2, std::wcsstr(key, L"Room") ? 1 : 0, std::wcsstr(key, L"Room") ? L"Rooms" : L"Maze");
+    const wchar_t* gameplayAtmosphereKeys[] = {L"PaperDensity", L"HallwayPaperRunDensity", L"ChairDensity", L"WaterDamageDensity",
+        L"MetalCabinetDensity", L"JumpscareFrequency", L"BloodSplatterDensity", L"BloodBurstCount",
+        L"BloodStreamCount", L"BloodStreamThickness", L"BloodWorldFlicker", L"BloodWorldAlwaysOn", L"FleshFlicker", L"FleshAlwaysOn"};
+    for (const wchar_t* key : gameplayAtmosphereKeys) AddConfigFieldCopy(f, L"Atmosphere", key, 2, std::wcsstr(key, L"Blood") || std::wcsstr(key, L"Flesh") ? 1 : 0, L"Scares / Clutter");
+    const wchar_t* monsterGameplayKeys[] = {L"MonsterScale", L"MonsterSpeed", L"MonsterSprintSpeed", L"MonsterKillDistance", L"MonsterVisibleDistance"};
+    for (const wchar_t* key : monsterGameplayKeys) AddConfigFieldCopy(f, L"Monster", key, 2, 0, L"Monster");
+    const wchar_t* dreadKeys[] = {L"Enabled", L"DecayPerSecond", L"MonsterDistance", L"MonsterGainPerSecond",
+        L"JumpscareGain", L"FleshGain", L"WalkSpeedBoost", L"RunSpeedBoost", L"FlashlightFlicker"};
+    for (const wchar_t* key : dreadKeys) AddConfigFieldCopy(f, L"Dread", key, 2, 1, L"Dread");
+    const wchar_t* exitKeys[] = {L"ExitDoorOpenSeconds", L"ExitStepSeconds", L"ExitFadeSeconds", L"ExitStepDistance", L"FadeInSeconds"};
+    for (const wchar_t* key : exitKeys) AddConfigFieldCopy(f, L"CameraFX", key, 2, 0, L"Exit");
+
+    AddConfigFieldCopy(f, L"CameraAI", L"WalkSpeed", 3, 0, L"Movement");
+    AddConfigFieldCopy(f, L"CameraAI", L"RunSpeed", 3, 0, L"Movement");
+    AddConfigFieldCopy(f, L"CameraAI", L"HeadBobAmount", 3, 0, L"Movement");
+    AddConfigFieldCopy(f, L"CameraAI", L"SideSwayAmount", 3, 0, L"Movement");
+    AddCustomConfigField(f, 3, 0, kConfigMouseSensitivityId, L"Mouse", L"Controls", L"MouseSensitivity", L"Mouse sensitivity", L"1", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 3, 0, kConfigInvertMouseYId, L"Mouse", L"Controls", L"InvertMouseY", L"Invert Y axis", L"0", ConfigFieldKind::Bool, 0);
+    AddConfigFieldCopy(f, L"CameraFX", L"FlashlightSwayAmount", 3, 1, L"Flashlight");
+    AddConfigFieldCopy(f, L"CameraFX", L"FlashlightFollowSpeed", 3, 1, L"Flashlight");
+    AddConfigFieldCopy(f, L"CameraFX", L"FlashlightPanicDartAmount", 3, 1, L"Flashlight");
+
+    AddCustomConfigField(f, 4, 0, kConfigAudioMutedId, L"Master", L"Audio", L"Muted", L"Mute audio", L"0", ConfigFieldKind::Bool, 0);
+    AddCustomConfigField(f, 4, 0, kConfigAudioMasterVolumeId, L"Master", L"Audio", L"MasterVolume", L"Master volume", L"1", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 4, 0, kConfigAudioEffectsVolumeId, L"Mix", L"Audio", L"EffectsVolume", L"Effects volume", L"1", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 4, 0, kConfigAudioAmbienceVolumeId, L"Mix", L"Audio", L"AmbienceVolume", L"Ambience volume", L"1", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 4, 0, kConfigAudioMonsterVolumeId, L"Mix", L"Audio", L"MonsterVolume", L"Monster volume", L"1", ConfigFieldKind::Text, 90);
+}
+
+void BuildDebugConfigModel(ConfigState* state) {
+    state->tabLabels = {L"Debug View", L"Effects", L"Autopilot", L"Monster"};
+    state->tabNotes = {
+        L"Debug-only overlays and forced study views.",
+        L"Effect loop and stress-test tuning used by the debug scene.",
+        L"Screensaver/autopilot camera behavior, useful for reusing movement logic in monster AI.",
+        L"Monster mesh, orientation, and eye calibration. Right-drag the preview to orbit and use the wheel to zoom."
+    };
+
+    auto& f = state->fieldDefs;
+    AddConfigFieldCopy(f, L"Maze", L"MapOverlay", 0, 0, L"Overlays");
+    AddConfigFieldCopy(f, L"Dread", L"DebugMeter", 0, 0, L"Overlays");
+    AddConfigFieldCopy(f, L"Atmosphere", L"BloodStudyView", 0, 1, L"Forced Views");
+
+    const wchar_t* effectKeys[] = {L"BloodLoopSeconds", L"BloodFullSpreadAge", L"WaterLoopSeconds", L"AirVentLoopSeconds",
+        L"BrokenLampLoopSeconds", L"StaticLoopSeconds", L"BrokenLampSparkIntensityMin", L"BrokenLampSparkIntensityMax",
+        L"BrokenLampChainIntensityScale", L"BrokenLampChainBurstsMin", L"BrokenLampChainBurstsMax",
+        L"AirVentSteamIntensityMin", L"AirVentSteamIntensityMax", L"AirVentPanelDropEvery", L"AirVentPanelDropChance"};
+    for (const wchar_t* key : effectKeys) AddConfigFieldCopy(f, L"EffectTuning", key, 1,
+        std::wcsstr(key, L"AirVent") ? 1 : 0, L"Effect Tuning");
+
+    const wchar_t* autopilotKeys[] = {L"RoomSpeed", L"TurnLookAheadTiles", L"RoomLookAheadTiles", L"RoomPauseChance",
+        L"JunctionScanChance", L"ScanAngleDegrees", L"LookBackMinSeconds", L"LookBackMaxSeconds",
+        L"JunctionScanBaseSeconds", L"JunctionScanBranchSeconds"};
+    for (const wchar_t* key : autopilotKeys) AddConfigFieldCopy(f, L"CameraAI", key, 2,
+        std::wcsstr(key, L"Look") || std::wcsstr(key, L"Scan") || std::wcsstr(key, L"Junction") ? 1 : 0, L"Autopilot");
+
+    const wchar_t* monsterKeys[] = {L"SkullMesh", L"AlternateSkullMesh", L"AlternateSkullChance", L"SkullMaxTriangles",
+        L"SkullYawDegrees", L"SkullPitchDegrees", L"SkullRollDegrees",
+        L"AlternateSkullYawDegrees", L"AlternateSkullPitchDegrees", L"AlternateSkullRollDegrees",
+        L"RightEyeX", L"RightEyeY", L"RightEyeZ", L"LeftEyeX", L"LeftEyeY", L"LeftEyeZ",
+        L"AlternateRightEyeX", L"AlternateRightEyeY", L"AlternateRightEyeZ", L"AlternateLeftEyeX", L"AlternateLeftEyeY", L"AlternateLeftEyeZ"};
+    for (const wchar_t* key : monsterKeys) AddConfigFieldCopy(f, L"Monster", key, 3,
+        std::wcsstr(key, L"Eye") ? 1 : 0,
+        std::wcsstr(key, L"Eye") ? (std::wcsstr(key, L"Alternate") ? L"Ram Eye Calibration" : L"Deer Eye Calibration") : L"Meshes / Orientation");
+}
+
+void BuildConfigModel(ConfigState* state) {
+    if (!state) return;
+    state->fieldDefs.clear();
+    state->tabLabels.clear();
+    state->tabNotes.clear();
+    if (state->mode == ConfigDialogMode::Game) {
+        BuildGameConfigModel(state);
+    } else if (state->mode == ConfigDialogMode::Debug) {
+        BuildDebugConfigModel(state);
+    } else {
+        BuildFullConfigModel(state);
+    }
+    state->tabCount = static_cast<int>(std::min<size_t>(state->tabLabels.size(), kConfigMaxTabCount));
+}
+
 std::wstring ControlText(HWND hwnd) {
     int len = GetWindowTextLengthW(hwnd);
     std::wstring text(static_cast<size_t>(len + 1), L'\0');
@@ -13691,10 +13892,15 @@ void SyncEyeSliderFromEdit(const ConfigFieldUi& field) {
     SendMessageW(field.slider, TBM_SETPOS, TRUE, EyeSliderPosFromValue(*field.def, value));
 }
 
+bool ConfigActiveTabIsMonsterPreview(const ConfigState* state) {
+    return state && ((state->mode == ConfigDialogMode::Full && state->activeTab == 7) ||
+        (state->mode == ConfigDialogMode::Debug && state->activeTab == 3));
+}
+
 Settings SettingsFromConfigControls(const ConfigState* state);
 
 void ApplyConfigPreviewOrbit(ConfigState* state) {
-    if (!state || !state->previewRenderer || state->activeTab != 7) return;
+    if (!state || !state->previewRenderer || !ConfigActiveTabIsMonsterPreview(state)) return;
     state->previewRenderer->SetMonsterPreviewOrbit(
         state->previewOrbitYaw,
         state->previewOrbitPitch,
@@ -13708,14 +13914,14 @@ POINT ConfigClientPointToScreen(HWND hwnd, LPARAM lParam) {
 }
 
 bool ConfigPointOverPreview(ConfigState* state, POINT screenPoint) {
-    if (!state || !state->preview || state->activeTab != 7) return false;
+    if (!state || !state->preview || !ConfigActiveTabIsMonsterPreview(state)) return false;
     RECT rc{};
     if (!GetWindowRect(state->preview, &rc)) return false;
     return PtInRect(&rc, screenPoint) != FALSE;
 }
 
 void BeginConfigPreviewOrbit(ConfigState* state, HWND captureWindow, POINT screenPoint) {
-    if (!state || state->activeTab != 7) return;
+    if (!state || !ConfigActiveTabIsMonsterPreview(state)) return;
     if (state->previewStatus) ShowWindow(state->previewStatus, SW_HIDE);
     SetFocus(state->preview ? state->preview : captureWindow);
     SetCapture(captureWindow);
@@ -13732,7 +13938,7 @@ void EndConfigPreviewOrbit(ConfigState* state, HWND captureWindow) {
 }
 
 void UpdateConfigPreviewOrbit(ConfigState* state, POINT screenPoint) {
-    if (!state || !state->previewOrbitDragging || state->activeTab != 7) return;
+    if (!state || !state->previewOrbitDragging || !ConfigActiveTabIsMonsterPreview(state)) return;
     int dx = screenPoint.x - state->previewLastMouse.x;
     int dy = screenPoint.y - state->previewLastMouse.y;
     state->previewLastMouse = screenPoint;
@@ -13746,7 +13952,7 @@ void UpdateConfigPreviewOrbit(ConfigState* state, POINT screenPoint) {
 }
 
 void ZoomConfigPreviewOrbit(ConfigState* state, WPARAM wParam) {
-    if (!state || state->activeTab != 7 || !state->previewRenderer) return;
+    if (!state || !ConfigActiveTabIsMonsterPreview(state) || !state->previewRenderer) return;
     int detents = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
     if (detents == 0) return;
     float factor = detents > 0 ? 0.86f : 1.16f;
@@ -13758,7 +13964,7 @@ void ZoomConfigPreviewOrbit(ConfigState* state, WPARAM wParam) {
 }
 
 void ApplyConfigPreviewEyeCalibration(ConfigState* state) {
-    if (!state || !state->previewRenderer || state->activeTab != 7) return;
+    if (!state || !state->previewRenderer || !ConfigActiveTabIsMonsterPreview(state)) return;
     Settings previewSettings = SettingsFromConfigControls(state);
     if (!previewSettings.monsterAltSkullMesh.empty()) {
         previewSettings.monsterAltSkullChance = 1.0f;
@@ -13799,6 +14005,17 @@ void SaveConfigControls(ConfigState* state) {
     }
 }
 
+void ResetVisibleConfigControls(ConfigState* state) {
+    if (!state) return;
+    state->loadingControls = true;
+    for (auto& field : state->fields) {
+        SetFieldControlValue(field.control, *field.def, field.def->fallback);
+        SyncEyeSliderFromEdit(field);
+    }
+    state->loadingControls = false;
+    SaveConfigControls(state);
+}
+
 const ConfigFieldUi* FindConfigField(const ConfigState* state, const wchar_t* section, const wchar_t* key) {
     for (const auto& field : state->fields) {
         if (wcscmp(field.def->section, section) == 0 && wcscmp(field.def->key, key) == 0) return &field;
@@ -13808,7 +14025,7 @@ const ConfigFieldUi* FindConfigField(const ConfigState* state, const wchar_t* se
 
 std::wstring ConfigControlValue(const ConfigState* state, const wchar_t* section, const wchar_t* key, const wchar_t* fallback) {
     const ConfigFieldUi* field = FindConfigField(state, section, key);
-    if (!field) return fallback;
+    if (!field) return IniString(section, key, fallback);
     if (field->def->kind == ConfigFieldKind::Bool) {
         return Button_GetCheck(field->control) == BST_CHECKED ? L"1" : L"0";
     }
@@ -13912,6 +14129,13 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.exitFadeSeconds = std::clamp(ParseConfigFloat(state, L"CameraFX", L"ExitFadeSeconds", s.exitFadeSeconds), 0.2f, 8.0f);
     s.exitStepDistance = std::clamp(ParseConfigFloat(state, L"CameraFX", L"ExitStepDistance", s.exitStepDistance), 0.0f, 8.0f);
     s.fadeInSeconds = std::clamp(ParseConfigFloat(state, L"CameraFX", L"FadeInSeconds", s.fadeInSeconds), 0.0f, 8.0f);
+    s.mouseSensitivity = std::clamp(ParseConfigFloat(state, L"Controls", L"MouseSensitivity", s.mouseSensitivity), 0.1f, 5.0f);
+    s.invertMouseY = ParseConfigInt(state, L"Controls", L"InvertMouseY", s.invertMouseY ? 1 : 0) != 0;
+    s.audioMuted = ParseConfigInt(state, L"Audio", L"Muted", s.audioMuted ? 1 : 0) != 0;
+    s.audioMasterVolume = std::clamp(ParseConfigFloat(state, L"Audio", L"MasterVolume", s.audioMasterVolume), 0.0f, 1.0f);
+    s.audioEffectsVolume = std::clamp(ParseConfigFloat(state, L"Audio", L"EffectsVolume", s.audioEffectsVolume), 0.0f, 1.0f);
+    s.audioAmbienceVolume = std::clamp(ParseConfigFloat(state, L"Audio", L"AmbienceVolume", s.audioAmbienceVolume), 0.0f, 1.0f);
+    s.audioMonsterVolume = std::clamp(ParseConfigFloat(state, L"Audio", L"MonsterVolume", s.audioMonsterVolume), 0.0f, 1.0f);
 
     s.paperDensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"PaperDensity", s.paperDensity), 0.0f, 4.0f);
     s.hallwayPaperRunDensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"HallwayPaperRunDensity", s.hallwayPaperRunDensity), 0.0f, 4.0f);
@@ -14024,7 +14248,7 @@ void SetConfigPreviewStatus(ConfigState* state, const wchar_t* text) {
 
 void UpdateConfigPreviewHint(ConfigState* state) {
     if (!state || !state->previewHint) return;
-    const wchar_t* hint = state->activeTab == 7
+    const wchar_t* hint = ConfigActiveTabIsMonsterPreview(state)
         ? L"Click Update preview after changing monster settings. Drag the preview to rotate the skull; use the wheel to zoom."
         : L"Edit several values, then click Update preview to rebuild the embedded screensaver once.";
     SetWindowTextW(state->previewHint, hint);
@@ -14046,7 +14270,7 @@ void RestartConfigPreview(ConfigState* state) {
     state->previewPending = false;
     Settings previewSettings = SettingsFromConfigControls(state);
     state->previewRenderer = std::make_unique<Renderer>();
-    bool monsterPreview = state->activeTab == 7;
+    bool monsterPreview = ConfigActiveTabIsMonsterPreview(state);
     if (monsterPreview && !previewSettings.monsterAltSkullMesh.empty()) {
         previewSettings.monsterAltSkullChance = 1.0f;
     }
@@ -14070,7 +14294,7 @@ int ConfigVisibleHeight() {
 }
 
 int ConfigMaxScroll(const ConfigState* state, int tab) {
-    if (!state || tab < 0 || tab >= kConfigTabCount) return 0;
+    if (!state || tab < 0 || tab >= state->tabCount) return 0;
     return std::max(0, state->contentHeight[static_cast<size_t>(tab)] - ConfigVisibleHeight());
 }
 
@@ -14137,11 +14361,12 @@ void ApplyConfigScroll(ConfigState* state) {
 
 void ShowConfigTab(ConfigState* state, int tab) {
     if (!state) return;
+    tab = std::clamp(tab, 0, std::max(0, state->tabCount - 1));
     state->activeTab = tab;
-    if (tab != 7 && state->previewOrbitDragging) {
+    if (!ConfigActiveTabIsMonsterPreview(state) && state->previewOrbitDragging) {
         EndConfigPreviewOrbit(state, GetCapture());
     }
-    if (state->note) SetWindowTextW(state->note, kConfigNotes[tab]);
+    if (state->note && tab < static_cast<int>(state->tabNotes.size())) SetWindowTextW(state->note, state->tabNotes[static_cast<size_t>(tab)].c_str());
     ApplyConfigScroll(state);
     state->previewPending = false;
     UpdateConfigPreviewHint(state);
@@ -14168,7 +14393,7 @@ LRESULT CALLBACK ConfigPreviewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         return 0;
     case WM_LBUTTONDOWN:
     case WM_RBUTTONDOWN:
-        if (state && state->activeTab == 7) {
+        if (state && ConfigActiveTabIsMonsterPreview(state)) {
             BeginConfigPreviewOrbit(state, hwnd, ConfigClientPointToScreen(hwnd, lParam));
             return 0;
         }
@@ -14186,13 +14411,13 @@ LRESULT CALLBACK ConfigPreviewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         }
         break;
     case WM_MOUSEMOVE:
-        if (state && state->previewOrbitDragging && state->activeTab == 7) {
+        if (state && state->previewOrbitDragging && ConfigActiveTabIsMonsterPreview(state)) {
             UpdateConfigPreviewOrbit(state, ConfigClientPointToScreen(hwnd, lParam));
             return 0;
         }
         break;
     case WM_MOUSEWHEEL:
-        if (state && state->activeTab == 7 && state->previewRenderer) {
+        if (state && ConfigActiveTabIsMonsterPreview(state) && state->previewRenderer) {
             ZoomConfigPreviewOrbit(state, wParam);
             return 0;
         }
@@ -14209,19 +14434,24 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
     case WM_CREATE: {
         HFONT font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
         state = new ConfigState();
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        state->mode = cs && cs->lpCreateParams
+            ? static_cast<ConfigDialogMode>(reinterpret_cast<intptr_t>(cs->lpCreateParams))
+            : ConfigDialogMode::Full;
+        BuildConfigModel(state);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 
         state->tab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
             12, 12, 720, 628, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kConfigTabId)), nullptr, nullptr);
         SendMessageW(state->tab, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        for (int i = 0; i < kConfigTabCount; ++i) {
+        for (int i = 0; i < state->tabCount; ++i) {
             TCITEMW item{};
             item.mask = TCIF_TEXT;
-            item.pszText = const_cast<wchar_t*>(kConfigTabs[i]);
+            item.pszText = const_cast<wchar_t*>(state->tabLabels[static_cast<size_t>(i)].c_str());
             TabCtrl_InsertItem(state->tab, i, &item);
         }
 
-        state->note = CreateWindowW(L"STATIC", kConfigNotes[0], WS_CHILD | WS_VISIBLE | SS_LEFT,
+        state->note = CreateWindowW(L"STATIC", state->tabNotes.empty() ? L"" : state->tabNotes[0].c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT,
             30, 50, 660, 34, hwnd, nullptr, nullptr, nullptr);
         SendMessageW(state->note, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 
@@ -14229,15 +14459,16 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         constexpr int kColumnX[kColumnCount] = {26, 376};
         constexpr int kLabelW = 160;
         constexpr int kControlOffset = 170;
-        std::array<std::array<int, kColumnCount>, kConfigTabCount> y{};
-        std::array<std::array<const wchar_t*, kColumnCount>, kConfigTabCount> group{};
+        std::array<std::array<int, kColumnCount>, kConfigMaxTabCount> y{};
+        std::array<std::array<const wchar_t*, kColumnCount>, kConfigMaxTabCount> group{};
         for (auto& tabY : y) {
             tabY.fill(92);
         }
 
-        for (const auto& def : kConfigFields) {
+        for (const auto& def : state->fieldDefs) {
             size_t tabIndex = static_cast<size_t>(def.tab);
             size_t colIndex = static_cast<size_t>(def.column);
+            if (tabIndex >= static_cast<size_t>(state->tabCount) || colIndex >= static_cast<size_t>(kColumnCount)) continue;
             if (group[tabIndex][colIndex] != def.group) {
                 if (y[tabIndex][colIndex] > 92) y[tabIndex][colIndex] += 10;
                 HWND header = CreateWindowW(L"STATIC", def.group, WS_CHILD | SS_LEFT,
@@ -14275,7 +14506,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
             state->fields.push_back({&def, label, control, slider, fieldY + 4, fieldY, fieldY - 1});
         }
-        for (int tab = 0; tab < kConfigTabCount; ++tab) {
+        for (int tab = 0; tab < state->tabCount; ++tab) {
             int bottom = std::max(y[static_cast<size_t>(tab)][0], y[static_cast<size_t>(tab)][1]) + 8;
             state->contentHeight[static_cast<size_t>(tab)] = std::max(ConfigVisibleHeight(), bottom - kConfigContentTop);
         }
@@ -14362,7 +14593,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         }
         break;
     case WM_MOUSEWHEEL:
-        if (state && state->activeTab == 7 && state->previewRenderer) {
+        if (state && ConfigActiveTabIsMonsterPreview(state) && state->previewRenderer) {
             POINT screenPoint{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             if (ConfigPointOverPreview(state, screenPoint)) {
                 ZoomConfigPreviewOrbit(state, wParam);
@@ -14394,7 +14625,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         break;
     case WM_LBUTTONDOWN:
     case WM_RBUTTONDOWN:
-        if (state && state->activeTab == 7) {
+        if (state && ConfigActiveTabIsMonsterPreview(state)) {
             POINT screenPoint = ConfigClientPointToScreen(hwnd, lParam);
             if (ConfigPointOverPreview(state, screenPoint)) {
                 BeginConfigPreviewOrbit(state, hwnd, screenPoint);
@@ -14415,7 +14646,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         }
         break;
     case WM_MOUSEMOVE:
-        if (state && state->previewOrbitDragging && state->activeTab == 7 && GetCapture() == hwnd) {
+        if (state && state->previewOrbitDragging && ConfigActiveTabIsMonsterPreview(state) && GetCapture() == hwnd) {
             UpdateConfigPreviewOrbit(state, ConfigClientPointToScreen(hwnd, lParam));
             return 0;
         }
@@ -14424,13 +14655,25 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         int id = LOWORD(wParam);
         if (id == kConfigSaveId && state) {
             SaveConfigControls(state);
-            MessageBoxW(hwnd, L"Settings saved. Restart the screensaver to use changed values.", L"Backrooms Maze", MB_OK | MB_ICONINFORMATION);
+            const wchar_t* message = state->mode == ConfigDialogMode::Game
+                ? L"Game settings saved. Start a new run or restart the game to reload settings that affect level generation."
+                : (state->mode == ConfigDialogMode::Debug
+                    ? L"Debug settings saved. Re-enter Debug or update the preview to reload scene-generation settings."
+                    : L"Settings saved. Restart the screensaver to use changed values.");
+            MessageBoxW(hwnd, message, L"Backrooms Maze", MB_OK | MB_ICONINFORMATION);
             return 0;
         }
         if (id == kConfigResetId && state) {
-            if (MessageBoxW(hwnd, L"Reset all settings to defaults?", L"Backrooms Maze", MB_YESNO | MB_ICONQUESTION) == IDYES) {
-                WriteTextFile(SettingsPath(), DefaultConfigText());
-                LoadConfigControls(state, true);
+            const wchar_t* prompt = state->mode == ConfigDialogMode::Full
+                ? L"Reset all settings to defaults?"
+                : L"Reset the visible settings in this view to defaults?";
+            if (MessageBoxW(hwnd, prompt, L"Backrooms Maze", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+                if (state->mode == ConfigDialogMode::Full) {
+                    WriteTextFile(SettingsPath(), DefaultConfigText());
+                    LoadConfigControls(state, true);
+                } else {
+                    ResetVisibleConfigControls(state);
+                }
                 ScheduleConfigPreview(state, 0);
             }
             return 0;
@@ -14484,7 +14727,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-void ShowConfig(HWND owner) {
+void ShowConfig(HWND owner, ConfigDialogMode mode) {
     EnsureSettingsFile();
     INITCOMMONCONTROLSEX commonControls{sizeof(commonControls), ICC_TAB_CLASSES | ICC_STANDARD_CLASSES | ICC_BAR_CLASSES};
     InitCommonControlsEx(&commonControls);
@@ -14509,9 +14752,12 @@ void ShowConfig(HWND owner) {
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     RegisterClassW(&wc);
 
-    HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, cls, L"Backrooms Maze Configuration",
+    const wchar_t* title = mode == ConfigDialogMode::Game
+        ? L"Backrooms Maze Game Settings"
+        : (mode == ConfigDialogMode::Debug ? L"Backrooms Maze Debug Settings" : L"Backrooms Maze Configuration");
+    HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, cls, title,
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 1220, 735,
-        owner, nullptr, hInstance, nullptr);
+        owner, nullptr, hInstance, reinterpret_cast<LPVOID>(static_cast<intptr_t>(mode)));
     if (!hwnd) return;
     MSG msg{};
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
@@ -14904,10 +15150,13 @@ int RunGame(HINSTANCE hInstance) {
         434, 10, 84, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugPrevPropId)), hInstance, nullptr);
     app.debugNextProp = CreateWindowW(L"BUTTON", L"Prop >", WS_CHILD | BS_PUSHBUTTON,
         526, 10, 84, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugNextPropId)), hInstance, nullptr);
+    app.debugSettings = CreateWindowW(L"BUTTON", L"Debug settings", WS_CHILD | BS_PUSHBUTTON,
+        618, 10, 126, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugSettingsId)), hInstance, nullptr);
 
     HWND controls[] = {
         app.gameTitle, app.gameSinglePlayer, app.gameSettings, app.gameDebug, app.gameExit, app.gameBack,
-        app.debugPrevEffect, app.debugNextEffect, app.debugSize, app.debugReset, app.debugPrevProp, app.debugNextProp
+        app.debugPrevEffect, app.debugNextEffect, app.debugSize, app.debugReset, app.debugPrevProp, app.debugNextProp,
+        app.debugSettings
     };
     for (HWND control : controls) ApplyDefaultGuiFont(control);
 

@@ -8,6 +8,8 @@ This file is the source of truth for turning the screensaver into a playable C++
 - [x] Add a separate `BackroomsMazeGame.exe` target.
 - [x] Add first game shell states: Main Menu, Single Player, Settings, Debug, Exit.
 - [x] Add first-pass manual player controls and HUD.
+- [x] Split game settings into System, Graphics, Game, Controls, and Audio views.
+- [x] Add Debug-only settings view for overlays, effect tuning, autopilot tuning, and monster calibration.
 - [ ] Expand Debug into a full in-game test lab.
 - [ ] Add stealth/noise gameplay.
 - [ ] Replace placeholder monster with a procedural many-limbed creature.
@@ -17,6 +19,8 @@ This file is the source of truth for turning the screensaver into a playable C++
 
 - [x] Main Menu with Single Player, Settings, Debug, and Exit.
 - [x] Keep Settings wired to the existing configuration UI.
+- [x] Filter game Settings to game-relevant categories instead of showing the full screensaver configuration.
+- [x] Add Debug Settings inside Debug for debug/test-only controls.
 - [x] Keep Debug wired to the existing effect/prop debug slice viewer.
 - [x] Single Player starts a playable maze run.
 - [x] Esc returns from Play or Debug to Main Menu.
@@ -31,6 +35,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 
 ## Player Roadmap
 
+- Current controls settings include mouse sensitivity and invert Y.
 - Walking should create normal footstep noise.
 - Running should drain stamina and greatly increase monster hearing distance.
 - Crouching is a light stance change, not a full stealth simulation at first: lower camera height, slower speed, gentler vertical bob, almost no side bob.
@@ -55,6 +60,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 
 ## Audio Roadmap
 
+- Current Audio settings are persisted in the INI but not consumed yet because the audio engine is not implemented.
 - Player footsteps need dry carpet and moist carpet variants.
 - Monster many-feet movement should be audible beyond viewing distance.
 - Lamps need buzzing and unstable flicker sounds.
@@ -67,6 +73,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 ## Debug Scene Roadmap
 
 - Existing debug slice viewer is the first Debug state.
+- Debug Settings currently owns map/dread overlays, fixed study views, effect loop tuning, autopilot camera tuning, and monster mesh/eye calibration.
 - Add texture/material test wall.
 - Add model browser for runtime props and monster prototypes.
 - Add labyrinth generation test controls.
