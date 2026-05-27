@@ -1527,8 +1527,8 @@
             AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, frameHalfW, frameYOffset, 0.0f)), {0.035f, frameHalfH, 0.055f}, exitPortal.yaw, 10.0f);
             AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, frameYOffset + frameHalfH + 0.055f, 0.0f)), {frameHalfW + 0.045f, 0.055f, 0.055f}, exitPortal.yaw, 10.0f);
             constexpr float fixedSignTargetH = 0.28f;
-            float signY = doorCenter.y + fixedDoorHalfH + fixedSignTargetH * 0.5f + 0.13f;
-            signY = std::min(signY, wallH - fixedSignTargetH * 0.5f - 0.18f);
+            float signY = doorCenter.y + fixedDoorHalfH + fixedSignTargetH * 0.5f + 0.24f;
+            signY = std::min(signY, wallH - fixedSignTargetH * 0.5f - 0.12f);
             XMFLOAT3 sign = {bx + forward.x * 0.028f, signY, bz + forward.z * 0.028f};
             exitSignLightPos_ = Add3(sign, OrientedOffset(right, up, forward, 0.0f, -0.02f, 0.16f));
             exitSignLightStrength_ = 1.0f;

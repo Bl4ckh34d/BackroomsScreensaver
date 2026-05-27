@@ -333,11 +333,18 @@
             std::clamp(settings_.airParticleSize, 0.20f, 4.0f),
             settings_.airParticles ? std::clamp(settings_.airParticleDensity, 0.0f, 4.0f) : 0.0f
         };
+        XMFLOAT3 exitLightPos = exitSignLightPos_;
+        float exitLightStrength = exitSignLightStrength_;
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu && exitDoorAngle_ > 0.001f) {
+            XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -1.18f);
+            exitLightPos = Add3(exitDoorCenter_, Add3(throughDoor, {0.0f, 0.42f, 0.0f}));
+            exitLightStrength = 1.0f + SmoothStep(0.03f, 0.95f, exitDoorAngle_ / 1.38f) * 13.0f;
+        }
         cb.exitLight0 = {
-            exitSignLightPos_.x,
-            exitSignLightPos_.y,
-            exitSignLightPos_.z,
-            exitSignLightStrength_
+            exitLightPos.x,
+            exitLightPos.y,
+            exitLightPos.z,
+            exitLightStrength
         };
         float monsterFogRadius = std::max(maze_.TileAverage() * 2.60f, 5.80f);
         float monsterFogStrength = (monsterPreview_ || gEffectDebugViewer || gBloodDebugEveryWall || settings_.bloodStudyView)

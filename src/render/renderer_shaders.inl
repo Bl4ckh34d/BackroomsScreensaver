@@ -943,15 +943,20 @@ float3 ExitSignLight(float3 worldPos, float3 worldN)
     }
     float3 L = gExitLight0.xyz - worldPos;
     float d = length(L);
-    if (d <= 0.001 || d > 3.65)
+    float daylight = saturate((strength - 1.4) / 10.5);
+    float reach = lerp(3.65, 9.2, daylight);
+    if (d <= 0.001 || d > reach)
     {
         return float3(0.0, 0.0, 0.0);
     }
     float visibility = LampRayClear(worldPos.xz + worldN.xz * 0.035, gExitLight0.xz);
     float3 Ln = L / d;
     float diffuse = saturate(dot(worldN, Ln) * 0.72 + 0.28);
-    float falloff = pow(saturate(1.0 - d / 3.65), 2.0) / (1.0 + d * d * 0.62);
-    return float3(0.045, 0.92, 0.34) * strength * falloff * diffuse * visibility;
+    float falloff = pow(saturate(1.0 - d / reach), lerp(2.0, 1.22, daylight)) /
+        (1.0 + d * d * lerp(0.62, 0.13, daylight));
+    float3 signGreen = float3(0.045, 0.92, 0.34);
+    float3 warmDaylight = float3(1.0, 0.84, 0.52);
+    return lerp(signGreen, warmDaylight, daylight) * strength * falloff * diffuse * visibility;
 }
 
 float3 ApplyPost(float3 color)
