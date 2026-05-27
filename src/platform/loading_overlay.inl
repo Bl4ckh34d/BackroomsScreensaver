@@ -17,6 +17,10 @@ struct LoadingOverlayState {
     int frame = 0;
 };
 
+constexpr uint8_t kLoadingBgR = 6;
+constexpr uint8_t kLoadingBgG = 8;
+constexpr uint8_t kLoadingBgB = 5;
+
 LoadingOverlayState* LoadingState(HWND hwnd) {
     return reinterpret_cast<LoadingOverlayState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 }
@@ -91,17 +95,18 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
             for (int py = 0; py < tintedH; ++py) {
                 for (int px = 0; px < tintedW; ++px) {
                     size_t src = static_cast<size_t>((py * tintedW + px) * 4);
-                    uint8_t b = logo.pixels[src + 0];
+                    uint8_t r = logo.pixels[src + 0];
                     uint8_t g = logo.pixels[src + 1];
-                    uint8_t r = logo.pixels[src + 2];
+                    uint8_t b = logo.pixels[src + 2];
                     uint8_t srcA = logo.pixels[src + 3];
                     uint8_t rgbCoverage = std::max(r, std::max(g, b));
                     uint8_t darkCoverage = static_cast<uint8_t>(255 - std::min(r, std::min(g, b)));
                     uint8_t a = hasTransparency ? srcA : std::max(rgbCoverage, darkCoverage);
+                    float alpha = static_cast<float>(a) / 255.0f;
                     size_t dst = src;
-                    tinted[dst + 0] = a;
-                    tinted[dst + 1] = a;
-                    tinted[dst + 2] = a;
+                    tinted[dst + 0] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgB), 255.0f, alpha));
+                    tinted[dst + 1] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgG), 255.0f, alpha));
+                    tinted[dst + 2] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgR), 255.0f, alpha));
                     tinted[dst + 3] = 255;
                 }
             }
@@ -148,7 +153,7 @@ void DrawLoadingOverlay(HWND hwnd, HDC hdc) {
     int height = std::max(1, static_cast<int>(rc.bottom - rc.top));
     LoadingOverlayState* state = LoadingState(hwnd);
 
-    HBRUSH bg = CreateSolidBrush(RGB(8, 8, 6));
+    HBRUSH bg = CreateSolidBrush(RGB(kLoadingBgR, kLoadingBgG, kLoadingBgB));
     FillRect(hdc, &rc, bg);
     DeleteObject(bg);
 

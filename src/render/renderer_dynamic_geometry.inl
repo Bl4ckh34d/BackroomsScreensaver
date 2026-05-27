@@ -205,6 +205,26 @@
             Add3(bloodCenter, Add3(bloodHalfW, bloodHalfH)),
             Add3(bloodCenter, Add3(Scale3(bloodHalfW, -1.0f), bloodHalfH)),
             inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, 14.985f);
+        float ceilingDepth = std::min(maze_.tileD * 0.72f, 1.18f);
+        float ceilingY = settings_.wallHeightMeters - 0.003f;
+        XMFLOAT3 ceilingCenter{x + 0.22f, ceilingY, wallZ - ceilingDepth * 0.5f};
+        XMFLOAT3 ceilingHalfD = Scale3(inward, ceilingDepth * 0.5f);
+        AppendDynamicQuadUV(transparentVerts,
+            Add3(ceilingCenter, Add3(Scale3(bloodHalfW, -1.0f), Scale3(ceilingHalfD, -1.0f))),
+            Add3(ceilingCenter, Add3(bloodHalfW, Scale3(ceilingHalfD, -1.0f))),
+            Add3(ceilingCenter, Add3(bloodHalfW, ceilingHalfD)),
+            Add3(ceilingCenter, Add3(Scale3(bloodHalfW, -1.0f), ceilingHalfD)),
+            Scale3(up, -1.0f), right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, 14.985f);
+        float poolDepth = std::min(maze_.tileD * 0.58f, 0.94f);
+        XMFLOAT3 poolCenter{x + 0.22f, 0.014f, wallZ - poolDepth * 0.42f};
+        XMFLOAT3 poolHalfW = Scale3(right, 0.68f);
+        XMFLOAT3 poolHalfD = Scale3(inward, poolDepth * 0.5f);
+        AppendDynamicQuadUV(transparentVerts,
+            Add3(poolCenter, Add3(Scale3(poolHalfW, -1.0f), poolHalfD)),
+            Add3(poolCenter, Add3(poolHalfW, poolHalfD)),
+            Add3(poolCenter, Add3(poolHalfW, Scale3(poolHalfD, -1.0f))),
+            Add3(poolCenter, Add3(Scale3(poolHalfW, -1.0f), Scale3(poolHalfD, -1.0f))),
+            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, 14.985f);
         for (int i = 0; i < 3; ++i) {
             bool hover = menuHoverButtonIndex_ == i;
             float y = startY - static_cast<float>(i) * 0.34f;

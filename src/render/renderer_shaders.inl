@@ -2379,6 +2379,37 @@ float4 PSMain(VSOut input) : SV_TARGET
         return float4(ApplyPost(color), 1.0);
     }
 
+    if (materialId > 5.5 && materialId < 6.5)
+    {
+        float2 p = uv;
+        float verticalFrame = max(1.0 - smoothstep(0.010, 0.038, abs(p.x - 0.12)),
+                                  1.0 - smoothstep(0.010, 0.038, abs(p.x - 0.88)));
+        float horizontalFrame = max(1.0 - smoothstep(0.010, 0.036, abs(p.y - 0.17)),
+                                    1.0 - smoothstep(0.010, 0.036, abs(p.y - 0.83)));
+        float midRail = 1.0 - smoothstep(0.012, 0.042, abs(p.y - 0.50));
+        float insetShadow = saturate(max(max(verticalFrame, horizontalFrame), midRail));
+        float grain = Fbm3(float3(p * float2(7.0, 12.0), 4.7));
+        float grime = Fbm3(float3(input.worldPos.xz * 1.4 + p * 1.8, 21.0));
+        float3 base = float3(0.24, 0.18, 0.115);
+        base += (grain - 0.5) * float3(0.035, 0.028, 0.020);
+        base -= insetShadow * float3(0.055, 0.045, 0.030);
+        base -= smoothstep(0.58, 0.94, grime) * float3(0.040, 0.036, 0.027);
+        float3 worldN = normalize(N + T * (grain - 0.5) * 0.035);
+        float dist = length(input.worldPos - cam);
+        float flashlight = FlashlightAmount(input.worldPos, worldN);
+        float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
+        float sparkLight = SparkLight(input.worldPos, worldN);
+        float3 exitGreen = ExitSignLight(input.worldPos, worldN);
+        float3 color = base * (gLighting0.z + overhead * 0.88 + flashlight + sparkLight);
+        color += base * exitGreen * 0.55;
+        float3 toLight = normalize(gShadow0.xyz - input.worldPos);
+        float facing = saturate(dot(reflect(-toLight, worldN), V));
+        color += float3(0.75, 0.56, 0.34) * pow(facing, 54.0) * 0.075 * (flashlight + sparkLight * 0.45);
+        color *= 1.0 - CornerAO(input.worldPos, worldN) * 0.55;
+        color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, 1.0));
+        return float4(ApplyPost(color), 1.0);
+    }
+
     float3 viewTS = float3(dot(V, T), dot(V, B), max(dot(V, N), 0.18));
     float parallaxScale = 0.0;
     if (materialId < 0.5) parallaxScale = 0.018;
