@@ -2146,8 +2146,9 @@ float4 PSMain(VSOut input) : SV_TARGET
         float emit = materialId < 3.5 ? LampVisualPower(input.material, input.worldPos, time) * 2.6 * (1.0 - saturate(gTransition0.z)) : 0.0;
         float passiveLight = materialId < 3.5
             ? gLighting0.z
-            : max(gLighting0.z + FlashlightAmount(input.worldPos, N) * 0.34,
-                  0.16 + LocalLampLight(input.worldPos, N, time) * gLighting1.x * 0.20);
+            : gLighting0.z * 0.55 +
+              FlashlightAmount(input.worldPos, N) * 0.48 +
+              LocalLampLight(input.worldPos, N, time) * gLighting1.x * 0.14;
         float3 color = base * (passiveLight + emit);
         float fog = saturate((length(input.worldPos - cam) - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 3.2);
