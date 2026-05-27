@@ -603,6 +603,9 @@ bool LoadImageWic(const std::filesystem::path& path, int targetW, int targetH, I
 
 struct Settings {
     bool allowWarpFallback = false;
+    bool gameFullscreen = false;
+    int gameResolutionWidth = 1280;
+    int gameResolutionHeight = 760;
 
     int mazeWidth = kMazeW;
     int mazeHeight = kMazeH;
@@ -839,6 +842,10 @@ std::wstring DefaultConfigText() {
       << L"; Paths can be absolute, or relative to this SCR folder/current project folder.\r\n\r\n"
       << L"[Renderer]\r\n"
       << L"AllowWarpFallback=0\r\n\r\n"
+      << L"[GameWindow]\r\n"
+      << L"Fullscreen=0\r\n"
+      << L"ResolutionWidth=1280\r\n"
+      << L"ResolutionHeight=760\r\n\r\n"
       << L"[Maze]\r\n"
       << L"Width=25\r\n"
       << L"Height=25\r\n"
@@ -1097,6 +1104,9 @@ Settings LoadSettings() {
     EnsureSettingsFile();
     Settings s;
     s.allowWarpFallback = IniInt(L"Renderer", L"AllowWarpFallback", s.allowWarpFallback ? 1 : 0) != 0;
+    s.gameFullscreen = IniInt(L"GameWindow", L"Fullscreen", s.gameFullscreen ? 1 : 0) != 0;
+    s.gameResolutionWidth = std::clamp(IniInt(L"GameWindow", L"ResolutionWidth", s.gameResolutionWidth), 640, 7680);
+    s.gameResolutionHeight = std::clamp(IniInt(L"GameWindow", L"ResolutionHeight", s.gameResolutionHeight), 360, 4320);
     s.mazeWidth = std::clamp(IniInt(L"Maze", L"Width", s.mazeWidth) | 1, 15, 151);
     s.mazeHeight = std::clamp(IniInt(L"Maze", L"Height", s.mazeHeight) | 1, 15, 151);
     s.roomCount = std::clamp(IniInt(L"Maze", L"RoomCount", s.roomCount), 0, 80);
@@ -12622,6 +12632,8 @@ struct App {
     HWND gameDebug = nullptr;
     HWND gameBack = nullptr;
     HWND gameExit = nullptr;
+    HWND gameConfig = nullptr;
+    GameState gameSettingsReturnState = GameState::MainMenu;
     bool firstMouse = true;
     POINT initialMouse{};
     HWND hwnd = nullptr;
@@ -12671,6 +12683,7 @@ constexpr int kGameSettingsId = 5202;
 constexpr int kGameDebugId = 5203;
 constexpr int kGameBackId = 5204;
 constexpr int kGameExitId = 5205;
+constexpr UINT kGameConfigClosedMessage = WM_APP + 31;
 
 DebugSliceEffect StepDebugSliceEffect(DebugSliceEffect effect, int delta) {
     int count = static_cast<int>(DebugSliceEffect::Count);
@@ -12725,6 +12738,7 @@ enum class ConfigDialogMode {
     Debug
 };
 void ShowConfig(HWND owner, ConfigDialogMode mode = ConfigDialogMode::Full);
+HWND CreateEmbeddedConfig(HWND parent, ConfigDialogMode mode);
 HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance);
 void SetLoadingOverlayStatus(HWND overlay, const wchar_t* phase, const wchar_t* detail, bool complete);
 void LoadingProgressCallback(void* context, const StartupProgressUpdate& update);
@@ -12918,6 +12932,33 @@ void EnterGameDebug(HWND hwnd) {
     ReleaseGameMouse();
     UpdateDebugSliceControls(hwnd);
     RedrawDebugSliceControls();
+}
+
+void EnterGameSettings(HWND hwnd, ConfigDialogMode mode, GameState returnState) {
+    if (!gApp || !gApp->gameShell) return;
+    ReleaseGameMouse();
+    if (gApp->gameConfig) {
+        DestroyWindow(gApp->gameConfig);
+        gApp->gameConfig = nullptr;
+    }
+    gApp->gameSettingsReturnState = returnState;
+    gApp->gameState = GameState::Settings;
+    SetGameMenuVisible(false);
+    SetDebugControlsVisible(false);
+    if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
+    gApp->gameConfig = CreateEmbeddedConfig(hwnd, mode);
+    if (gApp->gameConfig) {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        MoveWindow(gApp->gameConfig, 0, 0, std::max(1L, rc.right - rc.left), std::max(1L, rc.bottom - rc.top), TRUE);
+        ShowWindow(gApp->gameConfig, SW_SHOW);
+        SetFocus(gApp->gameConfig);
+        SetWindowTextW(hwnd, mode == ConfigDialogMode::Debug ? L"Backrooms Maze - Debug Settings" : L"Backrooms Maze - Settings");
+    } else if (returnState == GameState::DebugScene) {
+        EnterGameDebug(hwnd);
+    } else {
+        EnterGameMainMenu(hwnd);
+    }
 }
 
 GameInputSnapshot CollectGameInput() {
@@ -13191,6 +13232,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int h = HIWORD(lParam);
             if (hwnd == gApp->hwnd) {
                 if (gApp->loadingOverlay) ResizeLoadingOverlay(hwnd, gApp->loadingOverlay);
+                if (gApp->gameConfig) MoveWindow(gApp->gameConfig, 0, 0, std::max(1, w), std::max(1, h), TRUE);
                 gApp->renderer.Resize(w, h);
                 if (gApp->gameShell) {
                     LayoutGameControls(hwnd);
@@ -13202,6 +13244,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
         }
         return 0;
+    case kGameConfigClosedMessage:
+        if (gApp && gApp->gameShell && hwnd == gApp->hwnd) {
+            if (gApp->gameSettingsReturnState == GameState::DebugScene) {
+                EnterGameDebug(hwnd);
+            } else {
+                EnterGameMainMenu(hwnd);
+            }
+            return 0;
+        }
+        break;
     case WM_SETCURSOR:
         if (gApp && gApp->gameShell && gApp->gameState == GameState::PlayGame) {
             SetCursor(nullptr);
@@ -13253,6 +13305,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 (gApp->gameState == GameState::PlayGame || gApp->gameState == GameState::DebugScene)) {
                 EnterGameMainMenu(hwnd);
             } else if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
+                gApp->gameState == GameState::Settings && gApp->gameConfig) {
+                DestroyWindow(gApp->gameConfig);
+            } else if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
                 gApp->gameState == GameState::MainMenu && gApp->gameRunStarted && !gApp->gameDebugActive) {
                 EnterGamePlay(hwnd);
             }
@@ -13268,10 +13323,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 return 0;
             }
             if (id == kGameSettingsId) {
-                ReleaseGameMouse();
-                gApp->gameState = GameState::Settings;
-                ShowConfig(hwnd, ConfigDialogMode::Game);
-                EnterGameMainMenu(hwnd);
+                EnterGameSettings(hwnd, ConfigDialogMode::Game, GameState::MainMenu);
                 return 0;
             }
             if (id == kGameDebugId) {
@@ -13279,15 +13331,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 return 0;
             }
             if (id == kGameBackId) {
+                if (gApp->gameState == GameState::Settings && gApp->gameConfig) {
+                    DestroyWindow(gApp->gameConfig);
+                    return 0;
+                }
                 EnterGameMainMenu(hwnd);
                 return 0;
             }
             if (id == kDebugSettingsId) {
-                ReleaseGameMouse();
-                ShowConfig(hwnd, ConfigDialogMode::Debug);
-                if (gApp && gApp->gameState == GameState::DebugScene) {
-                    EnterGameDebug(hwnd);
-                }
+                EnterGameSettings(hwnd, ConfigDialogMode::Debug, GameState::DebugScene);
                 return 0;
             }
             if (id == kGameExitId) {
@@ -13397,6 +13449,9 @@ constexpr int kConfigAudioMasterVolumeId = kConfigFieldBaseId + 169;
 constexpr int kConfigAudioEffectsVolumeId = kConfigFieldBaseId + 170;
 constexpr int kConfigAudioAmbienceVolumeId = kConfigFieldBaseId + 171;
 constexpr int kConfigAudioMonsterVolumeId = kConfigFieldBaseId + 172;
+constexpr int kConfigGameFullscreenId = kConfigFieldBaseId + 173;
+constexpr int kConfigGameResolutionWidthId = kConfigFieldBaseId + 174;
+constexpr int kConfigGameResolutionHeightId = kConfigFieldBaseId + 175;
 
 enum class ConfigFieldKind {
     Text,
@@ -13455,6 +13510,7 @@ struct ConfigState {
     bool previewPending = false;
     ULONGLONG previewApplyAt = 0;
     bool previewOrbitDragging = false;
+    bool embedded = false;
     POINT previewLastMouse{};
     bool previewManualOrbit = false;
     float previewOrbitYaw = 0.0f;
@@ -13657,6 +13713,11 @@ const ConfigFieldDef kConfigFields[] = {
     {7, 1, kConfigFieldBaseId + 99, L"Dread Response", L"Dread", L"FlashlightFlicker", L"Flashlight flicker", L"1", ConfigFieldKind::Text, 90},
 };
 
+struct ConfigCreateParams {
+    ConfigDialogMode mode = ConfigDialogMode::Full;
+    bool embedded = false;
+};
+
 const ConfigFieldDef* FindBaseConfigField(const wchar_t* section, const wchar_t* key) {
     for (const auto& def : kConfigFields) {
         if (std::wcscmp(def.section, section) == 0 && std::wcscmp(def.key, key) == 0) return &def;
@@ -13699,7 +13760,10 @@ void BuildGameConfigModel(ConfigState* state) {
     };
 
     auto& f = state->fieldDefs;
-    AddConfigFieldCopy(f, L"Renderer", L"AllowWarpFallback", 0, 0, L"System");
+    AddCustomConfigField(f, 0, 0, kConfigGameFullscreenId, L"Display", L"GameWindow", L"Fullscreen", L"Fullscreen", L"0", ConfigFieldKind::Bool, 0);
+    AddCustomConfigField(f, 0, 0, kConfigGameResolutionWidthId, L"Display", L"GameWindow", L"ResolutionWidth", L"Resolution width", L"1280", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 0, 0, kConfigGameResolutionHeightId, L"Display", L"GameWindow", L"ResolutionHeight", L"Resolution height", L"760", ConfigFieldKind::Text, 90);
+    AddConfigFieldCopy(f, L"Renderer", L"AllowWarpFallback", 0, 1, L"System");
     AddConfigFieldCopy(f, L"Randomization", L"RunVariation", 0, 0, L"Runtime");
     AddConfigFieldCopy(f, L"Maze", L"RandomSeed", 0, 1, L"Runtime");
 
@@ -14053,6 +14117,9 @@ std::wstring ParseConfigString(const ConfigState* state, const wchar_t* section,
 Settings SettingsFromConfigControls(const ConfigState* state) {
     Settings s;
     s.allowWarpFallback = ParseConfigInt(state, L"Renderer", L"AllowWarpFallback", s.allowWarpFallback ? 1 : 0) != 0;
+    s.gameFullscreen = ParseConfigInt(state, L"GameWindow", L"Fullscreen", s.gameFullscreen ? 1 : 0) != 0;
+    s.gameResolutionWidth = std::clamp(ParseConfigInt(state, L"GameWindow", L"ResolutionWidth", s.gameResolutionWidth), 640, 7680);
+    s.gameResolutionHeight = std::clamp(ParseConfigInt(state, L"GameWindow", L"ResolutionHeight", s.gameResolutionHeight), 360, 4320);
     s.mazeWidth = std::clamp(ParseConfigInt(state, L"Maze", L"Width", s.mazeWidth) | 1, 15, 151);
     s.mazeHeight = std::clamp(ParseConfigInt(state, L"Maze", L"Height", s.mazeHeight) | 1, 15, 151);
     s.roomCount = std::clamp(ParseConfigInt(state, L"Maze", L"RoomCount", s.roomCount), 0, 80);
@@ -14435,9 +14502,11 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         HFONT font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
         state = new ConfigState();
         auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
-        state->mode = cs && cs->lpCreateParams
-            ? static_cast<ConfigDialogMode>(reinterpret_cast<intptr_t>(cs->lpCreateParams))
-            : ConfigDialogMode::Full;
+        auto* params = cs ? reinterpret_cast<ConfigCreateParams*>(cs->lpCreateParams) : nullptr;
+        if (params) {
+            state->mode = params->mode;
+            state->embedded = params->embedded;
+        }
         BuildConfigModel(state);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 
@@ -14656,7 +14725,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         if (id == kConfigSaveId && state) {
             SaveConfigControls(state);
             const wchar_t* message = state->mode == ConfigDialogMode::Game
-                ? L"Game settings saved. Start a new run or restart the game to reload settings that affect level generation."
+                ? L"Game settings saved. Display settings apply next launch; start a new run to reload level-generation settings."
                 : (state->mode == ConfigDialogMode::Debug
                     ? L"Debug settings saved. Re-enter Debug or update the preview to reload scene-generation settings."
                     : L"Settings saved. Restart the screensaver to use changed values.");
@@ -14717,7 +14786,14 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             KillTimer(hwnd, kConfigPreviewTimerId);
             state->previewRenderer.reset();
         }
-        PostQuitMessage(0);
+        if (state && state->embedded) {
+            if (gApp && gApp->gameConfig == hwnd) {
+                gApp->gameConfig = nullptr;
+                PostMessageW(gApp->hwnd, kGameConfigClosedMessage, 0, 0);
+            }
+        } else {
+            PostQuitMessage(0);
+        }
         return 0;
     case WM_NCDESTROY:
         delete state;
@@ -14755,9 +14831,10 @@ void ShowConfig(HWND owner, ConfigDialogMode mode) {
     const wchar_t* title = mode == ConfigDialogMode::Game
         ? L"Backrooms Maze Game Settings"
         : (mode == ConfigDialogMode::Debug ? L"Backrooms Maze Debug Settings" : L"Backrooms Maze Configuration");
+    ConfigCreateParams params{mode, false};
     HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, cls, title,
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 1220, 735,
-        owner, nullptr, hInstance, reinterpret_cast<LPVOID>(static_cast<intptr_t>(mode)));
+        owner, nullptr, hInstance, &params);
     if (!hwnd) return;
     MSG msg{};
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
@@ -14772,6 +14849,37 @@ void ShowConfig(HWND owner, ConfigDialogMode mode) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+}
+
+HWND CreateEmbeddedConfig(HWND parent, ConfigDialogMode mode) {
+    EnsureSettingsFile();
+    INITCOMMONCONTROLSEX commonControls{sizeof(commonControls), ICC_TAB_CLASSES | ICC_STANDARD_CLASSES | ICC_BAR_CLASSES};
+    InitCommonControlsEx(&commonControls);
+
+    HINSTANCE hInstance = GetModuleHandleW(nullptr);
+    const wchar_t* cls = L"BackroomsMazeConfigWindow";
+    const wchar_t* previewCls = L"BackroomsMazeConfigPreview";
+
+    WNDCLASSW previewWc{};
+    previewWc.lpfnWndProc = ConfigPreviewWndProc;
+    previewWc.hInstance = hInstance;
+    previewWc.lpszClassName = previewCls;
+    previewWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    previewWc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    RegisterClassW(&previewWc);
+
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = ConfigWndProc;
+    wc.hInstance = hInstance;
+    wc.lpszClassName = cls;
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    RegisterClassW(&wc);
+
+    ConfigCreateParams params{mode, true};
+    return CreateWindowExW(0, cls, L"",
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+        0, 0, 10, 10, parent, nullptr, hInstance, &params);
 }
 
 struct PlaybackMonitorRect {
@@ -15113,11 +15221,21 @@ int RunGame(HINSTANCE hInstance) {
     app.gameInstance = hInstance;
     gApp = &app;
 
-    int w = 1280;
-    int h = 760;
+    Settings launchSettings = LoadSettings();
+    int w = std::clamp(launchSettings.gameResolutionWidth, 640, 7680);
+    int h = std::clamp(launchSettings.gameResolutionHeight, 360, 4320);
     int x = std::max(0, (GetSystemMetrics(SM_CXSCREEN) - w) / 2);
     int y = std::max(0, (GetSystemMetrics(SM_CYSCREEN) - h) / 2);
-    HWND hwnd = CreateWindowExW(0, cls, L"Backrooms Maze", WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+    DWORD style = launchSettings.gameFullscreen
+        ? (WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS)
+        : (WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
+    if (launchSettings.gameFullscreen) {
+        x = 0;
+        y = 0;
+        w = GetSystemMetrics(SM_CXSCREEN);
+        h = GetSystemMetrics(SM_CYSCREEN);
+    }
+    HWND hwnd = CreateWindowExW(0, cls, L"Backrooms Maze", style,
         x, y, w, h, nullptr, nullptr, hInstance, nullptr);
     if (!hwnd) {
         gApp = nullptr;
