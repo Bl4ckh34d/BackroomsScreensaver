@@ -3355,6 +3355,10 @@
                 bool lampOn = !brokenZone && seed >= 1.0f - settings_.lampOnRatio;
                 bool brokenPanel = brokenZone &&
                     LampHash(static_cast<float>(cellX) - 19.7f, static_cast<float>(cellZ) + 88.4f) < settings_.sparkEmitterRatio;
+                if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+                    lampOn = lampTile == maze_.start;
+                    brokenPanel = false;
+                }
                 float panelW = tileW * (1.01f / 3.0f);
                 float panelD = tileD * (1.01f / 3.0f);
                 float material = lampOn ? 3.0f + seed * 0.49f : 5.0f;
@@ -3371,6 +3375,14 @@
                     });
                 } else if (brokenPanel && settings_.sparkParticles) {
                     sparkEmitters_.push_back({{lampCenter.x, wallH - 0.085f, lampCenter.z}});
+                }
+            }
+        }
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu && !lampDamagePixels_.empty()) {
+            for (int tileY = 0; tileY < maze_.h; ++tileY) {
+                for (int tileX = 0; tileX < maze_.w; ++tileX) {
+                    if (!maze_.IsOpen(tileX, tileY) || Tile{tileX, tileY} == maze_.start) continue;
+                    lampDamagePixels_[static_cast<size_t>(tileY * maze_.w + tileX)] = 255;
                 }
             }
         }
