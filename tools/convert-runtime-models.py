@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "assets" / "models" / "runtime"
-MATERIAL_COUNT = 25
+MATERIAL_COUNT = 26
 PACKED_VERTEX_STRIDE = 24
 HEADER = struct.Struct("<8sII10f")
 PACKED_VERTEX = struct.Struct("<3H3h3h3H")
@@ -26,6 +26,12 @@ DEFAULT_MATERIALS = {
     "ceiling_lamp_02": 21,
     "ceiling_lamp_03": 21,
     "ceiling_lamp_04": 21,
+}
+
+MATERIAL_REMAPS = {
+    # Material 18 is reserved for glowing menu text in the runtime shader.
+    # The classic chair source used it for dark plastic armrest pieces.
+    "office_chair_classic": {18: 17},
 }
 
 
@@ -106,6 +112,7 @@ def load_obj(path: Path, fallback_material: int):
     texcoords: list[tuple[float, float]] = []
     faces: list[tuple[int, list[tuple[int, int | None]]]] = []
     current_material = fallback_material
+    material_remap = MATERIAL_REMAPS.get(path.stem, {})
 
     with path.open("r", encoding="utf-8", errors="ignore") as handle:
         for raw in handle:
@@ -121,7 +128,8 @@ def load_obj(path: Path, fallback_material: int):
                 if len(parts) >= 3:
                     texcoords.append((float(parts[1]), float(parts[2])))
             elif line.startswith("usemtl "):
-                current_material = material_from_usemtl(line, fallback_material)
+                parsed_material = material_from_usemtl(line, fallback_material)
+                current_material = material_remap.get(parsed_material, parsed_material)
             elif line.startswith("f "):
                 poly = []
                 for token in line.split()[1:]:
