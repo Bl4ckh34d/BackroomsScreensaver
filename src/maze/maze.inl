@@ -155,12 +155,15 @@ struct Maze {
     }
 
     void GenerateMenuRoom() {
-        w = 3;
-        h = 3;
+        w = 6;
+        h = 6;
         open.assign(static_cast<size_t>(w * h), 0);
-        start = {1, 1};
-        exit = {1, 1};
-        SetOpen(1, 1);
+        start = {2, 3};
+        exit = start;
+        for (int y = start.y - 2; y <= start.y; ++y) {
+            SetOpen(start.x, y);
+            SetOpen(start.x + 1, y);
+        }
     }
 
     Tile FarthestReachable(Tile from) const {

@@ -2265,13 +2265,14 @@ float4 PSMain(VSOut input) : SV_TARGET
     {
         float4 label = gAlbedo.Sample(gSampler, float3(uv, 18.0));
         if (label.a < 0.025) discard;
-        float pulse = 0.92 + 0.08 * sin(time * 4.8 + input.worldPos.x * 2.1);
-        float3 glow = label.rgb * (4.2 + label.a * 5.8) * pulse;
+        float hover = smoothstep(0.35, 0.60, frac(input.material));
+        float pulse = lerp(0.72, 0.92 + 0.08 * sin(time * 4.8 + input.worldPos.x * 2.1), hover);
+        float3 glow = label.rgb * lerp(1.35 + label.a * 0.80, 4.2 + label.a * 5.8, hover) * pulse;
         float dist = length(input.worldPos - cam);
         float fog = saturate((dist - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         float fogVisibility = pow(1.0 - saturate(fog * gFog0.z), 2.2);
         glow *= fogVisibility;
-        return float4(saturate(ApplyPost(glow) + glow * 0.18), saturate(label.a * 1.55 * fogVisibility));
+        return float4(saturate(ApplyPost(glow) + glow * lerp(0.02, 0.18, hover)), saturate(label.a * lerp(0.95, 1.55, hover) * fogVisibility));
     }
 
     if (input.material > 10.50 && input.material < 10.90)
@@ -2280,8 +2281,11 @@ float4 PSMain(VSOut input) : SV_TARGET
         float rim = pow(1.0 - ndv, 2.2);
         float hot = 0.82 + pow(ndv, 0.45) * 0.95 + rim * 0.34;
         float flutter = 0.96 + 0.04 * sin(time * 6.2 + input.material * 19.0);
-        float3 color = float3(8.8, 0.28, 0.075) * hot * flutter;
-        color += float3(3.8, 0.065, 0.018) * rim;
+        float bloodMaterial = smoothstep(0.79, 0.83, frac(input.material));
+        float3 hotBase = lerp(float3(8.8, 0.28, 0.075), float3(5.6, 0.025, 0.012), bloodMaterial);
+        float3 rimBase = lerp(float3(3.8, 0.065, 0.018), float3(1.9, 0.006, 0.003), bloodMaterial);
+        float3 color = hotBase * hot * flutter;
+        color += rimBase * rim;
         float dist = length(input.worldPos - cam);
         float fog = saturate((dist - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 1.8);

@@ -311,11 +311,11 @@ public:
         if (runtimeMode_ != RendererRuntimeMode::MainMenu || index < 0 || index >= 3) return false;
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
         XMFLOAT3 center{
-            c.x + maze_.tileW * 0.16f,
-            1.66f - static_cast<float>(index) * 0.24f,
-            c.z - maze_.tileD * 0.5f + 0.064f
+            c.x + maze_.tileW * 0.14f,
+            1.50f - static_cast<float>(index) * 0.34f,
+            c.z + maze_.tileD * 0.5f - 0.064f
         };
-        return ProjectMenuQuadToScreen(center, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.43f, 0.070f, out);
+        return ProjectMenuQuadToScreen(center, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.72f, 0.122f, out);
     }
 
     bool MenuExitDoorScreenRect(RECT& out) const {
@@ -971,6 +971,7 @@ private:
     void ApplyMainMenuSettings() {
         settings_.mazeWidth = 3;
         settings_.mazeHeight = 3;
+        settings_.wallHeightMeters = std::max(settings_.wallHeightMeters, 2.85f);
         settings_.mapOverlay = false;
         settings_.debugAiMapOverlay = false;
         settings_.chairDensity = 0.0f;
@@ -979,16 +980,23 @@ private:
         settings_.metalCabinetDensity = 0.0f;
         settings_.waterDamageDensity = 0.0f;
         settings_.lampOnRatio = 1.0f;
-        settings_.lampSpacing = std::max(settings_.tileWidthMeters, settings_.tileLengthMeters);
+        settings_.lampSpacing = std::max(settings_.tileWidthMeters, settings_.tileLengthMeters) * 2.4f;
+        settings_.lampIntensity = std::max(settings_.lampIntensity, 1.05f);
+        settings_.lampFlickerRatio = 0.0f;
+        settings_.brokenZoneRatio = 0.0f;
+        settings_.ambientLight = std::max(settings_.ambientLight, 0.105f);
+        settings_.flashlightIntensity = std::max(settings_.flashlightIntensity, 1.85f);
+        settings_.flashlightAttenuation = std::min(settings_.flashlightAttenuation, 0.070f);
+        settings_.flashlightConeDegrees = std::max(settings_.flashlightConeDegrees, 92.0f);
         settings_.airParticles = true;
         settings_.airParticleDensity = std::max(0.32f, settings_.airParticleDensity * 0.55f);
         settings_.sparkParticles = true;
         settings_.fadeInSeconds = 0.0f;
         settings_.bloodWorldCoverage = std::max(settings_.bloodWorldCoverage, 0.45f);
         settings_.bloodWorldAlwaysOn = false;
-        settings_.bloodWorldFlickerIntensity = std::max(settings_.bloodWorldFlickerIntensity, 0.88f);
-        settings_.fogStartMeters = std::min(settings_.fogStartMeters, 2.6f);
-        settings_.fogEndMeters = std::min(settings_.fogEndMeters, 7.5f);
+        settings_.bloodWorldFlickerIntensity = 0.0f;
+        settings_.fogStartMeters = std::max(settings_.fogStartMeters, 4.2f);
+        settings_.fogEndMeters = std::max(settings_.fogEndMeters, 9.5f);
     }
 
     bool ProjectMenuQuadToScreen(XMFLOAT3 center, XMFLOAT3 right, XMFLOAT3 up, float halfW, float halfH, RECT& out) const {
@@ -1002,7 +1010,8 @@ private:
         XMVECTOR viewDir = XMVector3Normalize(XMVectorSet(f.x, lookPitch_, f.z, 0.0f));
         XMMATRIX view = XMMatrixLookAtLH(eye, eye + viewDir, worldUp);
         float aspect = static_cast<float>(std::max<LONG>(1, width_)) / static_cast<float>(std::max<LONG>(1, height_));
-        XMMATRIX proj = XMMatrixPerspectiveFovLH(70.0f * kPi / 180.0f, aspect, 0.045f, 42.0f);
+        float fovDegrees = runtimeMode_ == RendererRuntimeMode::MainMenu ? 84.0f : 70.0f;
+        XMMATRIX proj = XMMatrixPerspectiveFovLH(fovDegrees * kPi / 180.0f, aspect, 0.045f, 42.0f);
         XMMATRIX viewProj = view * proj;
 
         auto p = [&](float x, float y) {

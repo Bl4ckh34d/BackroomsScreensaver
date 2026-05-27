@@ -64,6 +64,9 @@
         XMMATRIX view = XMMatrixLookAtLH(eye, at, up);
         float aspect = static_cast<float>(std::max<LONG>(1, width_)) / static_cast<float>(std::max<LONG>(1, height_));
         float fovDegrees = monsterPreview_ ? 48.0f : 70.0f - dangerLevel_ * 3.5f;
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            fovDegrees = 84.0f;
+        }
         if (gEffectDebugViewer || gBloodDebugEveryWall || settings_.bloodStudyView) {
             fovDegrees = 86.0f;
         }
@@ -272,8 +275,15 @@
             cb.blood0 = {0.0f, 0.0f, -40.0f, 1.0f};
             cb.blood1 = {bloodStreamCount, kEffectBloodRevealRadius, bloodStreamThickness, bloodShaderQuality};
         } else if (bloodWorldAmount > 0.001f && settings_.bloodWorldCoverage > 0.001f) {
-            cb.blood0 = {camera_.x, camera_.z, bloodWorldActivationTime_, Clamp01(bloodWorldAmount)};
-            cb.blood1 = {bloodStreamCount, kEffectBloodRevealRadius, bloodStreamThickness, bloodShaderQuality};
+            XMFLOAT3 bloodCenter = {camera_.x, 0.0f, camera_.z};
+            float revealRadius = kEffectBloodRevealRadius;
+            if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+                XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
+                bloodCenter = {c.x + maze_.tileW * 0.14f, 0.0f, c.z + maze_.tileD * 0.50f};
+                revealRadius = std::max(2.35f, std::max(maze_.tileW, maze_.tileD) * 1.35f);
+            }
+            cb.blood0 = {bloodCenter.x, bloodCenter.z, bloodWorldActivationTime_, Clamp01(bloodWorldAmount)};
+            cb.blood1 = {bloodStreamCount, revealRadius, bloodStreamThickness, bloodShaderQuality};
         } else if (!bloodRevealRegions_.empty()) {
             std::vector<const BloodRevealRegion*> regions;
             regions.reserve(bloodRevealRegions_.size());

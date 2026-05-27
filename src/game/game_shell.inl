@@ -447,12 +447,20 @@ void PaintGameMainMenu(HWND hwnd, HDC dc) {
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     HGDIOBJ oldFont = SelectObject(dc, titleFont);
 
-    RECT title{0, 64, w, 124};
-    DrawGameMenuText(dc, L"Backrooms Maze", title, RGB(239, 226, 182), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    SelectObject(dc, bodyFont);
-    RECT subtitle{0, 118, w, 150};
-    DrawGameMenuText(dc, gApp->gameRunStarted && !gApp->gameDebugActive ? L"Paused" : L"Main Menu",
-        subtitle, RGB(154, 139, 102), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    if (!rendererScene) {
+    if (!rendererScene) {
+        RECT title{0, 64, w, 124};
+        DrawGameMenuText(dc, L"Backrooms Maze", title, RGB(239, 226, 182), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(dc, bodyFont);
+        RECT subtitle{0, 118, w, 150};
+        DrawGameMenuText(dc, gApp->gameRunStarted && !gApp->gameDebugActive ? L"Paused" : L"Main Menu",
+            subtitle, RGB(154, 139, 102), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    } else {
+        SelectObject(dc, bodyFont);
+    }
+    } else {
+        SelectObject(dc, bodyFont);
+    }
 
     SelectObject(dc, buttonFont);
     auto buttons = ActiveGameMenuButtons();
@@ -465,8 +473,10 @@ void PaintGameMainMenu(HWND hwnd, HDC dc) {
     if (!rendererScene) DrawGameMenuBlood(dc, rc, now);
 
     SelectObject(dc, bodyFont);
-    RECT footer{26, h - 48, w - 26, h - 20};
-    DrawGameMenuText(dc, L"v0 prototype", footer, RGB(103, 94, 73), DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    if (!rendererScene) {
+        RECT footer{26, h - 48, w - 26, h - 20};
+        DrawGameMenuText(dc, L"v0 prototype", footer, RGB(103, 94, 73), DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    }
     DrawGameMenuFade(dc, rc, GameMenuFadeAmount(now));
 
     SelectObject(dc, oldFont);
@@ -578,7 +588,7 @@ void CaptureGameMouse(HWND hwnd) {
 bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
     if (!gApp || !gApp->gameShell) return false;
     if (gApp->rendererInitialized) {
-        if (mode == RendererRuntimeMode::MainMenu && !gApp->gameRunStarted) {
+        if (mode == RendererRuntimeMode::MainMenu) {
             gApp->renderer.EnterMainMenuScene();
         } else {
             gApp->renderer.SetRuntimeMode(mode);
@@ -629,7 +639,7 @@ void EnterGameMainMenu(HWND hwnd) {
     gApp->gameMenuFadeStart = GetTickCount64();
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;
-    if (gApp->rendererInitialized && !gApp->gameRunStarted) {
+    if (gApp->rendererInitialized) {
         gApp->renderer.EnterMainMenuScene();
     }
     SetGameMenuVisible(true);

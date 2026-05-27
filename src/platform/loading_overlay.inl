@@ -78,17 +78,19 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
             tintedW = logo.width;
             tintedH = logo.height;
             tinted.assign(static_cast<size_t>(tintedW) * static_cast<size_t>(tintedH) * 4, 0);
-            constexpr uint8_t tintR = 226;
-            constexpr uint8_t tintG = 192;
-            constexpr uint8_t tintB = 92;
             for (int py = 0; py < tintedH; ++py) {
                 for (int px = 0; px < tintedW; ++px) {
                     size_t src = static_cast<size_t>((py * tintedW + px) * 4);
-                    uint8_t a = logo.pixels[src + 3];
+                    uint8_t b = logo.pixels[src + 0];
+                    uint8_t g = logo.pixels[src + 1];
+                    uint8_t r = logo.pixels[src + 2];
+                    uint8_t srcA = logo.pixels[src + 3];
+                    uint8_t rgbCoverage = std::max(r, std::max(g, b));
+                    uint8_t a = srcA < 250 ? srcA : rgbCoverage;
                     size_t dst = src;
-                    tinted[dst + 0] = static_cast<uint8_t>((static_cast<int>(tintB) * a) / 255);
-                    tinted[dst + 1] = static_cast<uint8_t>((static_cast<int>(tintG) * a) / 255);
-                    tinted[dst + 2] = static_cast<uint8_t>((static_cast<int>(tintR) * a) / 255);
+                    tinted[dst + 0] = a;
+                    tinted[dst + 1] = a;
+                    tinted[dst + 2] = a;
                     tinted[dst + 3] = 255;
                 }
             }
@@ -114,7 +116,7 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     HGDIOBJ oldFont = SelectObject(hdc, logoFont);
-    SetTextColor(hdc, RGB(234, 220, 164));
+    SetTextColor(hdc, RGB(245, 245, 245));
     RECT nameRect{rc.left + 24, y + logoSize + 16, rc.right - 24, y + logoSize + 54};
     DrawTextW(hdc, L"NeuralForge Solutions", -1, &nameRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 

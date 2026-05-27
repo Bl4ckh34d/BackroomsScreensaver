@@ -187,28 +187,38 @@
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
         XMFLOAT3 right{1.0f, 0.0f, 0.0f};
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
-        XMFLOAT3 inward{0.0f, 0.0f, 1.0f};
-        float z = c.z - maze_.tileD * 0.5f + 0.040f;
-        float x = c.x + maze_.tileW * 0.16f;
-        float startY = 1.66f;
+        XMFLOAT3 inward{0.0f, 0.0f, -1.0f};
+        float z = c.z + maze_.tileD * 0.5f - 0.040f;
+        float x = c.x + maze_.tileW * 0.14f;
+        float startY = 1.50f;
+        XMFLOAT3 bloodCenter = Add3({x - 0.02f, 1.42f, z}, Scale3(inward, 0.088f));
+        XMFLOAT3 bloodHalfW = Scale3(right, 0.86f);
+        XMFLOAT3 bloodHalfH = Scale3(up, 0.76f);
+        AppendDynamicQuadUV(transparentVerts,
+            Add3(bloodCenter, Add3(Scale3(bloodHalfW, -1.0f), Scale3(bloodHalfH, -1.0f))),
+            Add3(bloodCenter, Add3(bloodHalfW, Scale3(bloodHalfH, -1.0f))),
+            Add3(bloodCenter, Add3(bloodHalfW, bloodHalfH)),
+            Add3(bloodCenter, Add3(Scale3(bloodHalfW, -1.0f), bloodHalfH)),
+            inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, 14.985f);
         for (int i = 0; i < 3; ++i) {
             bool hover = menuHoverButtonIndex_ == i;
-            float y = startY - static_cast<float>(i) * 0.24f;
+            float y = startY - static_cast<float>(i) * 0.34f;
             float material = hover ? 10.72f : 9.70f;
             XMFLOAT3 plaqueCenter{x, y, z};
-            AppendDynamicBoxAxes(verts, plaqueCenter, right, up, inward, {0.43f, 0.070f, 0.024f}, material);
-            AppendDynamicBoxAxes(verts, {x - 0.42f, y, z + 0.008f}, right, up, inward, {0.012f, 0.079f, 0.018f}, 10.0f);
-            XMFLOAT3 labelCenter = Add3(plaqueCenter, Scale3(inward, 0.029f));
-            XMFLOAT3 hw = Scale3(right, 0.365f);
-            XMFLOAT3 hh = Scale3(up, 0.046f);
+            AppendDynamicBoxAxes(verts, plaqueCenter, right, up, inward, {0.72f, 0.122f, 0.070f}, material);
+            AppendDynamicBoxAxes(verts, {x - 0.71f, y, z + 0.033f}, right, up, inward, {0.018f, 0.134f, 0.048f}, 10.0f);
+            XMFLOAT3 labelCenter = Add3(plaqueCenter, Scale3(inward, 0.070f));
+            XMFLOAT3 hw = Scale3(right, 0.610f);
+            XMFLOAT3 hh = Scale3(up, 0.081f);
             float v0 = (static_cast<float>(i) + 0.12f) / 3.0f;
             float v1 = (static_cast<float>(i) + 0.88f) / 3.0f;
+            float labelMaterial = hover ? 18.65f : 18.08f;
             AppendDynamicQuadUV(transparentVerts,
                 Add3(labelCenter, Add3(Scale3(hw, -1.0f), Scale3(hh, -1.0f))),
                 Add3(labelCenter, Add3(hw, Scale3(hh, -1.0f))),
                 Add3(labelCenter, Add3(hw, hh)),
                 Add3(labelCenter, Add3(Scale3(hw, -1.0f), hh)),
-                inward, right, {0.06f, v1}, {0.94f, v1}, {0.94f, v0}, {0.06f, v0}, 18.0f);
+                inward, right, {0.06f, v1}, {0.94f, v1}, {0.94f, v0}, {0.06f, v0}, labelMaterial);
         }
     }
 

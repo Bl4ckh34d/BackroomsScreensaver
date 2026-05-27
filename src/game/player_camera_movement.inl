@@ -271,8 +271,8 @@
 
     void SetupMainMenuScene() {
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
-        camera_ = {c.x + maze_.tileW * 0.38f, 1.28f, c.z + maze_.tileD * 0.43f};
-        XMFLOAT3 target{c.x - maze_.tileW * 0.18f, 1.58f, c.z - maze_.tileD * 0.46f};
+        camera_ = {c.x + maze_.tileW * 0.84f, 1.08f, c.z - maze_.tileD * 1.42f};
+        XMFLOAT3 target{c.x - maze_.tileW * 0.08f, 1.02f, c.z + maze_.tileD * 0.22f};
         yaw_ = YawToPoint(target);
         bodyYaw_ = yaw_;
         lookPitch_ = std::clamp(PitchToPoint(target), -0.42f, 0.42f);
@@ -300,26 +300,51 @@
         menuPointerX_ += (menuPointerTargetX_ - menuPointerX_) * std::min(1.0f, dt * 7.5f);
         menuPointerY_ += (menuPointerTargetY_ - menuPointerY_) * std::min(1.0f, dt * 7.5f);
 
-        float jitterYaw = std::sin(time_ * 2.41f) * 0.010f + std::sin(time_ * 7.17f) * 0.004f;
-        float jitterPitch = std::cos(time_ * 2.03f) * 0.006f + std::sin(time_ * 5.83f) * 0.003f;
-        yaw_ = menuBaseYaw_ + std::sin(time_ * 0.62f) * 0.010f;
+        float handheldYaw = std::sin(time_ * 0.73f) * 0.018f + std::sin(time_ * 1.37f + 1.7f) * 0.011f +
+            std::sin(time_ * 2.91f + 0.3f) * 0.004f;
+        float handheldPitch = std::cos(time_ * 0.61f + 0.8f) * 0.011f + std::sin(time_ * 1.19f + 2.2f) * 0.007f;
+        float jitterYaw = std::sin(time_ * 2.41f) * 0.012f + std::sin(time_ * 7.17f) * 0.005f;
+        float jitterPitch = std::cos(time_ * 2.03f) * 0.007f + std::sin(time_ * 5.83f) * 0.004f;
+        yaw_ = menuBaseYaw_ + handheldYaw;
         bodyYaw_ = yaw_;
-        lookPitch_ = menuBasePitch_ + std::cos(time_ * 0.48f) * 0.004f;
+        lookPitch_ = std::clamp(menuBasePitch_ + handheldPitch, -0.42f, 0.42f);
 
         float hoverFlicker = menuButtonHover_ ? (std::sin(time_ * 36.0f) * 0.012f + std::sin(time_ * 81.0f) * 0.006f) : 0.0f;
-        float targetYaw = menuBaseYaw_ + (menuPointerX_ - 0.5f) * 0.62f + jitterYaw + hoverFlicker;
-        float targetPitch = menuBasePitch_ + (0.5f - menuPointerY_) * 0.34f + jitterPitch - std::abs(hoverFlicker) * 0.35f;
-        flashlightYaw_ += AngleWrap(targetYaw - flashlightYaw_) * std::min(1.0f, dt * 8.0f);
-        flashlightPitch_ += (std::clamp(targetPitch, -0.62f, 0.42f) - flashlightPitch_) * std::min(1.0f, dt * 8.0f);
+        float targetYaw = menuBaseYaw_ + (menuPointerX_ - 0.5f) * 1.12f + jitterYaw + hoverFlicker;
+        float targetPitch = menuBasePitch_ + (0.5f - menuPointerY_) * 0.72f + jitterPitch - std::abs(hoverFlicker) * 0.35f;
+        if (width_ > 0 && height_ > 0) {
+            XMFLOAT3 viewForward = Normalize3(DirectionFromYawPitch(yaw_, lookPitch_), {0.0f, 0.0f, 1.0f});
+            XMFLOAT3 viewRight = Normalize3(Cross3({0.0f, 1.0f, 0.0f}, viewForward), {1.0f, 0.0f, 0.0f});
+            XMFLOAT3 viewUp = Normalize3(Cross3(viewForward, viewRight), {0.0f, 1.0f, 0.0f});
+            float aspect = static_cast<float>(std::max<LONG>(1, width_)) / static_cast<float>(std::max<LONG>(1, height_));
+            float tanHalfFov = std::tan(44.0f * kPi / 180.0f);
+            float ndcX = menuPointerX_ * 2.0f - 1.0f;
+            float ndcY = 1.0f - menuPointerY_ * 2.0f;
+            XMFLOAT3 ray = Normalize3(Add3(viewForward,
+                Add3(Scale3(viewRight, ndcX * aspect * tanHalfFov), Scale3(viewUp, ndcY * tanHalfFov))), viewForward);
+            XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
+            float wallZ = c.z + maze_.tileD * 0.5f - 0.074f;
+            if (std::abs(ray.z) > 0.001f) {
+                float t = (wallZ - camera_.z) / ray.z;
+                if (t > 0.05f && t < 7.0f) {
+                    XMFLOAT3 aimPoint = Add3(camera_, Scale3(ray, t));
+                    targetYaw = YawToPoint(aimPoint) + jitterYaw + hoverFlicker;
+                    targetPitch = PitchToPoint(aimPoint) + jitterPitch - std::abs(hoverFlicker) * 0.35f;
+                }
+            }
+        }
+        flashlightYaw_ += AngleWrap(targetYaw - flashlightYaw_) * std::min(1.0f, dt * 15.0f);
+        flashlightPitch_ += (std::clamp(targetPitch, -0.86f, 0.70f) - flashlightPitch_) * std::min(1.0f, dt * 15.0f);
 
         float doorTarget = menuExitHover_ ? 1.0f : 0.0f;
         menuDoorOpen_ += (doorTarget - menuDoorOpen_) * std::min(1.0f, dt * 6.5f);
         exitDoorAngle_ = menuDoorOpen_ * 1.38f;
 
-        float bloodTarget = menuSinglePlayerHover_ ? 1.0f : 0.0f;
-        menuBloodAmount_ += (bloodTarget - menuBloodAmount_) * std::min(1.0f, dt * (bloodTarget > menuBloodAmount_ ? 2.2f : 0.55f));
-        if (menuSinglePlayerHover_ && bloodWorldActivationTime_ < time_ - 12.0f) {
-            bloodWorldActivationTime_ = time_ - 0.25f;
+        if (menuSinglePlayerHover_) {
+            if (menuBloodAmount_ <= 0.001f) {
+                bloodWorldActivationTime_ = time_ - 6.0f;
+            }
+            menuBloodAmount_ = 1.0f;
         }
 
         if (menuLampBurstPending_) {
