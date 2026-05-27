@@ -1519,9 +1519,13 @@
             exitDoorNormal_ = inward;
             exitDoorRight_ = right;
             exitDoorHinge_ = Add3(doorCenter, OrientedOffset(right, up, forward, -fixedDoorHalfW, 0.0f, 0.0f));
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, -0.62f, 0.0f, 0.0f)), {0.035f, fixedDoorHalfH + 0.08f, 0.055f}, exitPortal.yaw, 10.0f);
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.62f, 0.0f, 0.0f)), {0.035f, fixedDoorHalfH + 0.08f, 0.055f}, exitPortal.yaw, 10.0f);
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, fixedDoorHalfH + 0.07f, 0.0f)), {0.68f, 0.055f, 0.055f}, exitPortal.yaw, 10.0f);
+            constexpr float frameHalfW = fixedDoorHalfW + 0.075f;
+            constexpr float frameHalfH = fixedDoorHalfH + 0.040f;
+            float frameCenterY = frameHalfH;
+            float frameYOffset = frameCenterY - doorCenter.y;
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, -frameHalfW, frameYOffset, 0.0f)), {0.035f, frameHalfH, 0.055f}, exitPortal.yaw, 10.0f);
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, frameHalfW, frameYOffset, 0.0f)), {0.035f, frameHalfH, 0.055f}, exitPortal.yaw, 10.0f);
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, frameYOffset + frameHalfH + 0.055f, 0.0f)), {frameHalfW + 0.045f, 0.055f, 0.055f}, exitPortal.yaw, 10.0f);
             constexpr float fixedSignTargetH = 0.28f;
             float signY = doorCenter.y + fixedDoorHalfH + fixedSignTargetH * 0.5f + 0.13f;
             signY = std::min(signY, wallH - fixedSignTargetH * 0.5f - 0.18f);

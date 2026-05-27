@@ -1025,27 +1025,12 @@ private:
     MenuPlaquePlacement MenuButtonPlacement(int index) const {
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
         const float northWallZ = c.z + maze_.tileD * 0.5f - 0.045f;
-        const float eastWallX = c.x + maze_.tileW * 1.5f - 0.045f;
         MenuPlaquePlacement plaque{};
-        plaque.halfW = 0.80f;
+        plaque.halfW = std::min(maze_.tileW * 0.86f, 1.42f);
         plaque.halfH = 0.136f;
-        switch (index) {
-        case 0:
-            plaque.center = {c.x - maze_.tileW * 0.02f, 1.54f, northWallZ};
-            plaque.right = {1.0f, 0.0f, 0.0f};
-            plaque.inward = {0.0f, 0.0f, -1.0f};
-            break;
-        case 1:
-            plaque.center = {eastWallX, 1.34f, c.z + maze_.tileD * 0.22f};
-            plaque.right = {0.0f, 0.0f, -1.0f};
-            plaque.inward = {-1.0f, 0.0f, 0.0f};
-            break;
-        default:
-            plaque.center = {c.x + maze_.tileW * 0.68f, 1.12f, northWallZ};
-            plaque.right = {1.0f, 0.0f, 0.0f};
-            plaque.inward = {0.0f, 0.0f, -1.0f};
-            break;
-        }
+        plaque.center = {c.x + maze_.tileW * 0.58f, 1.54f - static_cast<float>(index) * 0.34f, northWallZ};
+        plaque.right = {1.0f, 0.0f, 0.0f};
+        plaque.inward = {0.0f, 0.0f, -1.0f};
         return plaque;
     }
 

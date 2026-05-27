@@ -190,13 +190,13 @@
         XMFLOAT3 right = primaryPlaque.right;
         XMFLOAT3 inward{0.0f, 0.0f, -1.0f};
         float wallZ = c.z + maze_.tileD * 0.5f;
-        float x = primaryPlaque.center.x + 0.14f;
+        float x = primaryPlaque.center.x;
         float bloodTopY = settings_.wallHeightMeters - 0.006f;
         float bloodBottomY = 0.012f;
         float bloodCenterY = (bloodTopY + bloodBottomY) * 0.5f;
         float bloodHalfHeight = std::max(0.40f, (bloodTopY - bloodBottomY) * 0.5f);
-        XMFLOAT3 bloodCenter{x + 0.22f, bloodCenterY, wallZ - 0.002f};
-        XMFLOAT3 bloodHalfW = Scale3(right, 0.74f);
+        XMFLOAT3 bloodCenter{x, bloodCenterY, wallZ - 0.002f};
+        XMFLOAT3 bloodHalfW = Scale3(right, primaryPlaque.halfW * 1.03f);
         XMFLOAT3 bloodHalfH = Scale3(up, bloodHalfHeight);
         constexpr float kMenuWallBloodMaterial = 14.985f;
         constexpr float kMenuPoolBloodMaterial = 14.66f;
@@ -208,7 +208,7 @@
             inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, kMenuWallBloodMaterial);
         float ceilingDepth = std::min(maze_.tileD * 0.42f, 0.68f);
         float ceilingY = settings_.wallHeightMeters - 0.003f;
-        XMFLOAT3 ceilingCenter{x + 0.22f, ceilingY, wallZ - ceilingDepth * 0.16f};
+        XMFLOAT3 ceilingCenter{x, ceilingY, wallZ - ceilingDepth * 0.16f};
         XMFLOAT3 ceilingHalfD = Scale3(inward, ceilingDepth * 0.5f);
         AppendDynamicQuadUV(transparentVerts,
             Add3(ceilingCenter, Add3(Scale3(bloodHalfW, -1.0f), Scale3(ceilingHalfD, -1.0f))),
@@ -217,8 +217,8 @@
             Add3(ceilingCenter, Add3(Scale3(bloodHalfW, -1.0f), ceilingHalfD)),
             Scale3(up, -1.0f), right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, kMenuPoolBloodMaterial);
         float poolDepth = std::min(maze_.tileD * 0.40f, 0.64f);
-        XMFLOAT3 poolCenter{x + 0.22f, 0.014f, wallZ - poolDepth * 0.15f};
-        XMFLOAT3 poolHalfW = Scale3(right, 0.62f);
+        XMFLOAT3 poolCenter{x, 0.014f, wallZ - poolDepth * 0.15f};
+        XMFLOAT3 poolHalfW = Scale3(right, primaryPlaque.halfW * 0.94f);
         XMFLOAT3 poolHalfD = Scale3(inward, poolDepth * 0.5f);
         AppendDynamicQuadUV(transparentVerts,
             Add3(poolCenter, Add3(Scale3(poolHalfW, -1.0f), poolHalfD)),
