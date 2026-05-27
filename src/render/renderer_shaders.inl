@@ -979,23 +979,31 @@ float3 ExitSignLight(float3 worldPos, float3 worldN, float materialId)
             float hitY = hitLocal.y;
             float doorHalfW = max(0.12, gExitLight3.w);
             float doorHalfH = 1.05;
-            float edgeSoft = 0.035;
+            float edgeSoft = 0.018;
             float insideX = smoothstep(doorHalfW + edgeSoft, doorHalfW - edgeSoft, abs(hitX));
             float insideY = smoothstep(doorHalfH + edgeSoft, doorHalfH - edgeSoft, abs(hitY));
             float throughPortal = step(0.0, hitT) * step(hitT, 1.0) * step(0.0, denom) * insideX * insideY;
             float axial = dot(worldPos - gExitLight3.xyz, doorDir);
             float roomSide = smoothstep(-0.03, 0.12, axial);
             float lateral = dot(worldPos - gExitLight3.xyz, doorRight);
+            float nearFrame = 1.0 - smoothstep(0.10, 1.02, axial);
+            float frameGate = lerp(1.0,
+                smoothstep(doorHalfW - 0.035, doorHalfW - 0.120, abs(lateral)),
+                nearFrame);
+            float sideWallReceiver = smoothstep(0.70, 0.96, abs(dot(worldN, doorRight)));
+            float sideWallAperture = lerp(1.0,
+                smoothstep(doorHalfW * 0.58, doorHalfW * 0.18, abs(lateral)),
+                sideWallReceiver);
             float doorPanelMaterial = step(5.5, materialId) * (1.0 - step(6.5, materialId));
             float corridorExtraWidth = lerp(0.12, 0.86, doorPanelMaterial);
             float corridorWidth = smoothstep(doorHalfW + corridorExtraWidth, doorHalfW - 0.02, abs(lateral));
             float corridorHeight = smoothstep(doorHalfH + 0.18, doorHalfH - 0.05, abs(worldPos.y - doorHalfH));
             float corridorSide = (1.0 - smoothstep(-0.10, 0.08, axial)) * corridorWidth * corridorHeight;
             float grazing = saturate(dot(worldN, Ln) * 0.45 + 0.62);
-            float falloff = 1.0 / (1.0 + d * d * 0.045);
-            float3 warmDaylight = float3(0.94, 0.97, 1.0);
-            result += warmDaylight * doorStrength * falloff * diffuse * grazing * throughPortal * roomSide;
-            result += warmDaylight * doorStrength * falloff * (1.14 + diffuse * 0.46) * corridorSide * 2.15;
+            float falloff = 1.0 / (1.0 + d * d * 0.030);
+            float3 warmDaylight = float3(0.91, 0.965, 1.0);
+            result += warmDaylight * doorStrength * falloff * diffuse * grazing * throughPortal * roomSide * frameGate * sideWallAperture;
+            result += warmDaylight * doorStrength * falloff * (1.10 + diffuse * 0.42) * corridorSide * 2.35;
         }
     }
     return result;
@@ -1672,20 +1680,23 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 reflectDir = reflect(-toLight, worldN);
         float facing = saturate(dot(reflectDir, V));
         float fresnel = pow(1.0 - saturate(dot(worldN, V)), 4.0);
-        float specLight = saturate(flashlight + overhead * 0.24 + sparkLight * 0.48 + exitGlow * 0.24);
-        float spec = (pow(facing, 210.0) * 0.55 + pow(facing, 54.0) * 0.075 + fresnel * 0.035) *
-            specLight * (0.28 + wet * 0.52) * saturate(alpha + thickness * 0.42);
+        float specLight = saturate(flashlight + overhead * 0.28 + sparkLight * 0.52 + exitGlow * 0.16);
+        float spec = (pow(facing, 170.0) * 0.96 + pow(facing, 38.0) * 0.13 + fresnel * 0.055) *
+            specLight * (0.18 + wet * 0.72) * saturate(alpha + thickness * 0.48);
         float grime = Fbm3(input.worldPos * float3(8.0, 5.0, 8.0) + seed * 31.0);
         float filmAlpha = saturate(alpha * (0.58 + thickness * 0.38 + drips * 0.12 + wet * 0.035));
         if (filmAlpha < lerp(0.045, 0.026, waterLiquid)) discard;
-        float lightEnergy = saturate(flashlight * 0.62 + overhead * 0.24 + sparkLight * 0.34 + exitGlow * 0.18 + gLighting0.z * 0.04);
-        float3 thinBlood = float3(0.210, 0.0065, 0.0028);
-        float3 pooledBlood = float3(0.038, 0.00075, 0.00045);
+        float lightEnergy = saturate(flashlight * 0.68 + overhead * 0.25 + sparkLight * 0.34 + exitGlow * 0.095 + gLighting0.z * 0.050);
+        float3 thinBlood = float3(0.430, 0.0060, 0.0014);
+        float3 pooledBlood = float3(0.105, 0.00075, 0.00022);
         float3 blood = lerp(thinBlood, pooledBlood, saturate(thickness * 0.88 + drips * 0.24));
-        float3 color = blood * (0.16 + lightEnergy * 0.72) * (0.54 + grime * 0.14);
-        color = lerp(color, color * float3(0.42, 0.18, 0.14), drips * 0.24);
-        color += float3(0.24, 0.018, 0.010) * spec;
-        color += exitGreen * (0.018 + wet * 0.040) * saturate(alpha + thickness * 0.14);
+        float3 color = blood * (0.20 + lightEnergy * 0.88) * (0.56 + grime * 0.15);
+        color = lerp(color, color * float3(0.46, 0.070, 0.045), drips * 0.20);
+        float flashlightWetSpec = pow(facing, 112.0) * flashlight * wet * saturate(alpha + thickness * 0.34);
+        color += float3(0.33, 0.010, 0.0035) * spec;
+        color += float3(0.78, 0.012, 0.0038) * flashlightWetSpec;
+        color += float3(0.060, 0.006, 0.004) * fresnel * specLight * wet * saturate(alpha + thickness * 0.24);
+        color += blood * exitGlow * (0.10 + wet * 0.18) * saturate(alpha + thickness * 0.20);
         if (waterLiquid > 0.5)
         {
             float waterCore = saturate(alpha * 0.74 + thickness * 0.26);
@@ -2300,6 +2311,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         if (shape < 0.018) discard;
 
         float flashlight = FlashlightAmount(input.worldPos, N);
+        float3 doorwayDustLight = ExitSignLight(input.worldPos, N, materialId);
+        float doorwayDust = saturate(max(doorwayDustLight.r, max(doorwayDustLight.g, doorwayDustLight.b)) * 0.20);
         float3 lightDir = normalize(gShadow1.xyz);
         float axisDist = max(0.0, dot(toLight, lightDir));
         float outerCos = clamp(gShadow2.z, 0.04, 0.98);
@@ -2311,9 +2324,11 @@ float4 PSMain(VSOut input) : SV_TARGET
         float lightFade = smoothstep(0.35, 1.10, lightDist) * (1.0 - smoothstep(gShadow2.y * 0.46, gShadow2.y * 0.82, lightDist));
         float depthFade = 1.0 - smoothstep(gFog0.y * 0.72, gFog0.y, length(input.worldPos - cam));
         float focusAlpha = lerp(1.0, 0.46, blur);
-        float alpha = shape * flashlight * centerBoost * lightFade * depthFade * focusAlpha * (0.20 + variant * 0.12) * particleFade * (1.0 - saturate(gTransition0.z));
+        float particleLight = saturate(flashlight * centerBoost * lightFade + doorwayDust * 0.92);
+        float alpha = shape * particleLight * depthFade * focusAlpha * (0.20 + variant * 0.12) * particleFade * (1.0 - saturate(gTransition0.z));
         if (alpha < 0.010) discard;
         float3 color = float3(0.72, 0.78, 0.72) * (0.20 + flashlight * (1.08 + centerLine * 0.82));
+        color += float3(0.91, 0.965, 1.0) * doorwayDust * (1.45 + shell * 0.55);
         color += float3(0.42, 0.48, 0.44) * shell * (0.08 + blur * 0.08 + centerLine * 0.08) * flashlightScale;
         float fog = saturate((length(input.worldPos - cam) - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 2.2);
@@ -2346,7 +2361,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.22), 1.12);
         float alpha = edge * lerp(0.095, 0.26, strength) * (0.64 + streak * 0.44) * fogVisibility;
         if (alpha < 0.008) discard;
-        float3 color = float3(0.94, 0.97, 1.0) * (2.2 + strength * 4.5) * (0.82 + haze * 0.24);
+        float3 color = float3(0.82, 0.92, 1.0) * (2.2 + strength * 4.5) * (0.82 + haze * 0.24);
         return float4(saturate(ApplyPost(color) + color * 0.075), saturate(alpha));
     }
 

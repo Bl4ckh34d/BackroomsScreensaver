@@ -631,7 +631,7 @@ bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
 
 void EnterGameMainMenu(HWND hwnd) {
     if (!gApp || !gApp->gameShell) return;
-    bool preservePlayableScene = gApp->gameState == GameState::PlayGame &&
+    bool pausePlayableRun = gApp->gameState == GameState::PlayGame &&
         gApp->gameRunStarted && !gApp->gameDebugActive;
     ReleaseGameMouse();
     gApp->gameState = GameState::MainMenu;
@@ -641,10 +641,12 @@ void EnterGameMainMenu(HWND hwnd) {
     gApp->gameMenuFadeStart = GetTickCount64();
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;
-    if (gApp->rendererInitialized && !preservePlayableScene) {
-        gApp->renderer.EnterMainMenuScene();
-    } else if (gApp->rendererInitialized) {
-        gApp->renderer.SetGameInput({});
+    if (gApp->rendererInitialized) {
+        if (pausePlayableRun) {
+            gApp->renderer.EnterPausedMainMenuScene();
+        } else {
+            gApp->renderer.EnterMainMenuScene();
+        }
     }
     SetGameMenuVisible(true);
     UpdateGameMenuLabels();
@@ -674,7 +676,9 @@ void EnterGamePlay(HWND hwnd) {
         }
         gApp->gameRunStarted = true;
     } else {
-        gApp->renderer.SetRuntimeMode(RendererRuntimeMode::PlayableGame);
+        if (!gApp->renderer.RestorePausedGameRun()) {
+            gApp->renderer.SetRuntimeMode(RendererRuntimeMode::PlayableGame);
+        }
     }
     gApp->gameState = GameState::PlayGame;
     gApp->gameDebugActive = false;
