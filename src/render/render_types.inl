@@ -10,6 +10,27 @@ struct Vertex {
 };
 static_assert(sizeof(Vertex) == sizeof(float) * 12, "Vertex binary layout must stay packed for runtime mesh files.");
 
+struct MonsterLimbAnchor {
+    bool planted = false;
+    XMFLOAT3 anchor{};
+    XMFLOAT3 anchorNormal{};
+    XMFLOAT3 swingFrom{};
+    XMFLOAT3 swingTo{};
+    XMFLOAT3 swingFromNormal{};
+    XMFLOAT3 swingToNormal{};
+    float swingStart = 0.0f;
+    float swingDuration = 0.34f;
+    int retargetCount = 0;
+};
+
+struct MonsterHandprint {
+    XMFLOAT3 pos{};
+    XMFLOAT3 normal{};
+    float size = 0.18f;
+    float seed = 0.0f;
+    float createdAt = 0.0f;
+};
+
 #pragma pack(push, 1)
 struct PackedStaticPropVertexV2 {
     uint16_t px;

@@ -34,6 +34,9 @@ constexpr int kGameSettingsFullscreen = 300;
 constexpr int kGameSettingsWarp = 301;
 constexpr int kGameSettingsInvertY = 302;
 constexpr int kGameSettingsMuted = 303;
+constexpr int kGameSettingsMonsterIgnorePlayer = 304;
+constexpr int kGameSettingsInfiniteStamina = 305;
+constexpr int kGameSettingsInvincible = 306;
 constexpr int kGameSettingsResolutionDropdown = 400;
 constexpr int kGameSettingsExposure = 402;
 constexpr int kGameSettingsBloom = 403;
@@ -114,6 +117,9 @@ void SaveGameSettingsPanel(const GameSettingsPanelState* state) {
     WriteIniFloat(L"Lighting", L"BloomAmount", s.bloomAmount);
     WriteIniFloat(L"Lighting", L"MotionBlurAmount", s.motionBlurAmount);
     WriteIniFloat(L"Atmosphere", L"AirParticleDensity", s.airParticleDensity);
+    WriteIniIntValue(L"Monster", L"MonsterIgnorePlayer", s.monsterIgnorePlayer ? 1 : 0);
+    WriteIniIntValue(L"Debug", L"InfiniteStamina", s.debugInfiniteStamina ? 1 : 0);
+    WriteIniIntValue(L"Debug", L"Invincible", s.debugInvincible ? 1 : 0);
     WriteIniFloat(L"Controls", L"MouseSensitivity", s.mouseSensitivity);
     WriteIniIntValue(L"Controls", L"InvertMouseY", s.invertMouseY ? 1 : 0);
     for (const GameInputBindingDef& binding : kGameInputBindings) {
@@ -300,6 +306,9 @@ void ToggleGameSetting(GameSettingsPanelState* state, int id) {
     case kGameSettingsWarp: s.allowWarpFallback = !s.allowWarpFallback; break;
     case kGameSettingsInvertY: s.invertMouseY = !s.invertMouseY; break;
     case kGameSettingsMuted: s.audioMuted = !s.audioMuted; break;
+    case kGameSettingsMonsterIgnorePlayer: s.monsterIgnorePlayer = !s.monsterIgnorePlayer; break;
+    case kGameSettingsInfiniteStamina: s.debugInfiniteStamina = !s.debugInfiniteStamina; break;
+    case kGameSettingsInvincible: s.debugInvincible = !s.debugInvincible; break;
     default: break;
     }
 }
@@ -369,8 +378,11 @@ void PaintGameSettingsPanel(HWND hwnd, HDC dc, GameSettingsPanelState* state) {
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsMotionBlur, L"Motion blur", s.motionBlurAmount, 0.0f, 1.0f, FormatSettingValue(s.motionBlurAmount)); y += 42;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsAirDensity, L"Air mote density", s.airParticleDensity, 0.0f, 2.0f, FormatSettingValue(s.airParticleDensity));
     } else if (state->tab == 2) {
-        RECT text{x, y, panel.right - 34, y + 110};
-        DrawTextLine(dc, L"Gameplay tuning is still being separated from the old screensaver configuration. Monster/noise/stealth settings will land here as those systems become real game systems.", text, RGB(226, 221, 205), DT_LEFT | DT_WORDBREAK);
+        DrawGameSettingsCheck(dc, state, x, y, kGameSettingsMonsterIgnorePlayer, L"Monster ignores player", s.monsterIgnorePlayer); y += 48;
+        DrawGameSettingsCheck(dc, state, x, y, kGameSettingsInfiniteStamina, L"Infinite stamina", s.debugInfiniteStamina); y += 48;
+        DrawGameSettingsCheck(dc, state, x, y, kGameSettingsInvincible, L"Invincible", s.debugInvincible); y += 48;
+        RECT text{x, y + 8, panel.right - 34, y + 96};
+        DrawTextLine(dc, L"Debug cheats are for gameplay testing. Monster ignore disables hearing, chase, panic-lock, and kills, but the face can still look at the player when it has line of sight.", text, RGB(174, 166, 142), DT_LEFT | DT_WORDBREAK);
     } else if (state->tab == 3) {
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsMouseSensitivity, L"Mouse sensitivity", s.mouseSensitivity, 0.2f, 3.0f, FormatSettingValue(s.mouseSensitivity)); y += 48;
         DrawGameSettingsCheck(dc, state, x, y, kGameSettingsInvertY, L"Invert Y axis", s.invertMouseY); y += 48;

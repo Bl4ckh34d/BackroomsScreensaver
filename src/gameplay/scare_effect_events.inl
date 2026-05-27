@@ -134,22 +134,44 @@
         if (dt <= 0.0f || monsterPreview_ || gEffectDebugViewer || gBloodDebugEveryWall || settings_.bloodStudyView) return;
         if (runtimeLamps_.empty() || lampDamagePixels_.empty()) return;
 
-        Tile monsterTile = MonsterTile();
-        if (!maze_.IsOpen(monsterTile.x, monsterTile.y)) return;
         float tileAvg = std::max(0.1f, maze_.TileAverage());
-        float influenceRadius = std::max(tileAvg * 2.15f, 3.25f);
+        float influenceRadius = std::max(tileAvg * 4.30f, 6.50f);
         float breakRadius = influenceRadius * 0.72f;
+
+        struct MonsterLampInfluencePoint {
+            XMFLOAT3 pos;
+            Tile tile;
+        };
+        std::vector<MonsterLampInfluencePoint> influencePoints;
+        float bodySpacing = MonsterBodySpacing();
+        int bodySamples = std::clamp(static_cast<int>(std::ceil(MonsterBodyLengthMeters() / bodySpacing)) + 1, 4, 48);
+        influencePoints.reserve(static_cast<size_t>(bodySamples));
+        for (int i = 0; i < bodySamples; ++i) {
+            XMFLOAT3 p = (i == 0) ? monster_ : MonsterTrailSample(static_cast<float>(i) * bodySpacing);
+            Tile tile = maze_.TileFromWorld(p.x, p.z);
+            if (!maze_.IsOpen(tile.x, tile.y)) continue;
+            influencePoints.push_back({ p, tile });
+        }
+        if (influencePoints.empty()) return;
 
         for (RuntimeLampState& lamp : runtimeLamps_) {
             if (lamp.broken) continue;
 
-            float dx = lamp.pos.x - monster_.x;
-            float dz = lamp.pos.z - monster_.z;
-            float dist = std::sqrt(dx * dx + dz * dz);
-            bool affected = dist <= influenceRadius && maze_.LineClear(monsterTile, lamp.tile);
+            float nearestDist = influenceRadius + 1.0f;
+            bool affected = false;
+            for (const MonsterLampInfluencePoint& point : influencePoints) {
+                float dx = lamp.pos.x - point.pos.x;
+                float dz = lamp.pos.z - point.pos.z;
+                float dist = std::sqrt(dx * dx + dz * dz);
+                if (dist > influenceRadius) continue;
+                if (!maze_.LineClear(point.tile, lamp.tile)) continue;
+                affected = true;
+                nearestDist = std::min(nearestDist, dist);
+            }
             float oldDamage = lamp.damage;
 
             if (affected) {
+                float dist = nearestDist;
                 float proximity = Clamp01((influenceRadius - dist) / std::max(0.001f, influenceRadius));
                 float close = SmoothStep(0.0f, 1.0f, proximity);
                 lamp.damage = std::max(lamp.damage, 0.12f * close);

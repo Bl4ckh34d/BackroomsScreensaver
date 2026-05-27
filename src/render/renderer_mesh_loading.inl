@@ -27,11 +27,20 @@
         return {};
     }
 
+    static bool IsNativeMaskMeshPath(const std::filesystem::path& path) {
+        std::wstring lowered = path.wstring();
+        std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+        return lowered.find(L"monster_face_mask") != std::wstring::npos ||
+            lowered.find(L"horror_mask") != std::wstring::npos;
+    }
+
     uint64_t MonsterMeshCacheHash(const std::filesystem::path& path) const {
         uint64_t hash = 1469598103934665603ull;
-        const char* version = "BackroomsMazeMonsterMeshCacheV8";
+        const char* version = "BackroomsMazeMonsterMeshCacheV10";
         hash = Fnv1aAppend(hash, version, std::strlen(version));
         hash = Fnv1aAppend(hash, &settings_.monsterSkullMaxTriangles, sizeof(settings_.monsterSkullMaxTriangles));
+        bool nativeMaskAxes = IsNativeMaskMeshPath(path);
+        hash = Fnv1aAppend(hash, &nativeMaskAxes, sizeof(nativeMaskAxes));
         std::wstring ext = path.extension().wstring();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
         hash = HashWide(hash, ext);
@@ -131,6 +140,7 @@
     struct ObjFaceVertex {
         int vertex = std::numeric_limits<int>::min();
         int texcoord = std::numeric_limits<int>::min();
+        int normal = std::numeric_limits<int>::min();
     };
 
     static int ResolveObjIndex(long raw, int count) {
@@ -139,7 +149,7 @@
         return std::numeric_limits<int>::min();
     }
 
-    static ObjFaceVertex ParseObjFaceVertex(const char*& p, int vertexCount, int texcoordCount) {
+    static ObjFaceVertex ParseObjFaceVertex(const char*& p, int vertexCount, int texcoordCount, int normalCount = 0) {
         ObjFaceVertex result{};
         while (*p && std::isspace(static_cast<unsigned char>(*p))) ++p;
         if (!*p) return result;
@@ -161,6 +171,17 @@
                 if (uvEnd != q) {
                     result.texcoord = ResolveObjIndex(rawUv, texcoordCount);
                     q = uvEnd;
+                }
+            }
+            if (*q == '/') {
+                ++q;
+                if (*q) {
+                    char* normalEnd = nullptr;
+                    long rawNormal = std::strtol(q, &normalEnd, 10);
+                    if (normalEnd != q) {
+                        result.normal = ResolveObjIndex(rawNormal, normalCount);
+                        q = normalEnd;
+                    }
                 }
             }
         }
@@ -188,39 +209,126 @@
         if (!in) return false;
 
         std::vector<XMFLOAT3> positions;
+        std::vector<XMFLOAT2> texcoords;
+        std::vector<XMFLOAT3> normals;
         positions.reserve(250000);
         XMFLOAT3 minP{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
         XMFLOAT3 maxP{-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max()};
         std::string line;
         while (std::getline(in, line)) {
-            if (line.size() < 2 || line[0] != 'v' || line[1] != ' ') continue;
-            const char* p = line.c_str() + 2;
-            char* end = nullptr;
-            float x = std::strtof(p, &end);
-            if (end == p) continue;
-            p = end;
-            float y = std::strtof(p, &end);
-            if (end == p) continue;
-            p = end;
-            float z = std::strtof(p, &end);
-            if (end == p) continue;
-            positions.push_back({x, y, z});
-            minP.x = std::min(minP.x, x);
-            minP.y = std::min(minP.y, y);
-            minP.z = std::min(minP.z, z);
-            maxP.x = std::max(maxP.x, x);
-            maxP.y = std::max(maxP.y, y);
-            maxP.z = std::max(maxP.z, z);
+            if (line.size() >= 2 && line[0] == 'v' && line[1] == ' ') {
+                const char* p = line.c_str() + 2;
+                char* end = nullptr;
+                float x = std::strtof(p, &end);
+                if (end == p) continue;
+                p = end;
+                float y = std::strtof(p, &end);
+                if (end == p) continue;
+                p = end;
+                float z = std::strtof(p, &end);
+                if (end == p) continue;
+                positions.push_back({x, y, z});
+                minP.x = std::min(minP.x, x);
+                minP.y = std::min(minP.y, y);
+                minP.z = std::min(minP.z, z);
+                maxP.x = std::max(maxP.x, x);
+                maxP.y = std::max(maxP.y, y);
+                maxP.z = std::max(maxP.z, z);
+            } else if (line.size() >= 3 && line[0] == 'v' && line[1] == 't' && std::isspace(static_cast<unsigned char>(line[2]))) {
+                const char* p = line.c_str() + 3;
+                char* end = nullptr;
+                float u = std::strtof(p, &end);
+                if (end == p) continue;
+                p = end;
+                float v = std::strtof(p, &end);
+                if (end == p) continue;
+                texcoords.push_back({u, 1.0f - v});
+            } else if (line.size() >= 3 && line[0] == 'v' && line[1] == 'n' && std::isspace(static_cast<unsigned char>(line[2]))) {
+                const char* p = line.c_str() + 3;
+                char* end = nullptr;
+                float x = std::strtof(p, &end);
+                if (end == p) continue;
+                p = end;
+                float y = std::strtof(p, &end);
+                if (end == p) continue;
+                p = end;
+                float z = std::strtof(p, &end);
+                if (end == p) continue;
+                normals.push_back({x, y, z});
+            }
         }
         if (positions.empty()) return false;
 
         XMFLOAT3 center{(minP.x + maxP.x) * 0.5f, (minP.y + maxP.y) * 0.5f, (minP.z + maxP.z) * 0.5f};
         float maxDim = std::max({maxP.x - minP.x, maxP.y - minP.y, maxP.z - minP.z, 0.001f});
         float scale = 1.12f / maxDim;
+        bool nativeMaskAxes = IsNativeMaskMeshPath(path);
         auto localPos = [&](int idx) {
             const XMFLOAT3& p = positions[static_cast<size_t>(idx)];
+            if (nativeMaskAxes) {
+                return XMFLOAT3{(p.x - center.x) * scale, (p.y - center.y) * scale, (p.z - center.z) * scale};
+            }
             return XMFLOAT3{(p.x - center.x) * scale, (p.z - center.z) * scale, (p.y - center.y) * scale};
         };
+        auto localNormal = [&](int idx) {
+            const XMFLOAT3& n = normals[static_cast<size_t>(idx)];
+            if (nativeMaskAxes) return Normalize3(n, {0.0f, 0.0f, 1.0f});
+            return Normalize3({n.x, n.z, n.y}, {0.0f, 0.0f, 1.0f});
+        };
+
+        if (nativeMaskAxes && !texcoords.empty()) {
+            struct FaceV {
+                int p;
+                int t;
+                int n;
+            };
+            std::vector<std::array<FaceV, 3>> faceTris;
+            faceTris.reserve(80000);
+            std::ifstream faces(path);
+            if (!faces) return false;
+            std::string faceLine;
+            while (std::getline(faces, faceLine)) {
+                if (faceLine.size() < 2 || faceLine[0] != 'f' || faceLine[1] != ' ') continue;
+                std::vector<ObjFaceVertex> poly;
+                poly.reserve(8);
+                const char* p = faceLine.c_str() + 2;
+                while (*p) {
+                    ObjFaceVertex v = ParseObjFaceVertex(p, static_cast<int>(positions.size()),
+                        static_cast<int>(texcoords.size()), static_cast<int>(normals.size()));
+                    if (v.vertex >= 0 && v.vertex < static_cast<int>(positions.size())) poly.push_back(v);
+                }
+                if (poly.size() < 3) continue;
+                for (size_t i = 1; i + 1 < poly.size(); ++i) {
+                    faceTris.push_back({FaceV{poly[0].vertex, poly[0].texcoord, poly[0].normal},
+                        FaceV{poly[i].vertex, poly[i].texcoord, poly[i].normal},
+                        FaceV{poly[i + 1].vertex, poly[i + 1].texcoord, poly[i + 1].normal}});
+                }
+            }
+            if (faceTris.empty()) return false;
+
+            size_t outputTriCount = std::min(faceTris.size(), static_cast<size_t>(maxTriangles));
+            double step = static_cast<double>(faceTris.size()) / static_cast<double>(std::max<size_t>(1, outputTriCount));
+            out.clear();
+            out.reserve(outputTriCount * 3);
+            auto pushFaceVertex = [&](const FaceV& fv) {
+                XMFLOAT3 p = localPos(fv.p);
+                XMFLOAT3 n = (fv.n >= 0 && fv.n < static_cast<int>(normals.size()))
+                    ? localNormal(fv.n)
+                    : Normalize3(p, {0.0f, 0.0f, 1.0f});
+                XMFLOAT2 uv = (fv.t >= 0 && fv.t < static_cast<int>(texcoords.size()))
+                    ? texcoords[static_cast<size_t>(fv.t)]
+                    : XMFLOAT2{0.5f + p.x * 0.5f, 0.5f - p.y * 0.5f};
+                XMFLOAT3 tangent = Normalize3(Cross3({0.0f, 1.0f, 0.0f}, n), {1.0f, 0.0f, 0.0f});
+                out.push_back({p, n, tangent, uv, 26.0f});
+            };
+            for (size_t i = 0; i < outputTriCount; ++i) {
+                const auto& tri = faceTris[static_cast<size_t>(std::min<double>(faceTris.size() - 1, i * step))];
+                pushFaceVertex(tri[0]);
+                pushFaceVertex(tri[1]);
+                pushFaceVertex(tri[2]);
+            }
+            return !out.empty();
+        }
 
         auto buildClustered = [&](int grid, std::vector<Cluster>& clusters, std::vector<Tri>& tris) {
             clusters.clear();
@@ -341,6 +449,7 @@
         skullMesh_.clear();
         monsterMeshLoaded_ = false;
         monsterUsingAltSkull_ = false;
+        monsterSkullNativeMaskAxes_ = false;
         std::wstring configuredPath = settings_.monsterSkullMesh;
         if (!settings_.monsterAltSkullMesh.empty() &&
             Rand01(913, 917, runtimeSeed_) < std::clamp(settings_.monsterAltSkullChance, 0.0f, 1.0f)) {
@@ -352,6 +461,7 @@
             StartupProfileLine(L"Monster skull mesh not found: " + configuredPath);
             return false;
         }
+        monsterSkullNativeMaskAxes_ = IsNativeMaskMeshPath(path);
         uint64_t hash = MonsterMeshCacheHash(path);
         if (LoadMonsterMeshCache(hash, skullMesh_)) {
             StartupProfileLine(L"Loaded cached monster skull mesh: " + std::to_wstring(skullMesh_.size() / 3) + L" tris");
@@ -653,7 +763,15 @@
         };
         const std::array<float, 3> chairMaterials = {16.0f, 17.0f, 22.0f};
         for (size_t i = 0; i < chairPaths.size(); ++i) {
-            if (LoadStaticPropObj(chairPaths[i], chairMaterials[i], chairPropMeshes_[i])) ++loaded;
+            if (LoadStaticPropObj(chairPaths[i], chairMaterials[i], chairPropMeshes_[i])) {
+                for (Vertex& v : chairPropMeshes_[i].vertices) {
+                    int materialId = static_cast<int>(std::floor(v.material));
+                    if (materialId == 19 || materialId == 20 || materialId == 21) {
+                        v.material = chairMaterials[i];
+                    }
+                }
+                ++loaded;
+            }
         }
         bool cabinetLoaded = LoadStaticPropObj(L"assets\\models\\runtime\\filing_cabinet.brmesh", 10.0f, cabinetPropMesh_);
         bool deskLoaded = LoadStaticPropObj(L"assets\\models\\runtime\\office_desk.brmesh", 8.0f, deskPropMesh_);

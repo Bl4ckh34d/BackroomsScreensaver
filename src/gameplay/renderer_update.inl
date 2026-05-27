@@ -58,7 +58,7 @@
         UpdateMonster(dt);
         UpdateMonsterLampDamage(dt);
         float monsterDist = MonsterDistance();
-        if (monsterDist < settings_.monsterKillDistance && maze_.LineClear(CameraTile(), MonsterTile())) {
+        if (!settings_.debugInvincible && !MonsterIgnoresPlayer() && monsterDist < settings_.monsterKillDistance && maze_.LineClear(CameraTile(), MonsterTile())) {
             playerHealth_ = 0.0f;
             BeginDeath();
             UpdateDeath(dt);
@@ -69,6 +69,12 @@
         }
 
         bool threat = IsThreatVisible();
+        if (MonsterIgnoresPlayer()) {
+            threat = false;
+            chasePanic_ = 0.0f;
+            chaseMemoryTimer_ = 0.0f;
+            monsterRecognizedForChase_ = false;
+        }
         UpdateChasePanic(dt, threat, monsterDist);
         UpdateBrokenRuntimeLampSparks(dt, 3.0f, 9.5f, 0.12f);
         bool panicActive = threat || ChasePanicActive();

@@ -93,13 +93,32 @@ VSOut VSMain(VSIn input)
         o.worldPos += input.tangent * (flutter * (0.035 + lowSpread * 0.070));
         o.worldPos.y += sin(time * 0.52 + seed * 11.0 + input.uv.x * 4.2) * 0.028 * (1.0 - vertical * 0.35);
     }
+)" R"(
+)" R"(
+    if (input.material > 20.40 && input.material < 20.95)
+    {
+        float seed = frac(input.material * 19.73);
+        float time = gCameraPosTime.w;
+        float along = input.uv.y;
+        float ring = input.uv.x * 6.2831853;
+        float2 meatUv = input.uv * float2(1.25, 2.65) + float2(seed * 0.37, seed * 0.19 + time * 0.006);
+        float meatHeight = gNormalHeight.SampleLevel(gSampler, float3(meatUv, 15.0), 0.0).a;
+        float meatRidge = (meatHeight - 0.48) * 2.0;
+        float peristalsis = sin(along * 3.35 - time * 3.85 + seed * 11.0);
+        float fine = sin(along * 8.7 + ring * 2.0 - time * 5.1 + seed * 23.0);
+        float squeeze = peristalsis * 0.052 + fine * 0.017 + meatRidge * (0.018 + abs(peristalsis) * 0.020);
+        float crawl = sin(along * 1.85 - time * 1.35 + seed * 7.0) * 0.030;
+        o.worldPos += input.normal * squeeze;
+        o.worldPos += input.tangent * (crawl + meatRidge * 0.006);
+        o.worldPos.y += sin(along * 2.35 - time * 3.1 + seed * 13.0) * 0.025;
+    }
     o.pos = mul(float4(o.worldPos, 1.0), gViewProj);
     return o;
 }
 
 float MaterialId(float material)
 {
-    return clamp(floor(material), 0.0, 25.0);
+    return clamp(floor(material), 0.0, 26.0);
 }
 
 void ShadowPS(VSOut input)
@@ -115,7 +134,8 @@ void ShadowPS(VSOut input)
         (materialId > 14.5 && materialId < 15.5) ||
         (materialId > 17.5 && materialId < 18.5) ||
         (materialId > 18.5 && materialId < 19.5) ||
-        (materialId > 24.5 && materialId < 25.5))
+        (materialId > 24.5 && materialId < 25.5) ||
+        (materialId > 25.5 && materialId < 26.5))
     {
         discard;
     }
@@ -1078,6 +1098,68 @@ float4 PSMain(VSOut input) : SV_TARGET
     float3 B = normalize(cross(N, T));
     float2 rawUv = input.uv;
     float2 uv = frac(rawUv);
+
+    if (input.material > 27.05 && input.material < 27.95)
+    {
+        float seed = frac(input.material);
+        float2 p = uv * 2.0 - 1.0;
+        float contactRadius = lerp(0.28, 0.42, Hash21(float2(seed * 17.0, 3.0)));
+        float spot = 1.0 - smoothstep(contactRadius * 0.58, contactRadius, length(p * float2(1.0, 1.06)));
+        float dripChance = step(0.42, Hash21(float2(seed * 29.0, 7.0)));
+        float dripLen = lerp(0.22, 0.92, Hash21(float2(seed * 41.0, 11.0))) * dripChance;
+        float dripOffset = (Hash21(float2(seed * 53.0, 13.0)) - 0.5) * 0.20;
+        float dripWidth = lerp(0.018, 0.040, Hash21(float2(seed * 67.0, 17.0)));
+        float dripY = p.y + 0.10;
+        float mainDrip = 1.0 - smoothstep(dripWidth, dripWidth * 2.6, abs(p.x - dripOffset));
+        mainDrip *= smoothstep(0.02, 0.12, dripY) * (1.0 - smoothstep(dripLen, dripLen + 0.18, dripY));
+        float drop = 1.0 - smoothstep(0.035, 0.095, length((p - float2(dripOffset, dripLen + 0.02)) * float2(0.88, 1.18)));
+        float secondChance = step(0.76, Hash21(float2(seed * 79.0, 19.0)));
+        float secondOffset = dripOffset + lerp(-0.18, 0.18, Hash21(float2(seed * 83.0, 23.0)));
+        float secondLen = lerp(0.14, 0.44, Hash21(float2(seed * 89.0, 29.0))) * secondChance;
+        float secondDrip = 1.0 - smoothstep(0.012, 0.034, abs(p.x - secondOffset));
+        secondDrip *= smoothstep(0.00, 0.10, dripY) * (1.0 - smoothstep(secondLen, secondLen + 0.12, dripY));
+        float noise = Fbm3(float3(input.worldPos * 18.0 + seed * 31.0));
+        float shape = max(spot, max(max(mainDrip * 0.82, secondDrip * 0.58), drop * 0.72));
+        float dryBreakup = smoothstep(0.12, 0.64, noise);
+        float alpha = saturate(shape * (0.74 + dryBreakup * 0.22));
+        if (alpha < 0.055) discard;
+        float3 worldN = normalize(N + T * (noise - 0.5) * 0.045 + B * (Fbm3(input.worldPos * 31.0 + seed * 17.0) - 0.5) * 0.035);
+        float flashlight = FlashlightAmount(input.worldPos, worldN);
+        float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
+        float sparkLight = SparkLight(input.worldPos, worldN);
+        float lightEnergy = gLighting0.z * 0.035 + flashlight * 0.92 + overhead * 0.32 + sparkLight * 0.64;
+        float3 blood = lerp(float3(0.055, 0.002, 0.001), float3(0.42, 0.014, 0.006), saturate(noise * 1.25));
+        float wetSpec = pow(saturate(dot(reflect(-normalize(gShadow0.xyz - input.worldPos), worldN), V)), 68.0) *
+            saturate(flashlight + overhead * 0.35 + sparkLight * 0.45);
+        float3 color = blood * (0.22 + lightEnergy * 1.10) + float3(0.95, 0.10, 0.045) * wetSpec * 0.34;
+        float dist = length(input.worldPos - cam);
+        color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, 1.0));
+        return float4(ApplyPost(color), alpha * 0.72);
+    }
+
+    if (input.material > 26.05 && input.material < 26.95)
+    {
+        float seed = frac(input.material);
+        float fiber = Fbm3(input.worldPos * float3(8.0, 11.0, 8.0) + float3(seed * 31.0, 0.0, seed * 17.0));
+        float vein = smoothstep(0.74, 0.96, Fbm3(input.worldPos * float3(17.0, 22.0, 17.0) + seed * 53.0));
+        float3 worldN = normalize(N + T * (fiber - 0.5) * 0.10 + B * (vein - 0.5) * 0.06);
+        float flashlight = FlashlightAmount(input.worldPos, worldN);
+        float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
+        float sparkLight = SparkLight(input.worldPos, worldN);
+        float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
+        float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
+        float lightEnergy = gLighting0.z * 0.08 + flashlight * 1.08 + overhead * 0.24 + sparkLight * 0.58 + exitGlow * 0.18;
+        float3 flesh = lerp(float3(0.12, 0.018, 0.014), float3(0.34, 0.038, 0.025), fiber);
+        flesh = lerp(flesh, float3(0.035, 0.005, 0.014), vein * 0.42);
+        float3 toLight = normalize(gShadow0.xyz - input.worldPos);
+        float facing = saturate(dot(reflect(-toLight, worldN), V));
+        float wet = pow(facing, 74.0) * saturate(flashlight + sparkLight * 0.45 + overhead * 0.18);
+        float3 color = flesh * (0.10 + lightEnergy);
+        color += float3(0.70, 0.12, 0.07) * wet * 0.42;
+        float dist = length(input.worldPos - cam);
+        color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, 1.0));
+        return float4(ApplyPost(color), 1.0);
+    }
 
     if ((materialId > 13.5 && materialId < 14.5) || (materialId > 24.5 && materialId < 25.5))
     {
@@ -2369,6 +2451,51 @@ float4 PSMain(VSOut input) : SV_TARGET
         return float4(saturate(ApplyPost(color) + color * 0.075), saturate(alpha));
     }
 
+)" R"(
+    if (input.material > 20.40 && input.material < 20.95)
+    {
+        float seed = frac(input.material * 31.41);
+        float2 meatUv = input.uv * float2(1.25, 2.65) + float2(seed * 0.37, seed * 0.19 + time * 0.006);
+        float3 viewTS = float3(dot(V, T), dot(V, B), max(dot(V, N), 0.18));
+        float height0 = gNormalHeight.Sample(gSampler, float3(meatUv, 15.0)).a;
+        meatUv += (height0 - 0.48) * 0.026 * viewTS.xy / viewTS.z;
+        float3 fleshUv = float3(meatUv, 15.0);
+        float4 fleshBase = gAlbedo.Sample(gSampler, fleshUv);
+        float4 fleshPbr = gMaterialProps.Sample(gSampler, fleshUv);
+        float4 fleshNh = gNormalHeight.Sample(gSampler, fleshUv);
+        float3 nTex = normalize(fleshNh.xyz * 2.0 - 1.0);
+        nTex = normalize(float3(nTex.xy * 0.86, nTex.z));
+        float3 gutP = input.worldPos * float3(2.2, 4.8, 2.2) + float3(seed * 19.0, time * 0.13, seed * 43.0);
+        float fiber = Fbm3(gutP);
+        float veinField = Fbm3(input.worldPos * float3(8.0, 11.0, 8.0) + float3(seed * 71.0, -time * 0.06, seed * 37.0));
+        float veinLine = smoothstep(0.78, 0.96, veinField + sin(input.uv.y * 9.0 + input.uv.x * 15.0 + seed * 9.0) * 0.10);
+        float pulse = 0.90 + 0.10 * sin(input.uv.y * 4.3 - time * 3.4 + seed * 17.0);
+        float3 wetN = normalize(nTex.x * T + nTex.y * B + nTex.z * N);
+        wetN = normalize(wetN + T * (fiber - 0.5) * 0.12 + B * (veinField - 0.5) * 0.08);
+        float flashlight = FlashlightAmount(input.worldPos, wetN);
+        float overhead = LocalLampLight(input.worldPos, wetN, time) * gLighting1.x;
+        float sparkLight = SparkLight(input.worldPos, wetN);
+        float3 exitGreen = ExitSignLight(input.worldPos, wetN, materialId);
+        float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
+        float lightEnergy = gLighting0.z * 0.10 + flashlight * 1.18 + overhead * 0.24 + sparkLight * 0.70 + exitGlow * 0.22;
+        float3 muscle = lerp(fleshBase.rgb * 0.82, fleshBase.rgb * 1.18 + float3(0.11, 0.012, 0.006), fiber);
+        float3 vein = float3(0.040, 0.003, 0.012);
+        float3 rawColor = lerp(muscle, vein, veinLine * 0.46) * pulse;
+        float facing = saturate(dot(reflect(-normalize(gShadow0.xyz - input.worldPos), wetN), V));
+        float fresnel = pow(1.0 - saturate(dot(wetN, V)), 2.4);
+        float roughness = saturate(fleshPbr.g);
+        float gloss = 1.0 - roughness;
+        float spec = (pow(facing, lerp(42.0, 150.0, gloss)) * lerp(0.45, 1.35, gloss) + pow(facing, 24.0) * 0.24 + fresnel * 0.20) *
+            saturate(flashlight + overhead * 0.35 + sparkLight * 0.55 + exitGlow * 0.30);
+        float slime = 0.72 + 0.28 * Fbm3(input.worldPos * 18.0 + time * 0.07);
+        float3 color = rawColor * (0.08 + lightEnergy * 1.08) * lerp(0.64, 1.0, saturate(fleshPbr.r));
+        color += float3(0.95, 0.42, 0.32) * spec * slime;
+        color += float3(0.10, 0.008, 0.006) * fresnel * saturate(lightEnergy) * 0.45;
+        float dist = length(input.worldPos - cam);
+        color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, 1.0));
+        return float4(ApplyPost(color), 1.0);
+    }
+
     if (input.material > 10.50 && input.material < 10.90)
     {
         float ndv = saturate(dot(N, V));
@@ -2380,6 +2507,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 rimBase = lerp(float3(3.8, 0.065, 0.018), float3(1.9, 0.006, 0.003), bloodMaterial);
         float3 color = hotBase * hot * flutter;
         color += rimBase * rim;
+        float eyeDimmer = input.material < 10.65 ? 0.38 : 1.0;
+        color *= eyeDimmer;
         float dist = length(input.worldPos - cam);
         float fog = saturate((dist - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 1.8);
@@ -2399,15 +2528,15 @@ float4 PSMain(VSOut input) : SV_TARGET
         float flashlight = FlashlightAmount(input.worldPos, worldN);
         float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
         float sparkLight = SparkLight(input.worldPos, worldN);
-        float3 bone = float3(0.62, 0.58, 0.48);
-        bone += (grain - 0.5) * float3(0.10, 0.085, 0.055);
-        bone -= smoothstep(0.54, 0.88, stain) * float3(0.13, 0.12, 0.090);
+        float3 bone = float3(0.82, 0.80, 0.72);
+        bone += (grain - 0.5) * float3(0.085, 0.078, 0.060);
+        bone -= smoothstep(0.54, 0.88, stain) * float3(0.10, 0.095, 0.075);
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);
         float facing = saturate(dot(reflect(-toLight, worldN), V));
         float spec = pow(facing, 34.0) * 0.22 * (flashlight + sparkLight * 0.45);
         float dist = length(input.worldPos - cam);
         float3 color = bone * (gLighting0.z * 0.34 + flashlight * 1.12 + overhead * 0.26 + sparkLight * 0.80);
-        color += float3(0.78, 0.68, 0.48) * spec;
+        color += float3(0.92, 0.86, 0.70) * spec;
         color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, 1.0));
         return float4(ApplyPost(color), 1.0);
     }
@@ -2521,6 +2650,14 @@ float4 PSMain(VSOut input) : SV_TARGET
     float floorMipBias = (materialId > 0.5 && materialId < 1.5) ? 1.75 : 0.0;
     float4 base = gAlbedo.SampleBias(gSampler, materialUv, floorMipBias);
     base.rgb = BackroomsBaseColor(base.rgb, materialId);
+    if ((materialId > 15.5 && materialId < 17.5) || (materialId > 21.5 && materialId < 22.5))
+    {
+        float hi = max(base.r, max(base.g, base.b));
+        float lo = min(base.r, min(base.g, base.b));
+        float lum = dot(base.rgb, float3(0.299, 0.587, 0.114));
+        float neutralBright = smoothstep(0.46, 0.72, lum) * (1.0 - smoothstep(0.08, 0.24, hi - lo));
+        base.rgb = lerp(base.rgb, float3(0.035, 0.038, 0.036), neutralBright);
+    }
     float4 pbr = gMaterialProps.SampleBias(gSampler, materialUv, floorMipBias);
     if (materialId > 3.5 && base.a < 0.08) discard;
 
@@ -2544,12 +2681,23 @@ float4 PSMain(VSOut input) : SV_TARGET
     float ambient = gLighting0.z;
     float aoMap = saturate(pbr.r);
     float roughness = saturate(pbr.g);
+    if (materialId > 25.5 && materialId < 26.5)
+    {
+        roughness = min(roughness, 0.34);
+        aoMap = max(aoMap, 0.74);
+    }
     float3 color = base.rgb * (ambient + overhead + flashlight + sparkLight) * lerp(0.58, 1.0, aoMap);
     color += base.rgb * exitGreen * lerp(0.58, 1.0, aoMap);
     float3 toLight = normalize(gShadow0.xyz - input.worldPos);
     float specFacing = saturate(dot(reflect(-toLight, worldN), V));
     float gloss = 1.0 - roughness;
     float surfaceSpec = pow(specFacing, lerp(18.0, 95.0, gloss)) * gloss * 0.18 * (flashlight + sparkLight * 0.5 + exitGlow * 0.45);
+    if (materialId > 25.5 && materialId < 26.5)
+    {
+        float fresnel = pow(1.0 - saturate(dot(worldN, V)), 2.0);
+        surfaceSpec += (pow(specFacing, 120.0) * 0.34 + fresnel * 0.11) * (flashlight + sparkLight * 0.45);
+        color += base.rgb * flashlight * 0.22;
+    }
     color += float3(1.0, 0.92, 0.78) * surfaceSpec;
     if (materialId > 1.5 && materialId < 2.5)
     {
@@ -2569,6 +2717,10 @@ float4 PSMain(VSOut input) : SV_TARGET
     }
 
     float fogBlock = SceneFogBlock(dist, input.worldPos, 1.0);
+    if (materialId > 25.5 && materialId < 26.5)
+    {
+        fogBlock *= 0.74;
+    }
     color = lerp(color, float3(0.0, 0.0, 0.0), fogBlock);
     float3 posted = ApplyPost(color);
     if (materialId > 3.5 && materialId < 4.5)

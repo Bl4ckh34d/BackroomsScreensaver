@@ -158,9 +158,19 @@
         playerGrounded_ = true;
         monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
         monsterPath_.clear();
+        monsterYaw_ = 0.0f;
+        monsterTrail_.clear();
+        monsterLimbAnchors_.clear();
+        monsterSmoothedBodyPoints_.clear();
+        monsterSmoothedBodyUps_.clear();
+        monsterBodySmoothTime_ = -1000.0f;
+        monsterHandprints_.clear();
+        for (int i = 0; i < 96; ++i) {
+            float back = static_cast<float>(i) * maze_.TileMinimum() * 0.075f;
+            monsterTrail_.push_back({monster_.x - std::sin(monsterYaw_) * back, 0.0f, monster_.z - std::cos(monsterYaw_) * back});
+        }
         monsterPathIndex_ = 0;
         monsterRepath_ = 0.0f;
-        monsterYaw_ = 0.0f;
         monsterGoal_ = {-1000, -1000};
         monsterSoundTile_ = {-1000, -1000};
         monsterLastKnownTile_ = {-1000, -1000};
@@ -200,6 +210,13 @@
         if (monsterPreview_) {
             monster_ = {0.0f, 0.0f, 0.0f};
             monsterYaw_ = kPi;
+            monsterTrail_.clear();
+            monsterLimbAnchors_.clear();
+            monsterHandprints_.clear();
+            for (int i = 0; i < 96; ++i) {
+                float back = static_cast<float>(i) * 0.10f;
+                monsterTrail_.push_back({monster_.x - std::sin(monsterYaw_) * back, 0.0f, monster_.z - std::cos(monsterYaw_) * back});
+            }
             SetMonsterPreviewCamera(0.0f);
             dangerLevel_ = 0.45f;
             dreadLevel_ = 0.35f;
@@ -469,6 +486,64 @@
         return maze_.TileFromWorld(monster_.x, monster_.z);
     }
 
+    float MonsterBodyLengthMeters() const {
+        return std::min(10.0f, 3.9f + static_cast<float>(std::max(0, monsterKillCount_)) * 0.75f);
+    }
+
+    float MonsterBodySpacing() const {
+        return std::max(0.10f, maze_.TileMinimum() * 0.24f);
+    }
+
+    XMFLOAT3 MonsterTrailSample(float targetDistance) const {
+        if (monsterTrail_.empty()) return monster_;
+        XMFLOAT3 prev = monsterTrail_.front();
+        float travelled = 0.0f;
+        for (size_t i = 1; i < monsterTrail_.size(); ++i) {
+            XMFLOAT3 next = monsterTrail_[i];
+            float dx = next.x - prev.x;
+            float dz = next.z - prev.z;
+            float len = std::sqrt(dx * dx + dz * dz);
+            if (travelled + len >= targetDistance && len > 0.001f) {
+                float t = (targetDistance - travelled) / len;
+                return XMFLOAT3{Lerp(prev.x, next.x, t), 0.0f, Lerp(prev.z, next.z, t)};
+            }
+            travelled += len;
+            prev = next;
+        }
+        float back = std::max(0.0f, targetDistance - travelled);
+        return XMFLOAT3{prev.x - std::sin(monsterYaw_) * back, 0.0f, prev.z - std::cos(monsterYaw_) * back};
+    }
+
+    std::vector<Tile> MonsterBodyOccupiedTiles() const {
+        std::vector<Tile> occupied;
+        if (maze_.w <= 0 || maze_.h <= 0) return occupied;
+        float spacing = MonsterBodySpacing();
+        int samples = std::clamp(static_cast<int>(std::ceil(MonsterBodyLengthMeters() / spacing)) + 1, 4, 48);
+        occupied.reserve(static_cast<size_t>(samples));
+        for (int i = 0; i < samples; ++i) {
+            XMFLOAT3 p = MonsterTrailSample(static_cast<float>(i) * spacing);
+            Tile t = maze_.TileFromWorld(p.x, p.z);
+            if (!maze_.IsOpen(t.x, t.y)) continue;
+            bool exists = false;
+            for (Tile prev : occupied) {
+                if (prev == t) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) occupied.push_back(t);
+        }
+        return occupied;
+    }
+
+    bool MonsterBodyOccupiesTile(Tile tile) const {
+        if (!maze_.IsOpen(tile.x, tile.y)) return false;
+        for (Tile occupied : MonsterBodyOccupiedTiles()) {
+            if (occupied == tile) return true;
+        }
+        return false;
+    }
+
     size_t TileIndex(Tile t) const {
         return static_cast<size_t>(t.y * maze_.w + t.x);
     }
@@ -584,7 +659,7 @@
         float modelY = std::clamp(settings_.monsterScale, 0.35f, 1.25f);
         float modelXZ = std::clamp(settings_.monsterScale, 0.35f, 1.35f);
         float hover = 0.22f + std::sin(time_ * 1.55f + monster_.x * 0.07f + monster_.z * 0.05f) * 0.050f;
-        bool canTrackPlayer = !monsterPreview_ && MonsterLineOfSightToPlayer();
+        bool canTrackPlayer = !monsterPreview_ && MonsterVisualEncounterPlayer();
         float faceYaw = monsterYaw_;
         if (canTrackPlayer) {
             float cameraYaw = std::atan2(camera_.x - monster_.x, camera_.z - monster_.z);
@@ -602,7 +677,7 @@
         XMFLOAT3 hUp{0.0f, 1.0f, 0.0f};
         XMFLOAT3 hForward{std::sin(headYaw), 0.0f, std::cos(headYaw)};
         XMFLOAT3 skull = Add3(monster_, OrientedOffset(hRight, hUp, hForward,
-            0.0f, (2.00f + MonsterHeadBobOffset()) * modelY + hover, kMonsterHeadForwardOffset * modelXZ));
+            0.0f, (1.34f + MonsterHeadBobOffset() * 0.55f) * modelY + hover, kMonsterHeadForwardOffset * 0.56f * modelXZ));
 
         float headPitch = monsterHeadPitchOffset_ * scanWeight;
         if (std::abs(headPitch) > 0.0005f) {
@@ -618,21 +693,8 @@
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
         }
 
-        if (!skullMesh_.empty()) {
-            float leftX = monsterUsingAltSkull_ ? settings_.monsterAltLeftEyeX : settings_.monsterLeftEyeX;
-            float leftY = monsterUsingAltSkull_ ? settings_.monsterAltLeftEyeY : settings_.monsterLeftEyeY;
-            float leftZ = monsterUsingAltSkull_ ? settings_.monsterAltLeftEyeZ : settings_.monsterLeftEyeZ;
-            float rightX = monsterUsingAltSkull_ ? settings_.monsterAltRightEyeX : settings_.monsterRightEyeX;
-            float rightY = monsterUsingAltSkull_ ? settings_.monsterAltRightEyeY : settings_.monsterRightEyeY;
-            float rightZ = monsterUsingAltSkull_ ? settings_.monsterAltRightEyeZ : settings_.monsterRightEyeZ;
-            XMFLOAT3 leftEye = Add3(skull, OrientedOffset(hRight, hUp, hForward,
-                leftX * modelXZ, leftY * modelY, leftZ * modelXZ));
-            XMFLOAT3 rightEye = Add3(skull, OrientedOffset(hRight, hUp, hForward,
-                rightX * modelXZ, rightY * modelY, rightZ * modelXZ));
-            return Lerp3(leftEye, rightEye, 0.5f);
-        }
         return Add3(skull, OrientedOffset(hRight, hUp, hForward,
-            0.0f, 0.025f * modelY, 0.162f * modelXZ));
+            0.0f, 0.118f * modelY, 0.224f * modelXZ));
     }
 
     void SetMonsterPreviewCamera(float orbitSeconds = 0.0f) {
@@ -1385,7 +1447,7 @@
     }
 
     bool IsThreatVisible() const {
-        return MonsterLineOfSightToPlayer();
+        return MonsterCanSeePlayer();
     }
 
     bool IsRoomLike(Tile t) const {
@@ -1551,6 +1613,7 @@
             float sx = Lerp(fromX, toX, t);
             float sz = Lerp(fromZ, toZ, t);
             Tile cur = maze_.TileFromWorld(sx, sz);
+            if (MonsterBodyOccupiesTile(cur) && !(cur == allowedStart)) return false;
             if (!(cur == allowedStart) && !(cur == allowedTarget)) return false;
             if (!(cur == prev)) {
                 if (!maze_.IsOpen(cur.x, cur.y)) return false;
@@ -1574,6 +1637,7 @@
             float sx = Lerp(fromX, toX, t);
             float sz = Lerp(fromZ, toZ, t);
             Tile cur = maze_.TileFromWorld(sx, sz);
+            if (MonsterBodyOccupiesTile(cur) && !(cur == prev)) return false;
             if (!maze_.IsOpen(cur.x, cur.y)) return false;
             if (!(cur == prev)) {
                 int stepX = cur.x - prev.x;
@@ -2434,11 +2498,11 @@
         bool riskyFirstStep = FleeStepRiskyTowardMonster(cur, path[1], monsterTile);
         if (hasSaferStep && riskyFirstStep) return true;
         if (riskyFirstStep && !earlyEscape) return true;
-        if (MonsterLineOfSightToPlayer() && firstDist <= startDist + 0.01f) return true;
+        if (MonsterCanSeePlayer() && firstDist <= startDist + 0.01f) return true;
         if (firstDist < startDist - 1.01f && !earlyEscape) return true;
 
         float toward = StepTowardMonsterAmount(path[1]);
-        bool visibleFromFirst = maze_.LineClear(path[1], monsterTile) || MonsterLineOfSightToPlayer();
+        bool visibleFromFirst = maze_.LineClear(path[1], monsterTile) || MonsterCanSeePlayer();
         if (visibleFromFirst) {
             if (toward > -0.10f && (hasSaferStep || !earlyEscape)) return true;
             if (toward > 0.20f && !earlyEscape) return true;
@@ -2609,8 +2673,10 @@
     }
 
     void BeginDeath() {
+        if (settings_.debugInvincible) return;
         if (deathActive_) return;
         deathActive_ = true;
+        monsterKillCount_ = std::min(monsterKillCount_ + 1, 16);
         deathTimer_ = 0.0f;
         dangerLevel_ = 1.0f;
         dreadLevel_ = 1.0f;
@@ -2775,7 +2841,7 @@
 
     void UpdateChaseLookBackTarget(float dt) {
         if (chaseLookBackTimer_ <= 0.0f || chaseLookBackDuration_ <= 0.001f) return;
-        if (!MonsterLineOfSightToPlayer()) return;
+        if (!MonsterCanSeePlayer()) return;
         XMFLOAT3 focus = MonsterEyeFocus();
         float liveYaw = YawToPoint(focus);
         float livePitch = std::clamp(PitchToPoint(focus), -0.34f, 0.24f);
@@ -2821,28 +2887,38 @@
 
         bool wantsMove = inputLen > 0.001f;
         bool crouching = gameInput_.crouch;
-        bool wantsSprint = gameInput_.sprint && wantsMove && !crouching && playerStamina_ > 10.0f;
+        if (settings_.debugInfiniteStamina) {
+            playerStamina_ = 100.0f;
+            playerStaminaRegenDelay_ = 0.0f;
+        }
+        bool wantsSprint = gameInput_.sprint && wantsMove && !crouching && (settings_.debugInfiniteStamina || playerStamina_ > 10.0f);
         float walkSpeed = settings_.walkSpeed;
         float sprintSpeed = std::max(settings_.runSpeed, walkSpeed * 1.35f);
         float targetSpeed = wantsSprint ? sprintSpeed : walkSpeed;
         if (crouching) targetSpeed *= 0.52f;
 
-        if (wantsSprint) {
-            playerStamina_ = std::max(0.0f, playerStamina_ - 24.0f * dt);
-            playerStaminaRegenDelay_ = 0.75f;
+        if (wantsSprint && !settings_.debugInfiniteStamina) {
+            playerStamina_ = std::max(0.0f, playerStamina_ - 14.5f * dt);
+            playerStaminaRegenDelay_ = 1.15f;
             if (playerStamina_ <= 0.0f) {
                 wantsSprint = false;
                 targetSpeed = walkSpeed;
             }
+        } else if (wantsSprint && settings_.debugInfiniteStamina) {
+            playerStamina_ = 100.0f;
+            playerStaminaRegenDelay_ = 0.0f;
         } else {
             playerStaminaRegenDelay_ = std::max(0.0f, playerStaminaRegenDelay_ - dt);
             if (playerStaminaRegenDelay_ <= 0.0f) {
-                playerStamina_ = std::min(100.0f, playerStamina_ + 18.0f * dt);
+                playerStamina_ = std::min(100.0f, playerStamina_ + 8.0f * dt);
             }
         }
 
+        float speedAccel = wantsMove
+            ? (targetSpeed > smoothedMoveSpeed_ ? 4.9f : 6.2f)
+            : 7.0f;
         smoothedMoveSpeed_ = MoveTowards(smoothedMoveSpeed_, wantsMove ? targetSpeed : 0.0f,
-            (wantsMove ? 8.0f : 10.0f) * dt);
+            speedAccel * dt);
         float moveDistance = smoothedMoveSpeed_ * dt;
         float moveNoise = 0.0f;
         if (wantsMove && smoothedMoveSpeed_ > 0.05f) {
@@ -2856,7 +2932,7 @@
                 moveNoise = Lerp(1.8f, 4.2f, walkT);
             }
         }
-        playerNoiseRadiusMeters_ += (moveNoise - playerNoiseRadiusMeters_) * std::min(1.0f, dt * 9.0f);
+        playerNoiseRadiusMeters_ += (moveNoise - playerNoiseRadiusMeters_) * std::min(1.0f, dt * 5.8f);
         if (wantsMove && moveDistance > 0.0001f) {
             XMFLOAT3 forward = Forward();
             XMFLOAT3 right{std::cos(yaw_), 0.0f, -std::sin(yaw_)};
@@ -2889,9 +2965,9 @@
 
         float moveBlend = Clamp01(smoothedMoveSpeed_ / std::max(0.1f, sprintSpeed));
         runIntensity_ += ((wantsSprint ? moveBlend : moveBlend * 0.45f) - runIntensity_) *
-            std::min(1.0f, dt * 5.0f);
+            std::min(1.0f, dt * (wantsSprint ? 3.2f : 2.6f));
         runEffort_ += ((wantsSprint ? moveBlend : 0.0f) - runEffort_) *
-            std::min(1.0f, dt * 3.0f);
+            std::min(1.0f, dt * (wantsSprint ? 2.4f : 3.0f));
         if (wantsMove) {
             AdvanceStepPhase(moveDistance, std::max(0.1f, smoothedMoveSpeed_));
         }
@@ -2908,7 +2984,7 @@
         float sideBob = crouching ? 0.0f : stepWave * (0.00055f + runEffort_ * 0.0011f);
         float breathY = std::sin(breathPhase_) * (0.002f + runIntensity_ * 0.0045f + runEffort_ * 0.008f);
         float desiredY = eyeTarget + playerVerticalOffset_ + verticalBob + sideBob + breathY;
-        camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 10.0f);
+        camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 6.2f);
         RevealVisibleMapTiles();
     }
 

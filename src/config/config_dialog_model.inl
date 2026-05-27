@@ -249,10 +249,10 @@ const ConfigFieldDef kConfigFields[] = {
     {7, 0, kConfigFieldBaseId + 73, L"Creature", L"Monster", L"MonsterScale", L"Scale", L"1", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 74, L"Creature", L"Monster", L"MonsterSpeed", L"Base speed multiplier", L"0.68", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 75, L"Creature", L"Monster", L"MonsterSprintSpeed", L"Sprint speed multiplier", L"0.88", ConfigFieldKind::Text, 90},
-    {7, 0, kConfigFieldBaseId + 102, L"Skull Meshes", L"Monster", L"SkullMesh", L"Deer skull mesh", L"assets\\White-Tailed Deer Skull.obj", ConfigFieldKind::Text, 170},
-    {7, 0, kConfigFieldBaseId + 130, L"Skull Meshes", L"Monster", L"AlternateSkullMesh", L"Ram skull mesh", L"assets\\models\\Ram_Skull\\Ram_Skull_Scan.OBJ", ConfigFieldKind::Text, 170},
-    {7, 0, kConfigFieldBaseId + 131, L"Skull Meshes", L"Monster", L"AlternateSkullChance", L"Ram skull chance", L"0.35", ConfigFieldKind::Text, 90},
-    {7, 0, kConfigFieldBaseId + 103, L"Skull Meshes", L"Monster", L"SkullMaxTriangles", L"Skull mesh triangles", L"18000", ConfigFieldKind::Text, 90},
+    {7, 0, kConfigFieldBaseId + 102, L"Face Mesh", L"Monster", L"SkullMesh", L"Mask mesh", L"assets\\models\\monster_face_mask\\horror_mask.obj", ConfigFieldKind::Text, 170},
+    {7, 0, kConfigFieldBaseId + 130, L"Face Mesh", L"Monster", L"AlternateSkullMesh", L"Alternate mask mesh", L"", ConfigFieldKind::Text, 170},
+    {7, 0, kConfigFieldBaseId + 131, L"Face Mesh", L"Monster", L"AlternateSkullChance", L"Alternate mask chance", L"0", ConfigFieldKind::Text, 90},
+    {7, 0, kConfigFieldBaseId + 103, L"Face Mesh", L"Monster", L"SkullMaxTriangles", L"Mesh triangles", L"65000", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 132, L"Deer Orientation", L"Monster", L"SkullYawDegrees", L"Deer yaw degrees", L"0", ConfigFieldKind::Text, 58},
     {7, 0, kConfigFieldBaseId + 133, L"Deer Orientation", L"Monster", L"SkullPitchDegrees", L"Deer pitch degrees", L"0", ConfigFieldKind::Text, 58},
     {7, 0, kConfigFieldBaseId + 134, L"Deer Orientation", L"Monster", L"SkullRollDegrees", L"Deer roll degrees", L"0", ConfigFieldKind::Text, 58},
@@ -271,11 +271,14 @@ const ConfigFieldDef kConfigFields[] = {
     {7, 1, kConfigFieldBaseId + 141, L"Ram Eye Calibration", L"Monster", L"AlternateLeftEyeX", L"Left eye X", L"0.106", ConfigFieldKind::Text, 58},
     {7, 1, kConfigFieldBaseId + 142, L"Ram Eye Calibration", L"Monster", L"AlternateLeftEyeY", L"Left eye Y", L"-0.145", ConfigFieldKind::Text, 58},
     {7, 1, kConfigFieldBaseId + 143, L"Ram Eye Calibration", L"Monster", L"AlternateLeftEyeZ", L"Left eye Z", L"0.095", ConfigFieldKind::Text, 58},
+    {7, 0, kConfigFieldBaseId + 177, L"Threat Logic", L"Monster", L"MonsterIgnorePlayer", L"Ignore player", L"0", ConfigFieldKind::Bool, 0},
     {7, 0, kConfigFieldBaseId + 76, L"Threat Logic", L"Monster", L"MonsterKillDistance", L"Kill distance", L"1.18", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 77, L"Threat Logic", L"Monster", L"MonsterVisibleDistance", L"Visible threat meters", L"12", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 90, L"Dread Meter", L"Dread", L"Enabled", L"Enable dread", L"1", ConfigFieldKind::Bool, 0},
     {7, 0, kConfigFieldBaseId + 91, L"Dread Meter", L"Dread", L"DebugMeter", L"Show debug meter", L"0", ConfigFieldKind::Bool, 0},
     {7, 0, kConfigFieldBaseId + 176, L"Debug Overlay", L"Debug", L"AiMapOverlay", L"AI minimap overlay", L"0", ConfigFieldKind::Bool, 0},
+    {7, 0, kConfigFieldBaseId + 177, L"Cheats", L"Debug", L"InfiniteStamina", L"Infinite stamina", L"0", ConfigFieldKind::Bool, 0},
+    {7, 0, kConfigFieldBaseId + 178, L"Cheats", L"Debug", L"Invincible", L"Invincible", L"0", ConfigFieldKind::Bool, 0},
     {7, 0, kConfigFieldBaseId + 92, L"Dread Meter", L"Dread", L"DecayPerSecond", L"Decay per second", L"0.03", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 93, L"Dread Meter", L"Dread", L"MonsterDistance", L"Monster pressure meters", L"13", ConfigFieldKind::Text, 90},
     {7, 0, kConfigFieldBaseId + 94, L"Dread Meter", L"Dread", L"MonsterGainPerSecond", L"Monster gain per sec", L"0.42", ConfigFieldKind::Text, 90},
@@ -333,9 +336,9 @@ void BuildGameConfigModel(ConfigState* state) {
     };
 
     auto& f = state->fieldDefs;
-    AddCustomConfigField(f, 0, 0, kConfigGameFullscreenId, L"Display", L"GameWindow", L"Fullscreen", L"Fullscreen", L"0", ConfigFieldKind::Bool, 0);
-    AddCustomConfigField(f, 0, 0, kConfigGameResolutionWidthId, L"Display", L"GameWindow", L"ResolutionWidth", L"Resolution width", L"1280", ConfigFieldKind::Text, 90);
-    AddCustomConfigField(f, 0, 0, kConfigGameResolutionHeightId, L"Display", L"GameWindow", L"ResolutionHeight", L"Resolution height", L"760", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 0, 0, kConfigGameFullscreenId, L"Display", L"GameWindow", L"Fullscreen", L"Fullscreen", L"1", ConfigFieldKind::Bool, 0);
+    AddCustomConfigField(f, 0, 0, kConfigGameResolutionWidthId, L"Display", L"GameWindow", L"ResolutionWidth", L"Resolution width", L"1920", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 0, 0, kConfigGameResolutionHeightId, L"Display", L"GameWindow", L"ResolutionHeight", L"Resolution height", L"1080", ConfigFieldKind::Text, 90);
     AddConfigFieldCopy(f, L"Renderer", L"AllowWarpFallback", 0, 1, L"System");
     AddConfigFieldCopy(f, L"Randomization", L"RunVariation", 0, 0, L"Runtime");
     AddConfigFieldCopy(f, L"Maze", L"RandomSeed", 0, 1, L"Runtime");
@@ -364,7 +367,7 @@ void BuildGameConfigModel(ConfigState* state) {
         L"MetalCabinetDensity", L"JumpscareFrequency", L"BloodSplatterDensity", L"BloodBurstCount",
         L"BloodStreamCount", L"BloodStreamThickness", L"BloodWorldFlicker", L"BloodWorldAlwaysOn", L"FleshFlicker", L"FleshAlwaysOn"};
     for (const wchar_t* key : gameplayAtmosphereKeys) AddConfigFieldCopy(f, L"Atmosphere", key, 2, std::wcsstr(key, L"Blood") || std::wcsstr(key, L"Flesh") ? 1 : 0, L"Scares / Clutter");
-    const wchar_t* monsterGameplayKeys[] = {L"MonsterScale", L"MonsterSpeed", L"MonsterSprintSpeed", L"MonsterKillDistance", L"MonsterVisibleDistance"};
+    const wchar_t* monsterGameplayKeys[] = {L"MonsterScale", L"MonsterSpeed", L"MonsterSprintSpeed", L"MonsterIgnorePlayer", L"MonsterKillDistance", L"MonsterVisibleDistance"};
     for (const wchar_t* key : monsterGameplayKeys) AddConfigFieldCopy(f, L"Monster", key, 2, 0, L"Monster");
     const wchar_t* dreadKeys[] = {L"Enabled", L"DecayPerSecond", L"MonsterDistance", L"MonsterGainPerSecond",
         L"JumpscareGain", L"FleshGain", L"WalkSpeedBoost", L"RunSpeedBoost", L"FlashlightFlicker"};
@@ -402,6 +405,8 @@ void BuildDebugConfigModel(ConfigState* state) {
     AddConfigFieldCopy(f, L"Maze", L"MapOverlay", 0, 0, L"Overlays");
     AddConfigFieldCopy(f, L"Dread", L"DebugMeter", 0, 0, L"Overlays");
     AddCustomConfigField(f, 0, 0, kConfigFieldBaseId + 176, L"Overlays", L"Debug", L"AiMapOverlay", L"AI minimap overlay", L"0", ConfigFieldKind::Bool, 0);
+    AddCustomConfigField(f, 0, 0, kConfigFieldBaseId + 177, L"Cheats", L"Debug", L"InfiniteStamina", L"Infinite stamina", L"0", ConfigFieldKind::Bool, 0);
+    AddCustomConfigField(f, 0, 0, kConfigFieldBaseId + 178, L"Cheats", L"Debug", L"Invincible", L"Invincible", L"0", ConfigFieldKind::Bool, 0);
     AddConfigFieldCopy(f, L"Atmosphere", L"BloodStudyView", 0, 1, L"Forced Views");
 
     const wchar_t* effectKeys[] = {L"BloodLoopSeconds", L"BloodFullSpreadAge", L"WaterLoopSeconds", L"AirVentLoopSeconds",

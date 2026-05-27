@@ -155,9 +155,9 @@ void SetGameActionKey(Settings& settings, GameInputAction action, int vk);
 
 struct Settings {
     bool allowWarpFallback = false;
-    bool gameFullscreen = false;
-    int gameResolutionWidth = 1280;
-    int gameResolutionHeight = 760;
+    bool gameFullscreen = true;
+    int gameResolutionWidth = 1920;
+    int gameResolutionHeight = 1080;
 
     int mazeWidth = kMazeW;
     int mazeHeight = kMazeH;
@@ -170,6 +170,8 @@ struct Settings {
     uint32_t mazeSeed = 0;
     bool mapOverlay = true;
     bool debugAiMapOverlay = false;
+    bool debugInfiniteStamina = false;
+    bool debugInvincible = false;
     float runVariation = 0.1f;
     float tileWidthMeters = kTile;
     float tileLengthMeters = kTile;
@@ -315,12 +317,13 @@ struct Settings {
     float monsterScale = 1.0f;
     float monsterSpeed = 0.68f;
     float monsterSprintSpeed = 0.88f;
+    bool monsterIgnorePlayer = false;
     float monsterKillDistance = 1.18f;
     float monsterVisibleDistance = 12.0f;
-    std::wstring monsterSkullMesh = L"assets\\White-Tailed Deer Skull.obj";
-    std::wstring monsterAltSkullMesh = L"assets\\models\\Ram_Skull\\Ram_Skull_Scan.OBJ";
-    float monsterAltSkullChance = 0.35f;
-    int monsterSkullMaxTriangles = 18000;
+    std::wstring monsterSkullMesh = L"assets\\models\\monster_face_mask\\horror_mask.obj";
+    std::wstring monsterAltSkullMesh = L"";
+    float monsterAltSkullChance = 0.0f;
+    int monsterSkullMaxTriangles = 65000;
     float monsterSkullYawDegrees = 0.0f;
     float monsterSkullPitchDegrees = 0.0f;
     float monsterSkullRollDegrees = 0.0f;
@@ -408,6 +411,18 @@ std::wstring KeyDisplayName(int vk) {
 }
 
 std::filesystem::path SettingsPath() {
+    wchar_t localAppData[MAX_PATH]{};
+    DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, ARRAYSIZE(localAppData));
+    std::filesystem::path base = (len > 0 && len < ARRAYSIZE(localAppData))
+        ? std::filesystem::path(localAppData)
+        : ModuleDirectory();
+    std::filesystem::path dir = base / L"BackroomsMazeScreensaver";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    return dir / L"BackroomsMaze.ini";
+}
+
+std::filesystem::path PackagedSettingsPath() {
     return ModuleDirectory() / L"BackroomsMaze.ini";
 }
 
@@ -463,9 +478,9 @@ std::wstring DefaultConfigText() {
       << L"[Renderer]\r\n"
       << L"AllowWarpFallback=0\r\n\r\n"
       << L"[GameWindow]\r\n"
-      << L"Fullscreen=0\r\n"
-      << L"ResolutionWidth=1280\r\n"
-      << L"ResolutionHeight=760\r\n\r\n"
+      << L"Fullscreen=1\r\n"
+      << L"ResolutionWidth=1920\r\n"
+      << L"ResolutionHeight=1080\r\n\r\n"
       << L"[Maze]\r\n"
       << L"Width=25\r\n"
       << L"Height=25\r\n"
@@ -631,17 +646,20 @@ std::wstring DefaultConfigText() {
       << L"RunSpeedBoost=0.075\r\n"
       << L"FlashlightFlicker=1\r\n\r\n"
       << L"[Debug]\r\n"
-      << L"AiMapOverlay=0\r\n\r\n"
+      << L"AiMapOverlay=0\r\n"
+      << L"InfiniteStamina=0\r\n"
+      << L"Invincible=0\r\n\r\n"
       << L"[Monster]\r\n"
       << L"MonsterScale=1\r\n"
       << L"MonsterSpeed=0.68\r\n"
       << L"MonsterSprintSpeed=0.88\r\n"
+      << L"MonsterIgnorePlayer=0\r\n"
       << L"MonsterKillDistance=1.18\r\n"
       << L"MonsterVisibleDistance=12\r\n"
-      << L"SkullMesh=assets\\White-Tailed Deer Skull.obj\r\n"
-      << L"AlternateSkullMesh=assets\\models\\Ram_Skull\\Ram_Skull_Scan.OBJ\r\n"
-      << L"AlternateSkullChance=0.35\r\n"
-      << L"SkullMaxTriangles=18000\r\n"
+      << L"SkullMesh=assets\\models\\monster_face_mask\\horror_mask.obj\r\n"
+      << L"AlternateSkullMesh=\r\n"
+      << L"AlternateSkullChance=0\r\n"
+      << L"SkullMaxTriangles=65000\r\n"
       << L"SkullYawDegrees=0\r\n"
       << L"SkullPitchDegrees=0\r\n"
       << L"SkullRollDegrees=0\r\n"
@@ -692,7 +710,13 @@ void EnsureSettingsFile() {
     std::error_code ec;
     auto path = SettingsPath();
     if (!std::filesystem::exists(path, ec)) {
-        WriteTextFile(path, DefaultConfigText());
+        auto packaged = PackagedSettingsPath();
+        if (std::filesystem::exists(packaged, ec)) {
+            std::filesystem::copy_file(packaged, path, std::filesystem::copy_options::overwrite_existing, ec);
+        }
+        if (!std::filesystem::exists(path, ec)) {
+            WriteTextFile(path, DefaultConfigText());
+        }
     }
 }
 
@@ -744,6 +768,8 @@ Settings LoadSettings() {
     s.mazeSeed = static_cast<uint32_t>(std::clamp(IniInt(L"Maze", L"RandomSeed", static_cast<int>(s.mazeSeed)), 0, std::numeric_limits<int>::max()));
     s.mapOverlay = IniInt(L"Maze", L"MapOverlay", s.mapOverlay ? 1 : 0) != 0;
     s.debugAiMapOverlay = IniInt(L"Debug", L"AiMapOverlay", s.debugAiMapOverlay ? 1 : 0) != 0;
+    s.debugInfiniteStamina = IniInt(L"Debug", L"InfiniteStamina", s.debugInfiniteStamina ? 1 : 0) != 0;
+    s.debugInvincible = IniInt(L"Debug", L"Invincible", s.debugInvincible ? 1 : 0) != 0;
     s.tileWidthMeters = std::clamp(IniFloat(L"Maze", L"TileWidthMeters", s.tileWidthMeters), 1.2f, 8.0f);
     s.tileLengthMeters = std::clamp(IniFloat(L"Maze", L"TileLengthMeters", s.tileLengthMeters), 1.2f, 8.0f);
     s.wallHeightMeters = std::clamp(IniFloat(L"Maze", L"WallHeightMeters", s.wallHeightMeters), 1.8f, 8.0f);
@@ -895,12 +921,41 @@ Settings LoadSettings() {
     s.monsterScale = std::clamp(IniFloat(L"Monster", L"MonsterScale", s.monsterScale), 0.25f, 4.0f);
     s.monsterSpeed = std::clamp(IniFloat(L"Monster", L"MonsterSpeed", s.monsterSpeed), 0.1f, 4.0f);
     s.monsterSprintSpeed = std::clamp(IniFloat(L"Monster", L"MonsterSprintSpeed", s.monsterSprintSpeed), 0.1f, 4.0f);
+    s.monsterIgnorePlayer = IniInt(L"Monster", L"MonsterIgnorePlayer", s.monsterIgnorePlayer ? 1 : 0) != 0;
     s.monsterKillDistance = std::clamp(IniFloat(L"Monster", L"MonsterKillDistance", s.monsterKillDistance), 0.2f, 4.0f);
     s.monsterVisibleDistance = std::clamp(IniFloat(L"Monster", L"MonsterVisibleDistance", s.monsterVisibleDistance), 1.0f, 60.0f);
     s.monsterSkullMesh = IniString(L"Monster", L"SkullMesh", s.monsterSkullMesh.c_str());
     s.monsterAltSkullMesh = IniString(L"Monster", L"AlternateSkullMesh", s.monsterAltSkullMesh.c_str());
     s.monsterAltSkullChance = std::clamp(IniFloat(L"Monster", L"AlternateSkullChance", s.monsterAltSkullChance), 0.0f, 1.0f);
-    s.monsterSkullMaxTriangles = std::clamp(IniInt(L"Monster", L"SkullMaxTriangles", s.monsterSkullMaxTriangles), 0, 60000);
+    s.monsterSkullMaxTriangles = std::clamp(IniInt(L"Monster", L"SkullMaxTriangles", s.monsterSkullMaxTriangles), 0, 90000);
+    auto normalizeLegacyMonsterMesh = [](std::wstring& meshPath) {
+        std::wstring lowered = meshPath;
+        std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](wchar_t c) {
+            return static_cast<wchar_t>(towlower(c));
+        });
+        if (lowered.find(L"white-tailed deer skull") != std::wstring::npos ||
+            lowered.find(L"ram_skull") != std::wstring::npos) {
+            meshPath.clear();
+        }
+    };
+    normalizeLegacyMonsterMesh(s.monsterSkullMesh);
+    normalizeLegacyMonsterMesh(s.monsterAltSkullMesh);
+    if (s.monsterSkullMesh.empty()) {
+        s.monsterSkullMesh = L"assets\\models\\monster_face_mask\\horror_mask.obj";
+        s.monsterSkullMaxTriangles = std::max(s.monsterSkullMaxTriangles, 65000);
+    } else {
+        std::wstring loweredSkull = s.monsterSkullMesh;
+        std::transform(loweredSkull.begin(), loweredSkull.end(), loweredSkull.begin(), [](wchar_t c) {
+            return static_cast<wchar_t>(towlower(c));
+        });
+        if (loweredSkull.find(L"horror_mask") != std::wstring::npos ||
+            loweredSkull.find(L"monster_face_mask") != std::wstring::npos) {
+            s.monsterSkullMaxTriangles = std::max(s.monsterSkullMaxTriangles, 65000);
+        }
+    }
+    if (s.monsterAltSkullMesh.empty()) {
+        s.monsterAltSkullChance = 0.0f;
+    }
     s.monsterSkullYawDegrees = std::clamp(IniFloat(L"Monster", L"SkullYawDegrees", s.monsterSkullYawDegrees), -180.0f, 180.0f);
     s.monsterSkullPitchDegrees = std::clamp(IniFloat(L"Monster", L"SkullPitchDegrees", s.monsterSkullPitchDegrees), -180.0f, 180.0f);
     s.monsterSkullRollDegrees = std::clamp(IniFloat(L"Monster", L"SkullRollDegrees", s.monsterSkullRollDegrees), -180.0f, 180.0f);

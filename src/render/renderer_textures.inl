@@ -442,6 +442,50 @@
                 applyAlbedo(material, img);
             }
         };
+        auto loadRuntimeNormal = [&](int material, const wchar_t* relativePath) {
+            if (material < 0 || material >= kMaterialCount) return;
+            ImageRGBA img;
+            if (LoadImageWic(ResolveConfiguredAssetPath(relativePath), kTextureSize, kTextureSize, img)) {
+                applyNormal(material, img);
+            }
+        };
+        auto loadRuntimeRoughnessFromGreen = [&](int material, const wchar_t* relativePath) {
+            if (material < 0 || material >= kMaterialCount) return;
+            ImageRGBA img;
+            if (!LoadImageWic(ResolveConfiguredAssetPath(relativePath), kTextureSize, kTextureSize, img) || !img.Valid()) return;
+            for (int y = 0; y < kTextureSize; ++y) {
+                int gy = material * kTextureSize + y;
+                for (int x = 0; x < kTextureSize; ++x) {
+                    size_t src = static_cast<size_t>((y * img.width + x) * 4);
+                    size_t dst = static_cast<size_t>((gy * width + x) * 4);
+                    props[dst + 1] = img.pixels[src + 1];
+                    props[dst + 2] = img.pixels[src + 2];
+                }
+            }
+        };
+        auto darkenWhiteChairPlastic = [&](int material) {
+            if (material < 0 || material >= kMaterialCount) return;
+            for (int y = 0; y < kTextureSize; ++y) {
+                int gy = material * kTextureSize + y;
+                for (int x = 0; x < kTextureSize; ++x) {
+                    size_t i = static_cast<size_t>((gy * width + x) * 4);
+                    int r = albedo[i + 0];
+                    int g = albedo[i + 1];
+                    int b = albedo[i + 2];
+                    int hi = std::max(r, std::max(g, b));
+                    int lo = std::min(r, std::min(g, b));
+                    int lum = (r * 54 + g * 183 + b * 19) >> 8;
+                    if (lum > 168 && hi - lo < 72) {
+                        uint8_t shade = static_cast<uint8_t>(std::clamp(18 + (lum - 168) / 8, 18, 34));
+                        albedo[i + 0] = shade;
+                        albedo[i + 1] = static_cast<uint8_t>(std::min<int>(255, shade + 2));
+                        albedo[i + 2] = shade;
+                        props[i + 0] = 230;
+                        props[i + 1] = 218;
+                    }
+                }
+            }
+        };
 
         {
             ReportStartupActivity(L"Loading textures", L"Loading external PBR textures.");
@@ -456,6 +500,12 @@
                 loadRuntimeAlbedo(19, L"assets\\models\\runtime\\textures\\office_chair_classic_2209.jpg");
                 loadRuntimeAlbedo(20, L"assets\\models\\runtime\\textures\\office_chair_classic_textiles.png");
                 loadRuntimeAlbedo(22, L"assets\\models\\runtime\\textures\\office_chair_task_diffuse.png");
+                loadRuntimeAlbedo(26, L"assets\\models\\monster_face_mask\\horror_mask_baseColor.png");
+                loadRuntimeNormal(26, L"assets\\models\\monster_face_mask\\horror_mask_normal.png");
+                loadRuntimeRoughnessFromGreen(26, L"assets\\models\\monster_face_mask\\horror_mask_metallicRoughness.png");
+                darkenWhiteChairPlastic(16);
+                darkenWhiteChairPlastic(17);
+                darkenWhiteChairPlastic(22);
             }
         }
         profile.Mark(L"LoadExternalPBRs");

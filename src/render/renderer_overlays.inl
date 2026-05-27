@@ -238,7 +238,10 @@
             if (ValidMonsterTile(monsterRoamTile_) && !monsterHasSound_ && !monsterHasLastKnown_) {
                 markTile(monsterRoamTile_, {0.82f, 0.68f, 0.42f, 0.56f}, 1.42f);
             }
-            markTile(MonsterTile(), {0.88f, 0.04f, 0.05f, 0.64f}, 1.45f);
+            for (Tile occupied : MonsterBodyOccupiedTiles()) {
+                markTile(occupied, {0.88f, 0.02f, 0.04f, 0.58f}, 1.34f);
+            }
+            markTile(MonsterTile(), {1.0f, 0.02f, 0.02f, 0.78f}, 1.55f);
         }
 
         markTile(cameraTile, {0.20f, 0.72f, 1.0f, 0.82f}, 1.70f);

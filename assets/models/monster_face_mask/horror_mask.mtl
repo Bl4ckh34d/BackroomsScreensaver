@@ -1,0 +1,4 @@
+newmtl horror_mask
+map_Kd horror_mask_baseColor.png
+map_Bump horror_mask_normal.png
+Pr 0.90765585

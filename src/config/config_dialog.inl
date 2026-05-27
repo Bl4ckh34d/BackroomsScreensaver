@@ -266,6 +266,8 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.mazeSeed = static_cast<uint32_t>(std::clamp(ParseConfigInt(state, L"Maze", L"RandomSeed", static_cast<int>(s.mazeSeed)), 0, std::numeric_limits<int>::max()));
     s.mapOverlay = ParseConfigInt(state, L"Maze", L"MapOverlay", s.mapOverlay ? 1 : 0) != 0;
     s.debugAiMapOverlay = ParseConfigInt(state, L"Debug", L"AiMapOverlay", s.debugAiMapOverlay ? 1 : 0) != 0;
+    s.debugInfiniteStamina = ParseConfigInt(state, L"Debug", L"InfiniteStamina", s.debugInfiniteStamina ? 1 : 0) != 0;
+    s.debugInvincible = ParseConfigInt(state, L"Debug", L"Invincible", s.debugInvincible ? 1 : 0) != 0;
     s.tileWidthMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"TileWidthMeters", s.tileWidthMeters), 1.2f, 8.0f);
     s.tileLengthMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"TileLengthMeters", s.tileLengthMeters), 1.2f, 8.0f);
     s.wallHeightMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"WallHeightMeters", s.wallHeightMeters), 1.8f, 8.0f);
@@ -412,12 +414,13 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.monsterScale = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterScale", s.monsterScale), 0.25f, 4.0f);
     s.monsterSpeed = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterSpeed", s.monsterSpeed), 0.1f, 4.0f);
     s.monsterSprintSpeed = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterSprintSpeed", s.monsterSprintSpeed), 0.1f, 4.0f);
+    s.monsterIgnorePlayer = ParseConfigInt(state, L"Monster", L"MonsterIgnorePlayer", s.monsterIgnorePlayer ? 1 : 0) != 0;
     s.monsterKillDistance = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterKillDistance", s.monsterKillDistance), 0.2f, 4.0f);
     s.monsterVisibleDistance = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterVisibleDistance", s.monsterVisibleDistance), 1.0f, 60.0f);
     s.monsterSkullMesh = ParseConfigString(state, L"Monster", L"SkullMesh", s.monsterSkullMesh.c_str());
     s.monsterAltSkullMesh = ParseConfigString(state, L"Monster", L"AlternateSkullMesh", s.monsterAltSkullMesh.c_str());
     s.monsterAltSkullChance = std::clamp(ParseConfigFloat(state, L"Monster", L"AlternateSkullChance", s.monsterAltSkullChance), 0.0f, 1.0f);
-    s.monsterSkullMaxTriangles = std::clamp(ParseConfigInt(state, L"Monster", L"SkullMaxTriangles", s.monsterSkullMaxTriangles), 0, 60000);
+    s.monsterSkullMaxTriangles = std::clamp(ParseConfigInt(state, L"Monster", L"SkullMaxTriangles", s.monsterSkullMaxTriangles), 0, 90000);
     s.monsterSkullYawDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"SkullYawDegrees", s.monsterSkullYawDegrees), -180.0f, 180.0f);
     s.monsterSkullPitchDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"SkullPitchDegrees", s.monsterSkullPitchDegrees), -180.0f, 180.0f);
     s.monsterSkullRollDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"SkullRollDegrees", s.monsterSkullRollDegrees), -180.0f, 180.0f);

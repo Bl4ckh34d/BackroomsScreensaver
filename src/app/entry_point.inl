@@ -20,7 +20,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         return RunSelfTest(hInstance);
     }
     if (mode == RunMode::GenerateIni) {
-        EnsureSettingsFile();
+        WriteTextFile(PackagedSettingsPath(), DefaultConfigText());
         return 0;
     }
 

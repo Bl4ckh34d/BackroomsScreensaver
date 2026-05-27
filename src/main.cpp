@@ -49,8 +49,8 @@ constexpr float kFloorTextureMeters = 1.8f;
 constexpr float kWallTextureMeters = 1.8f;
 constexpr float kCeilingTextureMeters = 0.0f;
 constexpr int kTextureSize = 512;
-constexpr int kMaterialCount = 26;
-constexpr int kDynamicVertexCapacity = 220000;
+constexpr int kMaterialCount = 27;
+constexpr int kDynamicVertexCapacity = 320000;
 constexpr int kOverlayVertexCapacity = 160000;
 constexpr float kMonsterHeadForwardOffset = 0.34f;
 constexpr float kMonsterSmokeBackOffset = -0.18f;
@@ -366,6 +366,9 @@ public:
             target.allowWarpFallback = settings.allowWarpFallback;
             target.mapOverlay = settings.mapOverlay;
             target.debugAiMapOverlay = settings.debugAiMapOverlay;
+            target.debugInfiniteStamina = settings.debugInfiniteStamina;
+            target.debugInvincible = settings.debugInvincible;
+            target.monsterIgnorePlayer = settings.monsterIgnorePlayer;
             target.exposure = settings.exposure;
             target.bloomAmount = settings.bloomAmount;
             target.motionBlurAmount = settings.motionBlurAmount;
@@ -383,12 +386,23 @@ public:
         applyLive(settings_);
     }
 
+    void EnableInfiniteStaminaCheat() {
+        gameplaySettings_.debugInfiniteStamina = true;
+        settings_.debugInfiniteStamina = true;
+        playerStamina_ = 100.0f;
+    }
+
+    bool MonsterIgnoresPlayer() const {
+        return settings_.monsterIgnorePlayer && runtimeMode_ == RendererRuntimeMode::PlayableGame;
+    }
+
     void RestartGameRun() {
         gEffectDebugViewer = false;
         gBloodDebugEveryWall = false;
         runtimeMode_ = RendererRuntimeMode::PlayableGame;
         EnsureFullSceneAssets();
         settings_ = gameplaySettings_;
+        monsterKillCount_ = 0;
         maze_.w = settings_.mazeWidth;
         maze_.h = settings_.mazeHeight;
         maze_.tileW = settings_.tileWidthMeters;
@@ -637,6 +651,9 @@ private:
         bool playerGrounded = true;
         XMFLOAT3 monster{};
         std::vector<Tile> monsterPath;
+        std::vector<XMFLOAT3> monsterTrail;
+        std::vector<MonsterLimbAnchor> monsterLimbAnchors;
+        std::vector<MonsterHandprint> monsterHandprints;
         size_t monsterPathIndex = 0;
         float monsterRepath = 0.0f;
         float monsterYaw = 0.0f;
@@ -648,8 +665,11 @@ private:
         bool monsterHasLastKnown = false;
         bool monsterChasingVisible = false;
         bool monsterHeardPlayerNow = false;
+        int monsterKillCount = 0;
         float monsterSearchTimer = 0.0f;
         float monsterRoamTimer = 0.0f;
+        float monsterRoamPauseTimer = 0.0f;
+        float monsterRoamBurstTimer = 0.0f;
         bool monsterRecognitionActive = false;
         bool monsterRecognizedForChase = false;
         float monsterRecognitionTimer = 0.0f;
@@ -827,6 +847,9 @@ private:
         s->playerGrounded = playerGrounded_;
         s->monster = monster_;
         s->monsterPath = monsterPath_;
+        s->monsterTrail = monsterTrail_;
+        s->monsterLimbAnchors = monsterLimbAnchors_;
+        s->monsterHandprints = monsterHandprints_;
         s->monsterPathIndex = monsterPathIndex_;
         s->monsterRepath = monsterRepath_;
         s->monsterYaw = monsterYaw_;
@@ -838,8 +861,11 @@ private:
         s->monsterHasLastKnown = monsterHasLastKnown_;
         s->monsterChasingVisible = monsterChasingVisible_;
         s->monsterHeardPlayerNow = monsterHeardPlayerNow_;
+        s->monsterKillCount = monsterKillCount_;
         s->monsterSearchTimer = monsterSearchTimer_;
         s->monsterRoamTimer = monsterRoamTimer_;
+        s->monsterRoamPauseTimer = monsterRoamPauseTimer_;
+        s->monsterRoamBurstTimer = monsterRoamBurstTimer_;
         s->monsterRecognitionActive = monsterRecognitionActive_;
         s->monsterRecognizedForChase = monsterRecognizedForChase_;
         s->monsterRecognitionTimer = monsterRecognitionTimer_;
@@ -1022,6 +1048,9 @@ private:
         playerGrounded_ = s.playerGrounded;
         monster_ = s.monster;
         monsterPath_ = std::move(s.monsterPath);
+        monsterTrail_ = std::move(s.monsterTrail);
+        monsterLimbAnchors_ = std::move(s.monsterLimbAnchors);
+        monsterHandprints_ = std::move(s.monsterHandprints);
         monsterPathIndex_ = s.monsterPathIndex;
         monsterRepath_ = s.monsterRepath;
         monsterYaw_ = s.monsterYaw;
@@ -1033,8 +1062,11 @@ private:
         monsterHasLastKnown_ = s.monsterHasLastKnown;
         monsterChasingVisible_ = s.monsterChasingVisible;
         monsterHeardPlayerNow_ = s.monsterHeardPlayerNow;
+        monsterKillCount_ = s.monsterKillCount;
         monsterSearchTimer_ = s.monsterSearchTimer;
         monsterRoamTimer_ = s.monsterRoamTimer;
+        monsterRoamPauseTimer_ = s.monsterRoamPauseTimer;
+        monsterRoamBurstTimer_ = s.monsterRoamBurstTimer;
         monsterRecognitionActive_ = s.monsterRecognitionActive;
         monsterRecognizedForChase_ = s.monsterRecognizedForChase;
         monsterRecognitionTimer_ = s.monsterRecognitionTimer;
@@ -1352,6 +1384,7 @@ private:
     uint32_t runtimeSeed_ = 1;
     std::vector<Vertex> skullMesh_;
     bool monsterUsingAltSkull_ = false;
+    bool monsterSkullNativeMaskAxes_ = false;
     std::array<StaticPropMesh, 3> chairPropMeshes_;
     StaticPropMesh cabinetPropMesh_;
     StaticPropMesh deskPropMesh_;
@@ -1555,6 +1588,12 @@ private:
 
     XMFLOAT3 monster_{};
     std::vector<Tile> monsterPath_;
+    std::vector<XMFLOAT3> monsterTrail_;
+    std::vector<MonsterLimbAnchor> monsterLimbAnchors_;
+    std::vector<XMFLOAT3> monsterSmoothedBodyPoints_;
+    std::vector<XMFLOAT3> monsterSmoothedBodyUps_;
+    float monsterBodySmoothTime_ = -1000.0f;
+    std::vector<MonsterHandprint> monsterHandprints_;
     size_t monsterPathIndex_ = 0;
     float monsterRepath_ = 0.0f;
     float monsterYaw_ = 0.0f;
@@ -1566,8 +1605,11 @@ private:
     bool monsterHasLastKnown_ = false;
     bool monsterChasingVisible_ = false;
     bool monsterHeardPlayerNow_ = false;
+    int monsterKillCount_ = 0;
     float monsterSearchTimer_ = 0.0f;
     float monsterRoamTimer_ = 0.0f;
+    float monsterRoamPauseTimer_ = 0.0f;
+    float monsterRoamBurstTimer_ = 0.0f;
     bool monsterRecognitionActive_ = false;
     bool monsterRecognizedForChase_ = false;
     float monsterRecognitionTimer_ = 0.0f;
@@ -1723,6 +1765,7 @@ private:
         uint64_t cacheHash = ShaderCacheHash(src, entry, profile, flags);
         ReportShaderActivity(L"Checking cache for", entry, profile);
         if (LoadShaderCache(entry, cacheHash, blob)) {
+            SaveShaderCache(entry, cacheHash, blob.Get());
             ReportShaderComplete(L"Loaded cached shader", entry, profile, false);
             return true;
         }
@@ -1763,18 +1806,28 @@ private:
         return hash;
     }
 
-    static std::wstring ShaderCacheFileName(const char* entry) {
+    static std::wstring ShaderCacheSafeEntry(const char* entry) {
         std::wstring safeEntry;
         for (const char* p = entry; *p; ++p) {
             safeEntry.push_back((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9')
                 ? static_cast<wchar_t>(*p)
                 : L'_');
         }
-        return L"BackroomsMaze_" + safeEntry + L".cso";
+        return safeEntry;
     }
 
-    static std::filesystem::path ShaderCachePath(const char* entry) {
-        return CacheDirectory() / ShaderCacheFileName(entry);
+    static std::wstring ShaderCacheFileName(const char* entry, uint64_t hash) {
+        std::wstringstream name;
+        name << L"BackroomsMaze_" << ShaderCacheSafeEntry(entry) << L"_" << std::hex << hash << L".cso";
+        return name.str();
+    }
+
+    static std::wstring LegacyShaderCacheFileName(const char* entry) {
+        return L"BackroomsMaze_" + ShaderCacheSafeEntry(entry) + L".cso";
+    }
+
+    static std::filesystem::path ShaderCachePath(const char* entry, uint64_t hash) {
+        return CacheDirectory() / ShaderCacheFileName(entry, hash);
     }
 
     static bool LoadShaderCache(const char* entry, uint64_t hash, ComPtr<ID3DBlob>& blob) {
@@ -1784,9 +1837,11 @@ private:
             uint32_t size;
             uint32_t reserved;
         };
-        std::filesystem::path bundledPath = ModuleDirectory() / L"ShaderCache" / ShaderCacheFileName(entry);
-        std::filesystem::path writablePath = ShaderCachePath(entry);
-        const std::array<std::filesystem::path, 2> candidates = {writablePath, bundledPath};
+        std::filesystem::path writablePath = ShaderCachePath(entry, hash);
+        std::filesystem::path bundledPath = ModuleDirectory() / L"ShaderCache" / ShaderCacheFileName(entry, hash);
+        std::filesystem::path legacyWritablePath = CacheDirectory() / LegacyShaderCacheFileName(entry);
+        std::filesystem::path legacyBundledPath = ModuleDirectory() / L"ShaderCache" / LegacyShaderCacheFileName(entry);
+        const std::array<std::filesystem::path, 4> candidates = {writablePath, bundledPath, legacyWritablePath, legacyBundledPath};
         for (const auto& candidate : candidates) {
             Header header{};
             std::ifstream in(candidate, std::ios::binary);
@@ -1815,7 +1870,7 @@ private:
             uint32_t reserved;
         };
         Header header{{'B', 'R', 'M', 'C', 'S', 'O', '1', '\0'}, hash, static_cast<uint32_t>(blob->GetBufferSize()), 0};
-        std::ofstream out(ShaderCachePath(entry), std::ios::binary | std::ios::trunc);
+        std::ofstream out(ShaderCachePath(entry, hash), std::ios::binary | std::ios::trunc);
         if (!out) return;
         out.write(reinterpret_cast<const char*>(&header), sizeof(header));
         out.write(static_cast<const char*>(blob->GetBufferPointer()), blob->GetBufferSize());
@@ -1856,7 +1911,7 @@ private:
 
     uint64_t TextureCacheHash() const {
         uint64_t hash = 1469598103934665603ull;
-        const char* version = "BackroomsMazeTextureCacheV11";
+        const char* version = "BackroomsMazeTextureCacheV14";
         hash = Fnv1aAppend(hash, version, std::strlen(version));
         hash = Fnv1aAppend(hash, &kTextureSize, sizeof(kTextureSize));
         hash = Fnv1aAppend(hash, &kMaterialCount, sizeof(kMaterialCount));
@@ -1901,7 +1956,10 @@ private:
             L"assets\\models\\runtime\\textures\\office_chair_modern_diffuse.jpg",
             L"assets\\models\\runtime\\textures\\office_chair_classic_2209.jpg",
             L"assets\\models\\runtime\\textures\\office_chair_classic_textiles.png",
-            L"assets\\models\\runtime\\textures\\office_chair_task_diffuse.png"
+            L"assets\\models\\runtime\\textures\\office_chair_task_diffuse.png",
+            L"assets\\models\\monster_face_mask\\horror_mask_baseColor.png",
+            L"assets\\models\\monster_face_mask\\horror_mask_normal.png",
+            L"assets\\models\\monster_face_mask\\horror_mask_metallicRoughness.png"
         };
         for (const wchar_t* texture : runtimeTextures) {
             addResolvedAsset(texture, ResolveConfiguredAssetPath(texture));
