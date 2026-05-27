@@ -938,7 +938,7 @@ float SparkLight(float3 worldPos, float3 worldN)
     return SparkLightOne(worldPos, worldN, gSparkLight0) + SparkLightOne(worldPos, worldN, gSparkLight1);
 }
 
-float3 ExitSignLight(float3 worldPos, float3 worldN)
+float3 ExitSignLight(float3 worldPos, float3 worldN, float materialId)
 {
     float strength = gExitLight0.w * (1.0 - saturate(gTransition0.z));
     float3 result = float3(0.0, 0.0, 0.0);
@@ -986,7 +986,9 @@ float3 ExitSignLight(float3 worldPos, float3 worldN)
             float axial = dot(worldPos - gExitLight3.xyz, doorDir);
             float roomSide = smoothstep(-0.03, 0.12, axial);
             float lateral = dot(worldPos - gExitLight3.xyz, doorRight);
-            float corridorWidth = smoothstep(doorHalfW + 0.86, doorHalfW - 0.02, abs(lateral));
+            float doorPanelMaterial = step(5.5, materialId) * (1.0 - step(6.5, materialId));
+            float corridorExtraWidth = lerp(0.12, 0.86, doorPanelMaterial);
+            float corridorWidth = smoothstep(doorHalfW + corridorExtraWidth, doorHalfW - 0.02, abs(lateral));
             float corridorHeight = smoothstep(doorHalfH + 0.18, doorHalfH - 0.05, abs(worldPos.y - doorHalfH));
             float corridorSide = (1.0 - smoothstep(-0.10, 0.08, axial)) * corridorWidth * corridorHeight;
             float grazing = saturate(dot(worldN, Ln) * 0.45 + 0.62);
@@ -1664,26 +1666,26 @@ float4 PSMain(VSOut input) : SV_TARGET
         float flashlight = FlashlightAmount(input.worldPos, worldN);
         float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
         float sparkLight = SparkLight(input.worldPos, worldN);
-        float3 exitGreen = ExitSignLight(input.worldPos, worldN);
+        float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
         float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);
         float3 reflectDir = reflect(-toLight, worldN);
         float facing = saturate(dot(reflectDir, V));
         float fresnel = pow(1.0 - saturate(dot(worldN, V)), 4.0);
-        float specLight = saturate(flashlight + overhead * 0.34 + sparkLight * 0.72 + exitGlow * 0.48);
-        float spec = (pow(facing, 168.0) * 1.85 + pow(facing, 34.0) * 0.36 + fresnel * 0.16) *
-            specLight * (0.58 + wet * 1.85) * saturate(alpha + thickness * 0.35);
+        float specLight = saturate(flashlight + overhead * 0.24 + sparkLight * 0.48 + exitGlow * 0.24);
+        float spec = (pow(facing, 210.0) * 0.55 + pow(facing, 54.0) * 0.075 + fresnel * 0.035) *
+            specLight * (0.28 + wet * 0.52) * saturate(alpha + thickness * 0.42);
         float grime = Fbm3(input.worldPos * float3(8.0, 5.0, 8.0) + seed * 31.0);
         float filmAlpha = saturate(alpha * (0.58 + thickness * 0.38 + drips * 0.12 + wet * 0.035));
         if (filmAlpha < lerp(0.045, 0.026, waterLiquid)) discard;
-        float lightEnergy = saturate(flashlight * 0.88 + overhead * 0.38 + sparkLight * 0.62 + exitGlow * 0.34 + gLighting0.z * 0.06);
-        float3 thinBlood = float3(0.320, 0.0140, 0.0052);
-        float3 pooledBlood = float3(0.092, 0.0024, 0.0012);
+        float lightEnergy = saturate(flashlight * 0.62 + overhead * 0.24 + sparkLight * 0.34 + exitGlow * 0.18 + gLighting0.z * 0.04);
+        float3 thinBlood = float3(0.210, 0.0065, 0.0028);
+        float3 pooledBlood = float3(0.038, 0.00075, 0.00045);
         float3 blood = lerp(thinBlood, pooledBlood, saturate(thickness * 0.88 + drips * 0.24));
-        float3 color = blood * (0.24 + lightEnergy * 1.02) * (0.70 + grime * 0.22);
-        color = lerp(color, color * float3(0.54, 0.28, 0.24), drips * 0.18);
-        color += float3(0.72, 0.62, 0.48) * spec;
-        color += exitGreen * (0.06 + wet * 0.16) * saturate(alpha + thickness * 0.18);
+        float3 color = blood * (0.16 + lightEnergy * 0.72) * (0.54 + grime * 0.14);
+        color = lerp(color, color * float3(0.42, 0.18, 0.14), drips * 0.24);
+        color += float3(0.24, 0.018, 0.010) * spec;
+        color += exitGreen * (0.018 + wet * 0.040) * saturate(alpha + thickness * 0.14);
         if (waterLiquid > 0.5)
         {
             float waterCore = saturate(alpha * 0.74 + thickness * 0.26);
@@ -2083,7 +2085,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float flashlight = FlashlightAmount(input.worldPos, wetN);
         float overhead = LocalLampLight(input.worldPos, wetN, time) * gLighting1.x;
         float sparkLight = SparkLight(input.worldPos, wetN);
-        float3 exitGreen = ExitSignLight(input.worldPos, wetN);
+        float3 exitGreen = ExitSignLight(input.worldPos, wetN, materialId);
         float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);
         float facing = saturate(dot(reflect(-toLight, wetN), V));
@@ -2426,7 +2428,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float flashlight = FlashlightAmount(input.worldPos, worldN);
         float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
         float sparkLight = SparkLight(input.worldPos, worldN);
-        float3 exitGreen = ExitSignLight(input.worldPos, worldN);
+        float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
         float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
         float lift = gLighting0.z * (floorMaterial > 0.5 ? 0.018 : 0.040) * (1.0 - saturate(gTransition0.z));
         float aoMap = saturate(pbr.r);
@@ -2471,7 +2473,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float flashlight = FlashlightAmount(input.worldPos, worldN);
         float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
         float sparkLight = SparkLight(input.worldPos, worldN);
-        float3 exitGreen = ExitSignLight(input.worldPos, worldN);
+        float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
         float3 color = base * (gLighting0.z + overhead * 0.88 + flashlight + sparkLight);
         color += base * exitGreen * 0.55;
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);
@@ -2514,7 +2516,7 @@ float4 PSMain(VSOut input) : SV_TARGET
     float dist = length(input.worldPos - cam);
     float flashlight = FlashlightAmount(input.worldPos, worldN);
     float sparkLight = SparkLight(input.worldPos, worldN);
-    float3 exitGreen = ExitSignLight(input.worldPos, worldN);
+    float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
     float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
 
     float fixture = FixturePower(input.worldPos, time);
