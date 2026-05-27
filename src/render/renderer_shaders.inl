@@ -968,23 +968,27 @@ float3 ExitSignLight(float3 worldPos, float3 worldN)
             float3 Ln = L / d;
             float diffuse = saturate(dot(worldN, Ln) * 0.56 + 0.52);
             float3 doorDir = normalize(gExitLight1.xyz + float3(0.0001, 0.0, 0.0001));
-            float3 portalDelta = worldPos - gExitLight3.xyz;
             float3 doorRight = normalize(float3(doorDir.z, 0.0, -doorDir.x) + float3(0.0001, 0.0, 0.0001));
-            float axial = dot(portalDelta, doorDir);
-            float lateral = dot(portalDelta, doorRight);
+            float3 ray = worldPos - gExitLight2.xyz;
+            float denom = dot(ray, doorDir);
+            float planeDist = dot(gExitLight3.xyz - gExitLight2.xyz, doorDir);
+            float hitT = planeDist / max(denom, 0.0001);
+            float3 portalHit = gExitLight2.xyz + ray * hitT;
+            float3 hitLocal = portalHit - gExitLight3.xyz;
+            float hitX = dot(hitLocal, doorRight);
+            float hitY = hitLocal.y;
             float doorHalfW = max(0.12, gExitLight3.w);
-            float softEdge = 0.035 + saturate(axial / 5.5) * 0.12;
-            float stripeHalfW = doorHalfW + saturate(axial / 7.5) * 0.16;
-            float portalOpen = smoothstep(-0.04, 0.16, axial);
-            float portalWidth = smoothstep(stripeHalfW + softEdge, stripeHalfW - softEdge, abs(lateral));
-            float planeStripe = max(smoothstep(0.18, 0.82, abs(worldN.y)),
-                smoothstep(0.42, 0.86, abs(dot(worldN, doorRight))));
-            float spill = saturate(portalOpen * portalWidth * (0.42 + planeStripe * 0.98));
-            float falloff = pow(saturate(1.0 - max(0.0, axial) / 8.8), 0.76) / (1.0 + d * d * 0.018);
+            float doorHalfH = 1.05;
+            float edgeSoft = 0.035;
+            float insideX = smoothstep(doorHalfW + edgeSoft, doorHalfW - edgeSoft, abs(hitX));
+            float insideY = smoothstep(doorHalfH + edgeSoft, doorHalfH - edgeSoft, abs(hitY));
+            float throughPortal = step(0.0, hitT) * step(hitT, 1.0) * step(0.0, denom) * insideX * insideY;
+            float axial = dot(worldPos - gExitLight3.xyz, doorDir);
+            float roomSide = smoothstep(-0.03, 0.12, axial);
+            float grazing = saturate(dot(worldN, Ln) * 0.45 + 0.62);
+            float falloff = 1.0 / (1.0 + d * d * 0.045);
             float3 warmDaylight = float3(0.94, 0.97, 1.0);
-            float angelicLift = smoothstep(0.16, 2.80, axial);
-            result += warmDaylight * doorStrength * falloff * diffuse * spill * 0.78;
-            result += warmDaylight * doorStrength * falloff * angelicLift * spill * 0.045;
+            result += warmDaylight * doorStrength * falloff * diffuse * grazing * throughPortal * roomSide;
         }
     }
     return result;

@@ -193,12 +193,12 @@
         XMFLOAT3 behind = Scale3(inward, -1.0f);
         XMFLOAT3 start = Add3(exitDoorCenter_, Add3(Scale3(behind, 0.10f), {0.0f, 0.04f, 0.0f}));
         XMFLOAT3 room = Add3(exitDoorCenter_, Add3(Scale3(inward, 2.45f), {0.0f, -0.03f, 0.0f}));
-        float openMat = 19.62f + openT * 0.32f;
+        float openMat = 19.58f + openT * 0.22f;
 
         XMFLOAT3 nearSide = Scale3(right, 0.56f);
-        XMFLOAT3 farSide = Scale3(right, 1.28f);
+        XMFLOAT3 farSide = Scale3(right, 0.82f);
         XMFLOAT3 nearUp = Scale3(up, 1.02f);
-        XMFLOAT3 farUp = Scale3(up, 1.46f);
+        XMFLOAT3 farUp = Scale3(up, 1.12f);
         XMFLOAT3 centerYNear = Add3(start, {0.0f, 1.12f, 0.0f});
         XMFLOAT3 centerYFar = Add3(room, {0.0f, 1.10f, 0.0f});
 
