@@ -66,6 +66,16 @@ std::array<GameMenuButtonSpec, 4> ActiveGameMenuButtons() {
 RECT GameMenuButtonRect(const RECT& client, int index) {
     int w = std::max<LONG>(1, client.right - client.left);
     int h = std::max<LONG>(1, client.bottom - client.top);
+    bool rendererScene = gApp && gApp->rendererInitialized && gApp->gameState == GameState::MainMenu &&
+        gApp->renderer.RuntimeMode() == RendererRuntimeMode::MainMenu;
+    if (rendererScene) {
+        int buttonW = std::clamp(w * 32 / 100, 260, 360);
+        int buttonH = 48;
+        int gap = 13;
+        int left = std::clamp(w * 32 / 100, 28, std::max(28, w - buttonW - 28));
+        int top = std::clamp(h * 34 / 100, 136, std::max(136, h - 72 - (buttonH + gap) * 4));
+        return {left, top + index * (buttonH + gap), left + buttonW, top + index * (buttonH + gap) + buttonH};
+    }
     int buttonW = std::clamp(w * 34 / 100, 260, 420);
     int buttonH = 48;
     int gap = 13;
@@ -114,6 +124,26 @@ void FillGameMenuPolygon(HDC dc, const POINT* points, int count, COLORREF color)
     DeleteObject(brush);
 }
 
+bool GameMenuUsesRendererScene() {
+    return gApp && gApp->gameShell && gApp->rendererInitialized &&
+        gApp->gameState == GameState::MainMenu &&
+        gApp->renderer.RuntimeMode() == RendererRuntimeMode::MainMenu;
+}
+
+void PushGameMenuInteractionToRenderer(HWND hwnd) {
+    if (!GameMenuUsesRendererScene() || !hwnd) return;
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    int w = std::max<LONG>(1, rc.right - rc.left);
+    int h = std::max<LONG>(1, rc.bottom - rc.top);
+    float x = gApp->gameMenuHasMouse ? static_cast<float>(gApp->gameMenuMouse.x) / static_cast<float>(w) : 0.5f;
+    float y = gApp->gameMenuHasMouse ? static_cast<float>(gApp->gameMenuMouse.y) / static_cast<float>(h) : 0.5f;
+    gApp->renderer.SetMenuInteraction(x, y,
+        gApp->gameMenuHoverId != 0,
+        gApp->gameMenuHoverId == kGameExitId,
+        gApp->gameMenuHoverId == kGameSinglePlayerId);
+}
+
 void DrawGameMenuButton(HDC dc, const RECT& rc, const wchar_t* label, bool hover) {
     COLORREF outer = hover ? RGB(206, 169, 92) : RGB(112, 96, 64);
     COLORREF fill = hover ? RGB(59, 49, 36) : RGB(31, 29, 24);
@@ -137,6 +167,20 @@ void DrawGameMenuButton(HDC dc, const RECT& rc, const wchar_t* label, bool hover
     RECT text = body;
     InflateRect(&text, -20, 0);
     DrawGameMenuText(dc, label, text, hover ? RGB(255, 238, 188) : RGB(231, 224, 204),
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+}
+
+void DrawGameMenuButtonLabel(HDC dc, const RECT& rc, const wchar_t* label, bool hover) {
+    HPEN pen = CreatePen(PS_SOLID, hover ? 2 : 1, hover ? RGB(226, 185, 84) : RGB(114, 98, 63));
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    Rectangle(dc, rc.left, rc.top, rc.right, rc.bottom);
+    SelectObject(dc, oldBrush);
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+    RECT text = rc;
+    InflateRect(&text, -12, 0);
+    DrawGameMenuText(dc, label, text, hover ? RGB(255, 236, 174) : RGB(218, 206, 174),
         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 }
 
@@ -317,62 +361,65 @@ void PaintGameMainMenu(HWND hwnd, HDC dc) {
     int w = std::max<LONG>(1, rc.right - rc.left);
     int h = std::max<LONG>(1, rc.bottom - rc.top);
     ULONGLONG now = GetTickCount64();
+    bool rendererScene = GameMenuUsesRendererScene();
 
-    FillGameMenuRect(dc, rc, RGB(7, 7, 5));
-    for (int y = 0; y < h; y += 22) {
+    if (!rendererScene) {
+        FillGameMenuRect(dc, rc, RGB(7, 7, 5));
+        for (int y = 0; y < h; y += 22) {
         int shade = 10 + (y * 15 / std::max(1, h));
         RECT band{0, y, w, std::min(y + 22, h)};
         FillGameMenuRect(dc, band, RGB(shade, std::max(5, shade - 2), std::max(3, shade - 6)));
-    }
-    POINT floorPoly[4] = {{0, h}, {w, h}, {w * 62 / 100, h * 50 / 100}, {w * 38 / 100, h * 50 / 100}};
-    POINT ceilingPoly[4] = {{0, 0}, {w, 0}, {w * 62 / 100, h * 30 / 100}, {w * 38 / 100, h * 30 / 100}};
-    POINT leftWall[4] = {{0, 0}, {w * 38 / 100, h * 30 / 100}, {w * 38 / 100, h * 50 / 100}, {0, h}};
-    POINT rightWall[4] = {{w, 0}, {w * 62 / 100, h * 30 / 100}, {w * 62 / 100, h * 50 / 100}, {w, h}};
-    FillGameMenuPolygon(dc, ceilingPoly, 4, RGB(13, 12, 8));
-    FillGameMenuPolygon(dc, floorPoly, 4, RGB(18, 16, 11));
-    FillGameMenuPolygon(dc, leftWall, 4, RGB(10, 10, 7));
-    FillGameMenuPolygon(dc, rightWall, 4, RGB(9, 9, 7));
+        }
+        POINT floorPoly[4] = {{0, h}, {w, h}, {w * 62 / 100, h * 50 / 100}, {w * 38 / 100, h * 50 / 100}};
+        POINT ceilingPoly[4] = {{0, 0}, {w, 0}, {w * 62 / 100, h * 30 / 100}, {w * 38 / 100, h * 30 / 100}};
+        POINT leftWall[4] = {{0, 0}, {w * 38 / 100, h * 30 / 100}, {w * 38 / 100, h * 50 / 100}, {0, h}};
+        POINT rightWall[4] = {{w, 0}, {w * 62 / 100, h * 30 / 100}, {w * 62 / 100, h * 50 / 100}, {w, h}};
+        FillGameMenuPolygon(dc, ceilingPoly, 4, RGB(13, 12, 8));
+        FillGameMenuPolygon(dc, floorPoly, 4, RGB(18, 16, 11));
+        FillGameMenuPolygon(dc, leftWall, 4, RGB(10, 10, 7));
+        FillGameMenuPolygon(dc, rightWall, 4, RGB(9, 9, 7));
 
-    HPEN perspectivePen = CreatePen(PS_SOLID, 1, RGB(35, 30, 18));
-    HGDIOBJ oldPerspectivePen = SelectObject(dc, perspectivePen);
-    for (int i = 0; i <= 8; ++i) {
-        int x0 = i * w / 8;
-        MoveToEx(dc, x0, h, nullptr);
-        LineTo(dc, w / 2, h * 47 / 100);
-    }
-    for (int i = 0; i < 8; ++i) {
-        int yLine = h * (54 + i * 6) / 100;
-        MoveToEx(dc, 0, yLine, nullptr);
-        LineTo(dc, w, yLine);
-    }
-    SelectObject(dc, oldPerspectivePen);
-    DeleteObject(perspectivePen);
+        HPEN perspectivePen = CreatePen(PS_SOLID, 1, RGB(35, 30, 18));
+        HGDIOBJ oldPerspectivePen = SelectObject(dc, perspectivePen);
+        for (int i = 0; i <= 8; ++i) {
+            int x0 = i * w / 8;
+            MoveToEx(dc, x0, h, nullptr);
+            LineTo(dc, w / 2, h * 47 / 100);
+        }
+        for (int i = 0; i < 8; ++i) {
+            int yLine = h * (54 + i * 6) / 100;
+            MoveToEx(dc, 0, yLine, nullptr);
+            LineTo(dc, w, yLine);
+        }
+        SelectObject(dc, oldPerspectivePen);
+        DeleteObject(perspectivePen);
 
-    for (int i = 0; i < 12; ++i) {
-        int x = (i * 137 + 43) % std::max(1, w);
-        int panelW = 34 + (i % 4) * 18;
-        RECT panel{x - panelW / 2, 0, x + panelW / 2, h};
-        FillGameMenuRect(dc, panel, RGB(14 + i % 3, 13 + i % 2, 9));
+        for (int i = 0; i < 12; ++i) {
+            int x = (i * 137 + 43) % std::max(1, w);
+            int panelW = 34 + (i % 4) * 18;
+            RECT panel{x - panelW / 2, 0, x + panelW / 2, h};
+            FillGameMenuRect(dc, panel, RGB(14 + i % 3, 13 + i % 2, 9));
+        }
+        for (int i = 0; i < 7; ++i) {
+            int lx = w / 2 - 310 + i * 104;
+            RECT lamp{lx, 28, lx + 54, 34};
+            FillGameMenuRect(dc, lamp, RGB(121, 105, 66));
+            RECT glow{lx - 24, 34, lx + 78, 124};
+            FillGameMenuRect(dc, glow, RGB(23, 20, 12));
+        }
+        RECT vignetteLeft{0, 0, w / 18, h};
+        RECT vignetteRight{w - w / 18, 0, w, h};
+        RECT vignetteTop{0, 0, w, h / 18};
+        RECT vignetteBottom{0, h - h / 12, w, h};
+        FillGameMenuRect(dc, vignetteLeft, RGB(2, 2, 1));
+        FillGameMenuRect(dc, vignetteRight, RGB(2, 2, 1));
+        FillGameMenuRect(dc, vignetteTop, RGB(2, 2, 1));
+        FillGameMenuRect(dc, vignetteBottom, RGB(3, 3, 2));
+        DrawGameMenuFlashlight(dc, rc, now);
+        DrawGameMenuDust(dc, rc, now);
+        DrawGameMenuExitDoor(dc, rc, now);
+        DrawGameMenuLampBurst(dc, rc, now);
     }
-    for (int i = 0; i < 7; ++i) {
-        int lx = w / 2 - 310 + i * 104;
-        RECT lamp{lx, 28, lx + 54, 34};
-        FillGameMenuRect(dc, lamp, RGB(121, 105, 66));
-        RECT glow{lx - 24, 34, lx + 78, 124};
-        FillGameMenuRect(dc, glow, RGB(23, 20, 12));
-    }
-    RECT vignetteLeft{0, 0, w / 18, h};
-    RECT vignetteRight{w - w / 18, 0, w, h};
-    RECT vignetteTop{0, 0, w, h / 18};
-    RECT vignetteBottom{0, h - h / 12, w, h};
-    FillGameMenuRect(dc, vignetteLeft, RGB(2, 2, 1));
-    FillGameMenuRect(dc, vignetteRight, RGB(2, 2, 1));
-    FillGameMenuRect(dc, vignetteTop, RGB(2, 2, 1));
-    FillGameMenuRect(dc, vignetteBottom, RGB(3, 3, 2));
-    DrawGameMenuFlashlight(dc, rc, now);
-    DrawGameMenuDust(dc, rc, now);
-    DrawGameMenuExitDoor(dc, rc, now);
-    DrawGameMenuLampBurst(dc, rc, now);
 
     HFONT titleFont = CreateFontW(46, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
@@ -393,10 +440,14 @@ void PaintGameMainMenu(HWND hwnd, HDC dc) {
     auto buttons = ActiveGameMenuButtons();
     for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
         RECT br = GameMenuButtonRect(rc, i);
-        DrawGameMenuButton(dc, br, buttons[static_cast<size_t>(i)].label,
-            gApp->gameMenuHoverId == buttons[static_cast<size_t>(i)].id);
+        bool hover = gApp->gameMenuHoverId == buttons[static_cast<size_t>(i)].id;
+        if (rendererScene) {
+            DrawGameMenuButtonLabel(dc, br, buttons[static_cast<size_t>(i)].label, hover);
+        } else {
+            DrawGameMenuButton(dc, br, buttons[static_cast<size_t>(i)].label, hover);
+        }
     }
-    DrawGameMenuBlood(dc, rc, now);
+    if (!rendererScene) DrawGameMenuBlood(dc, rc, now);
 
     SelectObject(dc, bodyFont);
     RECT footer{26, h - 48, w - 26, h - 20};
@@ -418,6 +469,7 @@ void ActivateGameMenuCommand(HWND hwnd, int id) {
     gApp->gameMenuFadeStart = GetTickCount64();
     if (id == kGameSinglePlayerId) {
         gApp->gameMenuLampBurstStart = gApp->gameMenuFadeStart;
+        if (gApp->rendererInitialized) gApp->renderer.TriggerMainMenuLampBurst();
     }
     InvalidateRect(hwnd, nullptr, FALSE);
 }
@@ -510,13 +562,23 @@ void CaptureGameMouse(HWND hwnd) {
 
 bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
     if (!gApp || !gApp->gameShell) return false;
-    if (gApp->rendererInitialized) return true;
+    if (gApp->rendererInitialized) {
+        if (mode == RendererRuntimeMode::MainMenu && !gApp->gameRunStarted) {
+            gApp->renderer.EnterMainMenuScene();
+        } else {
+            gApp->renderer.SetRuntimeMode(mode);
+        }
+        return true;
+    }
     gApp->renderer.SetRuntimeMode(mode);
     if (!gApp->loadingOverlay) {
-        gApp->loadingOverlay = CreateLoadingOverlay(hwnd, gApp->gameInstance);
+        gApp->loadingOverlay = CreateLoadingOverlay(hwnd, gApp->gameInstance, mode == RendererRuntimeMode::MainMenu);
     }
     if (gApp->loadingOverlay) {
-        SetLoadingOverlayStatus(gApp->loadingOverlay, L"Loading level", L"Preparing renderer and maze.", false);
+        SetLoadingOverlayStatus(gApp->loadingOverlay,
+            mode == RendererRuntimeMode::MainMenu ? L"NeuralForge Solutions" : L"Loading level",
+            mode == RendererRuntimeMode::MainMenu ? L"Prewarming renderer, shaders, textures, and menu scene." : L"Preparing renderer and maze.",
+            false);
         UpdateWindow(gApp->loadingOverlay);
     }
     StartupProgressSink loadingProgress{LoadingProgressCallback, gApp->loadingOverlay};
@@ -530,8 +592,12 @@ bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
         return false;
     }
     gApp->rendererInitialized = true;
+    if (mode == RendererRuntimeMode::MainMenu) gApp->renderer.EnterMainMenuScene();
     if (gApp->loadingOverlay) {
-        SetLoadingOverlayStatus(gApp->loadingOverlay, L"Ready", L"Entering maze.", true);
+        SetLoadingOverlayStatus(gApp->loadingOverlay,
+            mode == RendererRuntimeMode::MainMenu ? L"Ready" : L"Ready",
+            mode == RendererRuntimeMode::MainMenu ? L"Entering main menu." : L"Entering maze.",
+            true);
         DestroyWindow(gApp->loadingOverlay);
         gApp->loadingOverlay = nullptr;
     }
@@ -548,6 +614,9 @@ void EnterGameMainMenu(HWND hwnd) {
     gApp->gameMenuFadeStart = GetTickCount64();
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;
+    if (gApp->rendererInitialized && !gApp->gameRunStarted) {
+        gApp->renderer.EnterMainMenuScene();
+    }
     SetGameMenuVisible(true);
     UpdateGameMenuLabels();
     SetDebugControlsVisible(false);

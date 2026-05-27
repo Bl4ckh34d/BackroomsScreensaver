@@ -51,6 +51,7 @@ struct OverlayVertex {
 
 enum class RendererRuntimeMode {
     ScreensaverAutopilot,
+    MainMenu,
     PlayableGame,
     DebugViewer,
     Preview

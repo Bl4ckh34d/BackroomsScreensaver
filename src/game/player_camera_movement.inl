@@ -269,6 +269,88 @@
         previousCameraPitch_ = lookPitch_;
     }
 
+    void SetupMainMenuScene() {
+        XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
+        camera_ = {c.x + maze_.tileW * 0.38f, 1.24f, c.z + maze_.tileD * 0.43f};
+        XMFLOAT3 target{c.x - maze_.tileW * 0.18f, 1.20f, c.z - maze_.tileD * 0.46f};
+        yaw_ = YawToPoint(target);
+        bodyYaw_ = yaw_;
+        lookPitch_ = std::clamp(PitchToPoint(target), -0.42f, 0.28f);
+        flashlightYaw_ = yaw_;
+        flashlightPitch_ = lookPitch_;
+        previousCameraYaw_ = yaw_;
+        previousCameraPitch_ = lookPitch_;
+        menuBaseYaw_ = yaw_;
+        menuBasePitch_ = lookPitch_;
+        menuPointerX_ = menuPointerTargetX_ = 0.5f;
+        menuPointerY_ = menuPointerTargetY_ = 0.5f;
+        menuDoorOpen_ = 0.0f;
+        menuBloodAmount_ = 0.0f;
+        bloodWorldActivationTime_ = time_;
+        fadeInTimer_ = 0.0f;
+        exitDoorAngle_ = 0.0f;
+        path_.clear();
+        pathIndex_ = 0;
+        monsterPath_.clear();
+        monsterPathIndex_ = 0;
+    }
+
+    void UpdateMainMenuScene(float dt) {
+        fadeInTimer_ = 0.0f;
+        menuPointerX_ += (menuPointerTargetX_ - menuPointerX_) * std::min(1.0f, dt * 7.5f);
+        menuPointerY_ += (menuPointerTargetY_ - menuPointerY_) * std::min(1.0f, dt * 7.5f);
+
+        float jitterYaw = std::sin(time_ * 2.41f) * 0.010f + std::sin(time_ * 7.17f) * 0.004f;
+        float jitterPitch = std::cos(time_ * 2.03f) * 0.006f + std::sin(time_ * 5.83f) * 0.003f;
+        yaw_ = menuBaseYaw_ + std::sin(time_ * 0.62f) * 0.010f;
+        bodyYaw_ = yaw_;
+        lookPitch_ = menuBasePitch_ + std::cos(time_ * 0.48f) * 0.004f;
+
+        float hoverFlicker = menuButtonHover_ ? (std::sin(time_ * 36.0f) * 0.012f + std::sin(time_ * 81.0f) * 0.006f) : 0.0f;
+        float targetYaw = menuBaseYaw_ + (menuPointerX_ - 0.5f) * 0.62f + jitterYaw + hoverFlicker;
+        float targetPitch = menuBasePitch_ + (0.5f - menuPointerY_) * 0.34f + jitterPitch - std::abs(hoverFlicker) * 0.35f;
+        flashlightYaw_ += AngleWrap(targetYaw - flashlightYaw_) * std::min(1.0f, dt * 8.0f);
+        flashlightPitch_ += (std::clamp(targetPitch, -0.62f, 0.42f) - flashlightPitch_) * std::min(1.0f, dt * 8.0f);
+
+        float doorTarget = menuExitHover_ ? 1.0f : 0.0f;
+        menuDoorOpen_ += (doorTarget - menuDoorOpen_) * std::min(1.0f, dt * 6.5f);
+        exitDoorAngle_ = menuDoorOpen_ * 1.38f;
+
+        float bloodTarget = menuSinglePlayerHover_ ? 1.0f : 0.0f;
+        menuBloodAmount_ += (bloodTarget - menuBloodAmount_) * std::min(1.0f, dt * (bloodTarget > menuBloodAmount_ ? 2.2f : 0.55f));
+        if (menuSinglePlayerHover_ && bloodWorldActivationTime_ < time_ - 12.0f) {
+            bloodWorldActivationTime_ = time_ - 0.25f;
+        }
+
+        if (menuLampBurstPending_) {
+            menuLampBurstPending_ = false;
+            if (!runtimeLamps_.empty()) {
+                RuntimeLampState* nearest = &runtimeLamps_.front();
+                XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
+                float best = std::numeric_limits<float>::max();
+                for (RuntimeLampState& lamp : runtimeLamps_) {
+                    float dx = lamp.pos.x - c.x;
+                    float dz = lamp.pos.z - c.z;
+                    float d2 = dx * dx + dz * dz;
+                    if (d2 < best) {
+                        best = d2;
+                        nearest = &lamp;
+                    }
+                }
+                BreakRuntimeLamp(*nearest);
+            } else {
+                XMFLOAT3 c = maze_.WorldCenter(maze_.start, settings_.wallHeightMeters - 0.10f);
+                EmitSparkBurstAt(c, 3.1f);
+                ScheduleSparkChain(c, 2.1f, 3);
+            }
+        }
+
+        UpdateSparks(dt);
+        UpdateAirParticles(dt);
+        UpdateAirParticleFocus(dt);
+        UpdateDreadMeterDisplay(dt);
+    }
+
     void RestartMaze() {
         if (gEffectDebugViewer) {
             ApplyDebugSliceSettings();

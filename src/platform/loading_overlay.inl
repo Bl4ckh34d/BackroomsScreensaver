@@ -7,6 +7,7 @@ const wchar_t* kLoadingOverlayClass = L"BackroomsMazeLoadingOverlay";
 struct LoadingOverlayState {
     std::wstring phase = L"Starting renderer";
     std::wstring detail = L"";
+    bool brandedSplash = false;
     int current = 0;
     int total = 1;
     int shaderDone = 0;
@@ -43,6 +44,90 @@ void DrawLoadingSpinner(HDC hdc, int cx, int cy, int radius, int frame) {
     }
 }
 
+const ImageRGBA& LoadingOverlayLogo() {
+    static ImageRGBA logo;
+    static bool loaded = false;
+    if (!loaded) {
+        loaded = true;
+        const std::array<std::filesystem::path, 3> candidates = {
+            ModuleDirectory() / L"assets" / L"branding" / L"NeuralForge_Solutions.png",
+            std::filesystem::current_path() / L"assets" / L"branding" / L"NeuralForge_Solutions.png",
+            std::filesystem::current_path().parent_path() / L"assets" / L"branding" / L"NeuralForge_Solutions.png"
+        };
+        for (const auto& candidate : candidates) {
+            std::error_code ec;
+            if (std::filesystem::exists(candidate, ec) && LoadImageWic(candidate, 0, 0, logo)) break;
+        }
+    }
+    return logo;
+}
+
+void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* state) {
+    const ImageRGBA& logo = LoadingOverlayLogo();
+    int width = std::max<LONG>(1, rc.right - rc.left);
+    int height = std::max<LONG>(1, rc.bottom - rc.top);
+    int logoSize = std::clamp(std::min(width, height) / 4, 132, 248);
+    int x = rc.left + (width - logoSize) / 2;
+    int y = rc.top + height / 2 - logoSize / 2 - std::clamp(height / 16, 24, 58);
+
+    if (logo.Valid()) {
+        static std::vector<uint8_t> tinted;
+        static int tintedW = 0;
+        static int tintedH = 0;
+        if (tintedW != logo.width || tintedH != logo.height || tinted.empty()) {
+            tintedW = logo.width;
+            tintedH = logo.height;
+            tinted.assign(static_cast<size_t>(tintedW) * static_cast<size_t>(tintedH) * 4, 0);
+            constexpr uint8_t tintR = 226;
+            constexpr uint8_t tintG = 192;
+            constexpr uint8_t tintB = 92;
+            for (int py = 0; py < tintedH; ++py) {
+                for (int px = 0; px < tintedW; ++px) {
+                    size_t src = static_cast<size_t>((py * tintedW + px) * 4);
+                    uint8_t a = logo.pixels[src + 3];
+                    size_t dst = src;
+                    tinted[dst + 0] = static_cast<uint8_t>((static_cast<int>(tintB) * a) / 255);
+                    tinted[dst + 1] = static_cast<uint8_t>((static_cast<int>(tintG) * a) / 255);
+                    tinted[dst + 2] = static_cast<uint8_t>((static_cast<int>(tintR) * a) / 255);
+                    tinted[dst + 3] = 255;
+                }
+            }
+        }
+
+        BITMAPINFO bmi{};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = tintedW;
+        bmi.bmiHeader.biHeight = -tintedH;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        SetStretchBltMode(hdc, HALFTONE);
+        StretchDIBits(hdc, x, y, logoSize, logoSize, 0, 0, tintedW, tintedH,
+            tinted.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
+    }
+
+    SetBkMode(hdc, TRANSPARENT);
+    HFONT logoFont = CreateFontW(-28, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT detailFont = CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HGDIOBJ oldFont = SelectObject(hdc, logoFont);
+    SetTextColor(hdc, RGB(234, 220, 164));
+    RECT nameRect{rc.left + 24, y + logoSize + 16, rc.right - 24, y + logoSize + 54};
+    DrawTextW(hdc, L"NeuralForge Solutions", -1, &nameRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+    SelectObject(hdc, detailFont);
+    SetTextColor(hdc, RGB(126, 119, 91));
+    std::wstring detail = state && !state->detail.empty() ? state->detail : L"Preparing renderer";
+    RECT detailRect{rc.left + 24, nameRect.bottom + 4, rc.right - 24, nameRect.bottom + 30};
+    DrawTextW(hdc, detail.c_str(), -1, &detailRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    SelectObject(hdc, oldFont);
+    DeleteObject(logoFont);
+    DeleteObject(detailFont);
+}
+
 void DrawLoadingOverlay(HWND hwnd, HDC hdc) {
     RECT rc{};
     GetClientRect(hwnd, &rc);
@@ -53,6 +138,11 @@ void DrawLoadingOverlay(HWND hwnd, HDC hdc) {
     HBRUSH bg = CreateSolidBrush(RGB(8, 8, 6));
     FillRect(hdc, &rc, bg);
     DeleteObject(bg);
+
+    if (state && state->brandedSplash) {
+        DrawTintedLoadingLogo(hdc, rc, state);
+        return;
+    }
 
     int contentW = std::min(560, std::max(180, width - 48));
     int left = (width - contentW) / 2;
@@ -175,9 +265,10 @@ void ResizeLoadingOverlay(HWND parent, HWND overlay) {
         std::max(1, static_cast<int>(rc.bottom - rc.top)), TRUE);
 }
 
-HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance) {
+HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance, bool brandedSplash) {
     RegisterLoadingOverlayClass(hInstance);
     auto* state = new LoadingOverlayState();
+    state->brandedSplash = brandedSplash;
     RECT rc{};
     GetClientRect(parent, &rc);
     HWND overlay = CreateWindowExW(0, kLoadingOverlayClass, nullptr, WS_CHILD | WS_VISIBLE,

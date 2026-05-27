@@ -87,6 +87,7 @@ int RunGame(HINSTANCE hInstance) {
     SetDebugControlsVisible(false);
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
+    EnsureGameRenderer(hwnd, RendererRuntimeMode::MainMenu);
 
     MSG msg{};
     bool running = true;
@@ -125,6 +126,15 @@ int RunGame(HINSTANCE hInstance) {
         escapeWasDown = pauseDown;
 
         if (app.gameState == GameState::MainMenu) {
+            PushGameMenuInteractionToRenderer(hwnd);
+            if (app.rendererInitialized) {
+                app.renderer.TickFixed(dt);
+                HDC dc = GetDC(hwnd);
+                if (dc) {
+                    PaintGameMainMenu(hwnd, dc);
+                    ReleaseDC(hwnd, dc);
+                }
+            }
             UpdateGameMenuTransition(hwnd);
         }
 
@@ -138,7 +148,7 @@ int RunGame(HINSTANCE hInstance) {
             }
             app.renderer.TickFixed(dt);
             if (app.gameState == GameState::DebugScene) RedrawDebugSliceControls();
-        } else {
+        } else if (app.gameState != GameState::MainMenu) {
             Sleep(10);
         }
         Sleep(1);

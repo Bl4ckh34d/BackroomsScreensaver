@@ -67,6 +67,16 @@ set_target_properties(BackroomsMazeGame PROPERTIES
     SUFFIX ".exe"
 )
 
+foreach(target BackroomsMaze BackroomsMazeGame)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target}>/assets/branding"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/branding"
+            "$<TARGET_FILE_DIR:${target}>/assets/branding"
+        COMMENT "Copying branding assets for ${target}"
+    )
+endforeach()
+
 foreach(helper Config PreviewTest Profile BloodDebug Test)
     add_custom_command(TARGET BackroomsMaze POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy

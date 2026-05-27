@@ -174,6 +174,7 @@ public:
         runtimeSeed_ = ResolveRuntimeSeed(settings_.mazeSeed);
         ApplyRuntimeVariation(settings_, runtimeSeed_);
         gameplaySettings_ = settings_;
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) ApplyMainMenuSettings();
         if (gEffectDebugViewer) ApplyDebugSliceSettings();
         LoadMonsterSkullMesh();
         profile.Mark(L"LoadMonsterSkullMesh");
@@ -189,7 +190,9 @@ public:
         maze_.tileW = settings_.tileWidthMeters;
         maze_.tileD = settings_.tileLengthMeters;
         maze_.exit = {maze_.w - 2, maze_.h - 2};
-        if (gEffectDebugViewer) {
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            maze_.GenerateMenuRoom();
+        } else if (gEffectDebugViewer) {
             maze_.GenerateDebugSlice(gDebugSliceTiles);
         } else if (gBloodDebugEveryWall) {
             maze_.GenerateBloodDebugCorridor();
@@ -203,6 +206,7 @@ public:
         ReportStartupStep(L"Maze mask ready", L"Building maze geometry.");
         ResetSimulation();
         CreateMazeMesh();
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) SetupMainMenuScene();
         ResetDebugSliceLoopState();
         profile.Mark(L"CreateMazeMesh");
         ReportStartupStep(L"Ready", L"Entering maze.");
@@ -267,6 +271,36 @@ public:
 
     RendererRuntimeMode RuntimeMode() const {
         return runtimeMode_;
+    }
+
+    void EnterMainMenuScene() {
+        runtimeMode_ = RendererRuntimeMode::MainMenu;
+        gEffectDebugViewer = false;
+        gBloodDebugEveryWall = false;
+        settings_ = gameplaySettings_;
+        ApplyMainMenuSettings();
+        maze_.w = settings_.mazeWidth;
+        maze_.h = settings_.mazeHeight;
+        maze_.tileW = settings_.tileWidthMeters;
+        maze_.tileD = settings_.tileLengthMeters;
+        maze_.GenerateMenuRoom();
+        CreateMazeMaskTexture();
+        ResetSimulation();
+        CreateMazeMesh();
+        SetupMainMenuScene();
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    void SetMenuInteraction(float pointerX, float pointerY, bool buttonHover, bool exitHover, bool singlePlayerHover) {
+        menuPointerTargetX_ = Clamp01(pointerX);
+        menuPointerTargetY_ = Clamp01(pointerY);
+        menuButtonHover_ = buttonHover;
+        menuExitHover_ = exitHover;
+        menuSinglePlayerHover_ = singlePlayerHover;
+    }
+
+    void TriggerMainMenuLampBurst() {
+        menuLampBurstPending_ = true;
     }
 
     void SetGameInput(const GameInputSnapshot& input) {
@@ -694,6 +728,18 @@ private:
     RendererRuntimeMode runtimeMode_ = RendererRuntimeMode::ScreensaverAutopilot;
     GameInputSnapshot gameInput_{};
     Settings gameplaySettings_{};
+    float menuPointerX_ = 0.5f;
+    float menuPointerY_ = 0.5f;
+    float menuPointerTargetX_ = 0.5f;
+    float menuPointerTargetY_ = 0.5f;
+    float menuBaseYaw_ = 0.0f;
+    float menuBasePitch_ = 0.0f;
+    float menuDoorOpen_ = 0.0f;
+    float menuBloodAmount_ = 0.0f;
+    bool menuButtonHover_ = false;
+    bool menuExitHover_ = false;
+    bool menuSinglePlayerHover_ = false;
+    bool menuLampBurstPending_ = false;
     float playerHealth_ = 100.0f;
     float playerStamina_ = 100.0f;
     float playerVerticalOffset_ = 0.0f;
@@ -893,6 +939,29 @@ private:
     float monsterHeadLockAmount_ = 0.0f;
     float monsterHeadChaseBlend_ = 0.0f;
     bool monsterCanSeePlayerNow_ = false;
+
+    void ApplyMainMenuSettings() {
+        settings_.mazeWidth = 3;
+        settings_.mazeHeight = 3;
+        settings_.mapOverlay = false;
+        settings_.debugAiMapOverlay = false;
+        settings_.chairDensity = 0.0f;
+        settings_.paperDensity = 0.0f;
+        settings_.hallwayPaperRunDensity = 0.0f;
+        settings_.metalCabinetDensity = 0.0f;
+        settings_.waterDamageDensity = 0.0f;
+        settings_.lampOnRatio = 1.0f;
+        settings_.lampSpacing = std::max(settings_.tileWidthMeters, settings_.tileLengthMeters);
+        settings_.airParticles = true;
+        settings_.airParticleDensity = std::max(0.32f, settings_.airParticleDensity * 0.55f);
+        settings_.sparkParticles = true;
+        settings_.fadeInSeconds = 0.0f;
+        settings_.bloodWorldCoverage = std::max(settings_.bloodWorldCoverage, 0.45f);
+        settings_.bloodWorldAlwaysOn = false;
+        settings_.bloodWorldFlickerIntensity = std::max(settings_.bloodWorldFlickerIntensity, 0.88f);
+        settings_.fogStartMeters = std::min(settings_.fogStartMeters, 2.6f);
+        settings_.fogEndMeters = std::min(settings_.fogEndMeters, 7.5f);
+    }
 
     bool CreateBackBuffer() {
         ComPtr<ID3D11Texture2D> backBuffer;
@@ -1457,7 +1526,7 @@ HWND CreateEmbeddedConfig(HWND parent, ConfigDialogMode mode);
 #if defined(BACKROOMS_GAME_EXE)
 HWND CreateGameSettingsPanel(HWND parent);
 #endif
-HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance);
+HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance, bool brandedSplash = false);
 void SetLoadingOverlayStatus(HWND overlay, const wchar_t* phase, const wchar_t* detail, bool complete);
 void LoadingProgressCallback(void* context, const StartupProgressUpdate& update);
 

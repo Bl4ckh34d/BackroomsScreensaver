@@ -279,10 +279,14 @@
             struct DoorSide { int dx; int dy; };
             std::vector<DoorSide> sides;
             Tile e = maze_.exit;
-            if (e.y == maze_.h - 2) sides.push_back({0, 1});
-            if (e.x == maze_.w - 2) sides.push_back({1, 0});
-            if (e.y == 1) sides.push_back({0, -1});
-            if (e.x == 1) sides.push_back({-1, 0});
+            if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+                sides.push_back({-1, 0});
+            } else {
+                if (e.y == maze_.h - 2) sides.push_back({0, 1});
+                if (e.x == maze_.w - 2) sides.push_back({1, 0});
+                if (e.y == 1) sides.push_back({0, -1});
+                if (e.x == 1) sides.push_back({-1, 0});
+            }
             const DoorSide fallbackSides[] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
             sides.insert(sides.end(), std::begin(fallbackSides), std::end(fallbackSides));
 

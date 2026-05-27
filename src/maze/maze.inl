@@ -154,6 +154,15 @@ struct Maze {
         exit = {mid, 1};
     }
 
+    void GenerateMenuRoom() {
+        w = 3;
+        h = 3;
+        open.assign(static_cast<size_t>(w * h), 0);
+        start = {1, 1};
+        exit = {1, 1};
+        SetOpen(1, 1);
+    }
+
     Tile FarthestReachable(Tile from) const {
         std::vector<int> dist = ReachableDistances(from);
         Tile best = from;

@@ -168,6 +168,25 @@
             normal, right, 10.0f);
     }
 
+    void AppendMenuButtonPlaques(std::vector<Vertex>& verts) {
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
+        XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
+        XMFLOAT3 right{1.0f, 0.0f, 0.0f};
+        XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+        XMFLOAT3 inward{0.0f, 0.0f, 1.0f};
+        float z = c.z - maze_.tileD * 0.5f + 0.040f;
+        float x = c.x + maze_.tileW * 0.16f;
+        float startY = 1.66f;
+        for (int i = 0; i < 4; ++i) {
+            bool hover = (i == 0 && menuSinglePlayerHover_) || (i == 3 && menuExitHover_) ||
+                (menuButtonHover_ && !menuSinglePlayerHover_ && !menuExitHover_);
+            float y = startY - static_cast<float>(i) * 0.24f;
+            float material = hover ? 10.72f : 9.70f;
+            AppendDynamicBoxAxes(verts, {x, y, z}, right, up, inward, {0.43f, 0.070f, 0.024f}, material);
+            AppendDynamicBoxAxes(verts, {x - 0.42f, y, z + 0.008f}, right, up, inward, {0.012f, 0.079f, 0.018f}, 10.0f);
+        }
+    }
+
     void AppendMonsterBillboard(std::vector<Vertex>& solidVerts, std::vector<Vertex>& transparentVerts) {
         float modelY = std::clamp(settings_.monsterScale, 0.35f, 1.25f);
         float modelXZ = std::clamp(settings_.monsterScale, 0.35f, 1.35f);
@@ -530,11 +549,15 @@
         if (opaqueVerts.capacity() < 32768) opaqueVerts.reserve(32768);
         if (transparentVerts.capacity() < 131072) transparentVerts.reserve(131072);
         AppendDynamicDoor(opaqueVerts);
-        AppendVentDrops(opaqueVerts);
-        AppendMonsterBillboard(opaqueVerts, transparentVerts);
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            AppendMenuButtonPlaques(opaqueVerts);
+        } else {
+            AppendVentDrops(opaqueVerts);
+            AppendMonsterBillboard(opaqueVerts, transparentVerts);
+        }
         AppendAirParticleBillboards(transparentVerts);
         AppendSparkBillboards(transparentVerts);
-        AppendSteamBillboards(transparentVerts);
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu) AppendSteamBillboards(transparentVerts);
         if (opaqueVerts.size() > kDynamicVertexCapacity) opaqueVerts.resize(kDynamicVertexCapacity);
         size_t remaining = static_cast<size_t>(kDynamicVertexCapacity) - opaqueVerts.size();
         if (transparentVerts.size() > remaining) transparentVerts.resize(remaining);

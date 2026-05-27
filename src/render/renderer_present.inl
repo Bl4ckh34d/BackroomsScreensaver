@@ -250,6 +250,9 @@
             bloodWorldAmount = std::max(bloodWorldAmount, settings_.bloodWorldFlickerIntensity);
             if (bloodWorldActivationTime_ < -900.0f) bloodWorldActivationTime_ = time_ - 46.0f;
         }
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu && settings_.bloodWorldCoverage > 0.001f) {
+            bloodWorldAmount = std::max(bloodWorldAmount, menuBloodAmount_);
+        }
         cb.blood0 = {0.0f, 0.0f, 0.0f, 0.0f};
         cb.blood1 = {0.0f, 0.0f, 0.0f, 0.0f};
         cb.blood2 = {0.0f, 0.0f, 0.0f, 0.0f};

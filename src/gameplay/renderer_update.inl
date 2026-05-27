@@ -9,6 +9,10 @@
         }
 
         fadeInTimer_ = std::max(0.0f, fadeInTimer_ - dt);
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            UpdateMainMenuScene(dt);
+            return;
+        }
         if (monsterPreview_) {
             UpdateMonsterHeadAnimation(dt, false);
             SetMonsterPreviewCamera(time_);
