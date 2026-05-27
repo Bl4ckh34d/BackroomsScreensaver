@@ -1493,7 +1493,10 @@
             if (axisDistance <= 0.0001f) return false;
             float ax = camera_.x + sx;
             float az = camera_.z + sz;
-            if (!CameraSegmentOpen(camera_.x, camera_.z, ax, az, startTile, allowedTarget)) return false;
+            bool axisOpen = freeRun
+                ? CameraSegmentOpenThroughOpen(camera_.x, camera_.z, ax, az, false)
+                : CameraSegmentOpen(camera_.x, camera_.z, ax, az, startTile, allowedTarget);
+            if (!axisOpen) return false;
             camera_.x = ax;
             camera_.z = az;
             AdvanceStepPhase(axisDistance, speed);
@@ -1501,7 +1504,7 @@
         };
 
         if (std::abs(stepX) > 0.0001f && std::abs(stepZ) > 0.0001f) {
-            bool tryZFirst = std::abs(stepZ) < std::abs(stepX);
+            bool tryZFirst = std::abs(stepZ) >= std::abs(stepX);
             if (tryZFirst) {
                 if (tryAxisMove(0.0f, stepZ)) return true;
                 if (tryAxisMove(stepX, 0.0f)) return true;
