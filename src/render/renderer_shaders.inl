@@ -110,6 +110,7 @@ void ShadowPS(VSOut input)
         (materialId > 12.5 && materialId < 13.5) ||
         (materialId > 13.5 && materialId < 14.5) ||
         (materialId > 14.5 && materialId < 15.5) ||
+        (materialId > 17.5 && materialId < 18.5) ||
         (materialId > 24.5 && materialId < 25.5))
     {
         discard;
@@ -2258,6 +2259,19 @@ float4 PSMain(VSOut input) : SV_TARGET
         fog = 1.0 - exp(-fog * fog * 2.2);
         color = lerp(color, float3(0.0, 0.0, 0.0), fog * gFog0.z * 0.65);
         return float4(ApplyPost(color), saturate(alpha));
+    }
+
+    if (materialId > 17.5 && materialId < 18.5)
+    {
+        float4 label = gAlbedo.Sample(gSampler, float3(uv, 18.0));
+        if (label.a < 0.025) discard;
+        float pulse = 0.92 + 0.08 * sin(time * 4.8 + input.worldPos.x * 2.1);
+        float3 glow = label.rgb * (4.2 + label.a * 5.8) * pulse;
+        float dist = length(input.worldPos - cam);
+        float fog = saturate((dist - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
+        float fogVisibility = pow(1.0 - saturate(fog * gFog0.z), 2.2);
+        glow *= fogVisibility;
+        return float4(saturate(ApplyPost(glow) + glow * 0.18), saturate(label.a * 1.55 * fogVisibility));
     }
 
     if (input.material > 10.50 && input.material < 10.90)

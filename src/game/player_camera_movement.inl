@@ -271,11 +271,11 @@
 
     void SetupMainMenuScene() {
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
-        camera_ = {c.x + maze_.tileW * 0.38f, 1.24f, c.z + maze_.tileD * 0.43f};
-        XMFLOAT3 target{c.x - maze_.tileW * 0.18f, 1.20f, c.z - maze_.tileD * 0.46f};
+        camera_ = {c.x + maze_.tileW * 0.38f, 1.28f, c.z + maze_.tileD * 0.43f};
+        XMFLOAT3 target{c.x - maze_.tileW * 0.18f, 1.58f, c.z - maze_.tileD * 0.46f};
         yaw_ = YawToPoint(target);
         bodyYaw_ = yaw_;
-        lookPitch_ = std::clamp(PitchToPoint(target), -0.42f, 0.28f);
+        lookPitch_ = std::clamp(PitchToPoint(target), -0.42f, 0.42f);
         flashlightYaw_ = yaw_;
         flashlightPitch_ = lookPitch_;
         previousCameraYaw_ = yaw_;

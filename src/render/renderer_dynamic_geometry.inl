@@ -10,6 +10,20 @@
         }
     }
 
+    void AppendDynamicQuadUV(std::vector<Vertex>& verts,
+                             XMFLOAT3 a, XMFLOAT3 b, XMFLOAT3 c, XMFLOAT3 d,
+                             XMFLOAT3 normal, XMFLOAT3 tangent,
+                             XMFLOAT2 auv, XMFLOAT2 buv, XMFLOAT2 cuv, XMFLOAT2 duv,
+                             float material) {
+        XMFLOAT2 uvs[4] = {auv, buv, cuv, duv};
+        XMFLOAT3 pos[4] = {a, b, c, d};
+        int order[6] = {0, 1, 2, 0, 2, 3};
+        for (int i = 0; i < 6; ++i) {
+            int idx = order[i];
+            verts.push_back({pos[idx], normal, tangent, uvs[idx], material});
+        }
+    }
+
     void AppendDynamicBoxAxes(std::vector<Vertex>& verts, XMFLOAT3 center,
                               XMFLOAT3 right, XMFLOAT3 up, XMFLOAT3 forward,
                               XMFLOAT3 half, float material) {
@@ -168,7 +182,7 @@
             normal, right, 10.0f);
     }
 
-    void AppendMenuButtonPlaques(std::vector<Vertex>& verts) {
+    void AppendMenuButtonPlaques(std::vector<Vertex>& verts, std::vector<Vertex>& transparentVerts) {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
         XMFLOAT3 right{1.0f, 0.0f, 0.0f};
@@ -181,8 +195,20 @@
             bool hover = menuHoverButtonIndex_ == i;
             float y = startY - static_cast<float>(i) * 0.24f;
             float material = hover ? 10.72f : 9.70f;
-            AppendDynamicBoxAxes(verts, {x, y, z}, right, up, inward, {0.43f, 0.070f, 0.024f}, material);
+            XMFLOAT3 plaqueCenter{x, y, z};
+            AppendDynamicBoxAxes(verts, plaqueCenter, right, up, inward, {0.43f, 0.070f, 0.024f}, material);
             AppendDynamicBoxAxes(verts, {x - 0.42f, y, z + 0.008f}, right, up, inward, {0.012f, 0.079f, 0.018f}, 10.0f);
+            XMFLOAT3 labelCenter = Add3(plaqueCenter, Scale3(inward, 0.029f));
+            XMFLOAT3 hw = Scale3(right, 0.365f);
+            XMFLOAT3 hh = Scale3(up, 0.046f);
+            float v0 = (static_cast<float>(i) + 0.12f) / 3.0f;
+            float v1 = (static_cast<float>(i) + 0.88f) / 3.0f;
+            AppendDynamicQuadUV(transparentVerts,
+                Add3(labelCenter, Add3(Scale3(hw, -1.0f), Scale3(hh, -1.0f))),
+                Add3(labelCenter, Add3(hw, Scale3(hh, -1.0f))),
+                Add3(labelCenter, Add3(hw, hh)),
+                Add3(labelCenter, Add3(Scale3(hw, -1.0f), hh)),
+                inward, right, {0.06f, v1}, {0.94f, v1}, {0.94f, v0}, {0.06f, v0}, 18.0f);
         }
     }
 
@@ -549,7 +575,7 @@
         if (transparentVerts.capacity() < 131072) transparentVerts.reserve(131072);
         AppendDynamicDoor(opaqueVerts);
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
-            AppendMenuButtonPlaques(opaqueVerts);
+            AppendMenuButtonPlaques(opaqueVerts, transparentVerts);
         } else {
             AppendVentDrops(opaqueVerts);
             AppendMonsterBillboard(opaqueVerts, transparentVerts);

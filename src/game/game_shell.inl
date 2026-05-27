@@ -457,13 +457,10 @@ void PaintGameMainMenu(HWND hwnd, HDC dc) {
     SelectObject(dc, buttonFont);
     auto buttons = ActiveGameMenuButtons();
     for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
+        if (rendererScene) continue;
         RECT br = GameMenuButtonRect(rc, i);
         bool hover = gApp->gameMenuHoverId == buttons[static_cast<size_t>(i)].id;
-        if (rendererScene) {
-            DrawGameMenuButtonLabel(dc, br, buttons[static_cast<size_t>(i)].label, hover);
-        } else {
-            DrawGameMenuButton(dc, br, buttons[static_cast<size_t>(i)].label, hover);
-        }
+        DrawGameMenuButton(dc, br, buttons[static_cast<size_t>(i)].label, hover);
     }
     if (!rendererScene) DrawGameMenuBlood(dc, rc, now);
 

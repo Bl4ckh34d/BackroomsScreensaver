@@ -1511,25 +1511,42 @@
             XMFLOAT3 inward = exitPortal.inward;
             XMFLOAT3 up{0.0f, 1.0f, 0.0f};
             XMFLOAT3 right = exitPortal.right;
-            XMFLOAT3 doorCenter{bx + inward.x * 0.075f, 1.10f, bz + inward.z * 0.075f};
+            constexpr float fixedDoorCenterY = 1.10f;
+            constexpr float fixedDoorHalfW = 0.55f;
+            constexpr float fixedDoorHalfH = 1.10f;
+            XMFLOAT3 doorCenter{bx + inward.x * 0.075f, fixedDoorCenterY, bz + inward.z * 0.075f};
             XMFLOAT3 forward = inward;
             exitDoorCenter_ = doorCenter;
             exitDoorNormal_ = inward;
             exitDoorRight_ = right;
-            exitDoorHinge_ = Add3(doorCenter, OrientedOffset(right, up, forward, -0.55f, 0.0f, 0.0f));
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, -0.62f, 0.0f, 0.0f)), {0.035f, 1.18f, 0.055f}, exitPortal.yaw, 10.0f);
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.62f, 0.0f, 0.0f)), {0.035f, 1.18f, 0.055f}, exitPortal.yaw, 10.0f);
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, 1.17f, 0.0f)), {0.68f, 0.055f, 0.055f}, exitPortal.yaw, 10.0f);
-            XMFLOAT3 sign = Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f,
-                std::clamp(wallH - doorCenter.y - 0.19f, 0.78f, 1.18f), 0.073f));
+            exitDoorHinge_ = Add3(doorCenter, OrientedOffset(right, up, forward, -fixedDoorHalfW, 0.0f, 0.0f));
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, -0.62f, 0.0f, 0.0f)), {0.035f, fixedDoorHalfH + 0.08f, 0.055f}, exitPortal.yaw, 10.0f);
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.62f, 0.0f, 0.0f)), {0.035f, fixedDoorHalfH + 0.08f, 0.055f}, exitPortal.yaw, 10.0f);
+            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, fixedDoorHalfH + 0.07f, 0.0f)), {0.68f, 0.055f, 0.055f}, exitPortal.yaw, 10.0f);
+            constexpr float fixedSignTargetH = 0.34f;
+            float signY = std::max(doorCenter.y + fixedDoorHalfH + fixedSignTargetH * 0.5f + 0.08f,
+                wallH - fixedSignTargetH * 0.5f - 0.08f);
+            signY = std::min(signY, wallH - fixedSignTargetH * 0.5f - 0.025f);
+            XMFLOAT3 sign = {doorCenter.x + forward.x * 0.073f, signY, doorCenter.z + forward.z * 0.073f};
             exitSignLightPos_ = Add3(sign, OrientedOffset(right, up, forward, 0.0f, -0.02f, 0.22f));
             exitSignLightStrength_ = 1.0f;
             if (!exitSignPropMesh_.vertices.empty()) {
                 float spanX = std::max(0.001f, propSpan(exitSignPropMesh_, 0));
                 float spanY = std::max(0.001f, propSpan(exitSignPropMesh_, 1));
                 float targetW = std::min(1.24f, exitPortal.halfSpan * 1.48f);
-                float targetH = std::clamp(wallH * 0.16f, 0.30f, 0.42f);
+                float targetH = fixedSignTargetH;
                 float scale = std::clamp(std::min(targetW / spanX, targetH / spanY), 0.05f, 8.0f);
+                float hangerTop = wallH - 0.018f;
+                float hangerBottom = sign.y + targetH * 0.50f;
+                if (hangerTop > hangerBottom + 0.025f) {
+                    float hangerHalf = (hangerTop - hangerBottom) * 0.5f;
+                    float hangerY = hangerBottom + hangerHalf;
+                    for (float side : {-0.42f, 0.42f}) {
+                        AddOrientedBox(vertices, indices,
+                            Add3(sign, OrientedOffset(right, up, forward, side, hangerY - sign.y, -0.016f)),
+                            {0.010f, hangerHalf, 0.010f}, exitPortal.yaw, 10.0f);
+                    }
+                }
                 XMFLOAT3 localCenter{
                     (exitSignPropMesh_.min.x + exitSignPropMesh_.max.x) * 0.5f,
                     (exitSignPropMesh_.min.y + exitSignPropMesh_.max.y) * 0.5f,

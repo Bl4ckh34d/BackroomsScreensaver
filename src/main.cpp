@@ -1223,7 +1223,7 @@ private:
 
     uint64_t TextureCacheHash() const {
         uint64_t hash = 1469598103934665603ull;
-        const char* version = "BackroomsMazeTextureCacheV10";
+        const char* version = "BackroomsMazeTextureCacheV11";
         hash = Fnv1aAppend(hash, version, std::strlen(version));
         hash = Fnv1aAppend(hash, &kTextureSize, sizeof(kTextureSize));
         hash = Fnv1aAppend(hash, &kMaterialCount, sizeof(kMaterialCount));
