@@ -242,6 +242,12 @@
         } else if (gDebugSliceEffect == DebugSliceEffect::Blood) {
             camera_.y = 1.34f;
             target = {centerX, settings_.wallHeightMeters * 0.52f, oz + maze_.tileD + 0.025f};
+        } else if (gDebugSliceEffect == DebugSliceEffect::Props) {
+            float distanceScale = DebugPropCameraDistanceScale(gDebugPropIndex);
+            float requestedZ = centerZ + maze_.tileD * distanceScale;
+            float safeSouthZ = southInsideZ - maze_.tileD * 0.08f;
+            camera_ = {centerX, 1.18f, std::min(requestedZ, safeSouthZ)};
+            target = {centerX, DebugPropCameraTargetY(gDebugPropIndex), centerZ};
         }
 
         yaw_ = YawToPoint(target);
@@ -646,16 +652,36 @@
     void IncludeBloodReveal(const BloodScarePoint& point) {
         BloodRevealRegion region{};
         region.center = point.pos;
-        region.radius = std::clamp(point.radius, maze_.TileMinimum() * 0.72f, maze_.TileAverage() * 1.35f);
+        float tileMin = std::max(0.1f, maze_.TileMinimum());
+        float tileAvg = std::max(0.1f, maze_.TileAverage());
+        float maxRadius = point.waterLiquid ? tileAvg * 2.65f : tileAvg * 1.35f;
+        region.radius = std::clamp(point.radius, tileMin * 0.72f, maxRadius);
         region.activationTime = point.activationTime;
+        region.waterLiquid = point.waterLiquid;
 
-        float samePointLimit = maze_.TileMinimum() * 0.24f;
-        float samePointLimitSq = samePointLimit * samePointLimit;
         for (BloodRevealRegion& existing : bloodRevealRegions_) {
             float dx = existing.center.x - region.center.x;
             float dz = existing.center.z - region.center.z;
-            if (dx * dx + dz * dz <= samePointLimitSq) {
-                existing.radius = std::max(existing.radius, region.radius);
+            float distSq = dx * dx + dz * dz;
+            float mergeLimit = tileMin * 0.24f;
+            if (point.waterLiquid && existing.waterLiquid) {
+                mergeLimit = std::max(tileAvg * 1.85f, std::min(existing.radius, region.radius) * 0.92f);
+            } else if (point.waterLiquid != existing.waterLiquid) {
+                mergeLimit = tileMin * 0.18f;
+            }
+            if (distSq <= mergeLimit * mergeLimit) {
+                float dist = std::sqrt(distSq);
+                if (point.waterLiquid && existing.waterLiquid && dist > 0.001f) {
+                    float existingWeight = std::max(existing.radius, 0.1f);
+                    float regionWeight = std::max(region.radius, 0.1f);
+                    float totalWeight = existingWeight + regionWeight;
+                    existing.center.x = (existing.center.x * existingWeight + region.center.x * regionWeight) / totalWeight;
+                    existing.center.z = (existing.center.z * existingWeight + region.center.z * regionWeight) / totalWeight;
+                    existing.radius = std::clamp(std::max(existing.radius, region.radius) + dist * 0.55f,
+                        tileMin * 0.72f, maxRadius);
+                } else {
+                    existing.radius = std::max(existing.radius, region.radius);
+                }
                 existing.activationTime = std::min(existing.activationTime, region.activationTime);
                 return;
             }
@@ -695,7 +721,7 @@
             float bestScore = -1.0e9f;
             for (size_t i = 0; i < bloodScarePoints_.size(); ++i) {
                 const BloodScarePoint& point = bloodScarePoints_[i];
-                if (point.triggered || !point.revealBlood) continue;
+                if (point.triggered || !point.revealBlood || point.waterLiquid) continue;
                 float dx = point.pos.x - camera_.x;
                 float dz = point.pos.z - camera_.z;
                 float distSq = dx * dx + dz * dz;
@@ -758,12 +784,15 @@
             float tileMin = std::max(0.1f, maze_.TileMinimum());
             float tileAvg = std::max(0.1f, maze_.TileAverage());
             if (!point.triggered) {
+                float revealDistance = point.waterLiquid ? tileAvg * 8.25f : tileAvg * 5.35f;
+                float aheadLimit = point.waterLiquid ? -0.18f : -0.06f;
+                int revealSteps = point.waterLiquid ? 12 : 8;
                 if (!ScareSourceAhead(visibilityTarget,
                     tileMin * 0.36f,
-                    tileAvg * 5.35f,
-                    8,
-                    -0.06f)) continue;
-            } else if (horizontalDist > tileAvg * 5.35f) {
+                    revealDistance,
+                    revealSteps,
+                    aheadLimit)) continue;
+            } else if (horizontalDist > tileAvg * (point.waterLiquid ? 8.25f : 5.35f)) {
                 continue;
             }
             if (!maze_.LineClear(cameraTile, bloodTile)) continue;
@@ -784,13 +813,20 @@
 
             if (!point.triggered) {
                 point.triggered = true;
-                point.activationTime = time_;
+                if (point.waterLiquid) {
+                    float prewarm = Clamp01((horizontalDist - tileAvg * 2.0f) / std::max(tileAvg * 3.8f, 0.1f)) * 4.6f;
+                    point.activationTime = time_ - prewarm;
+                    point.focusTaken = true;
+                } else {
+                    point.activationTime = time_;
+                }
                 if (point.revealBlood) {
                     IncludeBloodReveal(point);
                 }
                 bloodScareActiveUntil_ = time_ + 150.0f;
                 continue;
             }
+            if (point.waterLiquid) continue;
             if (horizontalDist > tileAvg * 3.45f) continue;
             float visibleAge = time_ - point.activationTime;
             float minVisibleAge = point.requireFacing

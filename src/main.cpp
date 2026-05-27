@@ -48,7 +48,7 @@ constexpr float kFloorTextureMeters = 1.8f;
 constexpr float kWallTextureMeters = 1.8f;
 constexpr float kCeilingTextureMeters = 0.0f;
 constexpr int kTextureSize = 512;
-constexpr int kMaterialCount = 25;
+constexpr int kMaterialCount = 26;
 constexpr int kDynamicVertexCapacity = 220000;
 constexpr int kOverlayVertexCapacity = 160000;
 constexpr float kMonsterHeadForwardOffset = 0.34f;
@@ -66,12 +66,14 @@ enum class DebugSliceEffect {
     CeilingLamps,
     BrokenLamps,
     AirVents,
+    Props,
     Count
 };
 
 bool gEffectDebugViewer = false;
 DebugSliceEffect gDebugSliceEffect = DebugSliceEffect::Blood;
 int gDebugSliceTiles = 3;
+int gDebugPropIndex = 0;
 bool gBloodDebugEveryWall = false;
 
 struct StartupProgressUpdate {
@@ -105,6 +107,7 @@ const wchar_t* DebugSliceEffectName(DebugSliceEffect effect) {
     case DebugSliceEffect::CeilingLamps: return L"Ceiling lamps";
     case DebugSliceEffect::BrokenLamps: return L"Broken lamps";
     case DebugSliceEffect::AirVents: return L"Air vents";
+    case DebugSliceEffect::Props: return L"Props";
     default: return L"Unknown";
     }
 }
@@ -113,6 +116,70 @@ bool DebugSliceEffectIsWater(DebugSliceEffect effect) {
     return effect == DebugSliceEffect::FloorWater ||
         effect == DebugSliceEffect::CeilingWater ||
         effect == DebugSliceEffect::WallWater;
+}
+
+constexpr int kDebugPropCount = 16;
+
+int WrapDebugPropIndex(int index) {
+    int count = std::max(1, kDebugPropCount);
+    index %= count;
+    if (index < 0) index += count;
+    return index;
+}
+
+const wchar_t* DebugPropName(int index) {
+    switch (WrapDebugPropIndex(index)) {
+    case 0: return L"Office chair modern";
+    case 1: return L"Office chair classic";
+    case 2: return L"Office chair task";
+    case 3: return L"Office chair tipped";
+    case 4: return L"Filing cabinet";
+    case 5: return L"Office desk";
+    case 6: return L"Trash bin upright";
+    case 7: return L"Trash bin tipped";
+    case 8: return L"Desk lamp";
+    case 9: return L"Audio cassette";
+    case 10: return L"Air vent";
+    case 11: return L"Exit sign";
+    case 12: return L"Ceiling lamp 01";
+    case 13: return L"Ceiling lamp 02";
+    case 14: return L"Ceiling lamp 03";
+    case 15: return L"Ceiling lamp 04";
+    default: return L"Prop";
+    }
+}
+
+float DebugPropCameraDistanceScale(int index) {
+    switch (WrapDebugPropIndex(index)) {
+    case 4:
+    case 5:
+        return 2.15f;
+    case 8:
+    case 9:
+        return 1.12f;
+    case 10:
+    case 11:
+        return 1.30f;
+    default:
+        return 1.62f;
+    }
+}
+
+float DebugPropCameraTargetY(int index) {
+    switch (WrapDebugPropIndex(index)) {
+    case 8:
+    case 9:
+        return 0.22f;
+    case 4:
+        return 0.76f;
+    case 5:
+        return 0.58f;
+    case 10:
+    case 11:
+        return 0.46f;
+    default:
+        return 0.52f;
+    }
 }
 
 struct EffectFloatRange {
@@ -327,12 +394,14 @@ struct BloodScarePoint {
     bool focusTaken = false;
     bool requireFacing = false;
     bool revealBlood = true;
+    bool waterLiquid = false;
 };
 
 struct BloodRevealRegion {
     XMFLOAT3 center{};
     float radius = 0.0f;
     float activationTime = -1000000.0f;
+    bool waterLiquid = false;
 };
 
 bool operator==(Tile a, Tile b) {
@@ -1813,7 +1882,7 @@ public:
     void ConfigureDebugSlice(DebugSliceEffect effect, int tiles) {
         if (!gEffectDebugViewer) return;
         gDebugSliceEffect = effect;
-        gDebugSliceTiles = std::clamp(tiles, 1, 5);
+        gDebugSliceTiles = std::clamp(tiles, gDebugSliceEffect == DebugSliceEffect::Props ? 3 : 1, 5);
         ApplyDebugSliceSettings();
         maze_.w = settings_.mazeWidth;
         maze_.h = settings_.mazeHeight;
@@ -1846,7 +1915,22 @@ private:
         std::vector<Vertex> vertices;
         XMFLOAT3 min{};
         XMFLOAT3 max{};
+        bool generatedUvFallback = false;
     };
+
+    static bool StaticPropNeedsGeneratedUv(const StaticPropMesh& mesh) {
+        if (mesh.vertices.size() < 3) return false;
+        XMFLOAT2 minUv{std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+        XMFLOAT2 maxUv{-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max()};
+        for (const Vertex& v : mesh.vertices) {
+            if (!std::isfinite(v.uv.x) || !std::isfinite(v.uv.y)) return true;
+            minUv.x = std::min(minUv.x, v.uv.x);
+            minUv.y = std::min(minUv.y, v.uv.y);
+            maxUv.x = std::max(maxUv.x, v.uv.x);
+            maxUv.y = std::max(maxUv.y, v.uv.y);
+        }
+        return (maxUv.x - minUv.x) < 0.035f || (maxUv.y - minUv.y) < 0.035f;
+    }
 
     static std::wstring WidenAscii(const char* text) {
         if (!text) return {};
@@ -1906,7 +1990,11 @@ private:
 
     void ApplyDebugSliceSettings() {
         gDebugSliceTiles = std::clamp(gDebugSliceTiles, 1, 5);
-        gBloodDebugEveryWall = gEffectDebugViewer && gDebugSliceEffect == DebugSliceEffect::Blood;
+        if (gDebugSliceEffect == DebugSliceEffect::Props) {
+            gDebugSliceTiles = std::max(gDebugSliceTiles, 3);
+        }
+        bool liquidDebug = gDebugSliceEffect == DebugSliceEffect::Blood || DebugSliceEffectIsWater(gDebugSliceEffect);
+        gBloodDebugEveryWall = gEffectDebugViewer && liquidDebug;
 
         settings_.mazeWidth = gDebugSliceTiles + 2;
         settings_.mazeHeight = gDebugSliceTiles + 2;
@@ -1940,7 +2028,7 @@ private:
         settings_.waterDamageDensity = 0.0f;
         settings_.bloodSplatterDensity = 0.0f;
         settings_.bloodBurstCount = 0;
-        settings_.bloodStreamCount = gDebugSliceEffect == DebugSliceEffect::Blood
+        settings_.bloodStreamCount = liquidDebug
             ? std::max(settings_.bloodStreamCount, 30)
             : 0;
         settings_.bloodStreamThickness = std::max(settings_.bloodStreamThickness, 0.88f);
@@ -1963,6 +2051,10 @@ private:
             settings_.darkLampVisibleRatio = 0.0f;
             settings_.brokenZoneRatio = 0.0f;
         }
+        if (gDebugSliceEffect == DebugSliceEffect::Props) {
+            settings_.ambientLight = std::max(settings_.ambientLight, 0.42f);
+            settings_.flashlightIntensity = std::max(settings_.flashlightIntensity, 2.4f);
+        }
     }
 
     float DebugSliceClockSeconds() const {
@@ -1972,7 +2064,7 @@ private:
 
     float DebugSliceLoopSeconds() const {
         if (gDebugSliceEffect == DebugSliceEffect::Blood) return settings_.effectBloodLoopSeconds;
-        if (DebugSliceEffectIsWater(gDebugSliceEffect)) return settings_.effectWaterLoopSeconds;
+        if (DebugSliceEffectIsWater(gDebugSliceEffect)) return std::max(settings_.effectWaterLoopSeconds, settings_.effectBloodLoopSeconds * 0.82f);
         if (gDebugSliceEffect == DebugSliceEffect::AirVents) return settings_.effectAirVentLoopSeconds;
         if (gDebugSliceEffect == DebugSliceEffect::BrokenLamps) return settings_.effectBrokenLampLoopSeconds;
         return settings_.effectStaticLoopSeconds;
@@ -2498,7 +2590,7 @@ private:
 
     uint64_t TextureCacheHash() const {
         uint64_t hash = 1469598103934665603ull;
-        const char* version = "BackroomsMazeTextureCacheV8";
+        const char* version = "BackroomsMazeTextureCacheV9";
         hash = Fnv1aAppend(hash, version, std::strlen(version));
         hash = Fnv1aAppend(hash, &kTextureSize, sizeof(kTextureSize));
         hash = Fnv1aAppend(hash, &kMaterialCount, sizeof(kMaterialCount));
@@ -3100,6 +3192,7 @@ private:
         }
         out.min = {header.min[0], header.min[1], header.min[2]};
         out.max = {header.max[0], header.max[1], header.max[2]};
+        out.generatedUvFallback = StaticPropNeedsGeneratedUv(out);
         return true;
     }
 
@@ -3240,6 +3333,7 @@ private:
         if (out.vertices.empty()) return false;
         out.min = minP;
         out.max = maxP;
+        out.generatedUvFallback = StaticPropNeedsGeneratedUv(out);
         return true;
     }
 
@@ -3386,7 +3480,7 @@ VSOut VSMain(VSIn input)
 
 float MaterialId(float material)
 {
-    return clamp(floor(material), 0.0, 24.0);
+    return clamp(floor(material), 0.0, 25.0);
 }
 
 void ShadowPS(VSOut input)
@@ -3399,7 +3493,8 @@ void ShadowPS(VSOut input)
         (materialId > 11.5 && materialId < 12.5) ||
         (materialId > 12.5 && materialId < 13.5) ||
         (materialId > 13.5 && materialId < 14.5) ||
-        (materialId > 14.5 && materialId < 15.5))
+        (materialId > 14.5 && materialId < 15.5) ||
+        (materialId > 24.5 && materialId < 25.5))
     {
         discard;
     }
@@ -3724,6 +3819,65 @@ float BloodShape(float2 uv, float3 worldPos, float3 normal, float seed, out floa
     alpha *= smoothstep(0.006, 0.052 + edgeNoise * 0.035, border);
     thickness = saturate(impact * 0.24 + satellites * 0.42 + tinyMist * 0.22 + pepper * 0.10 + streaks * 0.28 + drips * 0.96 + ceilingBlebs * 0.34 + alpha * 0.32);
     return alpha;
+}
+
+float CenterSeepPool(float2 uv, float3 worldPos, float seed, float age, float speed, float maxRadius, out float thickness)
+{
+    float grow = smoothstep(0.0, 1.0, saturate(age * speed));
+    float2 p = uv * 2.0 - 1.0;
+    float darkCore = 0.0;
+    float soakedLayer = 0.0;
+    float sourceField = 0.0;
+    [unroll]
+    for (int i = 0; i < 3; ++i)
+    {
+        float fi = (float)i;
+        float enabled = i == 0 ? 1.0 : step(i == 1 ? 0.54 : 0.82, Hash21(float2(seed * 61.0 + fi, 17.0)));
+        float localGrow = grow * enabled;
+        float2 offset = float2(0.0, 0.0);
+        if (i > 0)
+        {
+            float a = seed * 6.2831853 + fi * 2.43 + Hash21(float2(seed * 71.0, fi + 19.0)) * 1.25;
+            float r = 0.22 + Hash21(float2(seed * 73.0 + fi, 23.0)) * 0.26;
+            offset = float2(cos(a), sin(a)) * r;
+        }
+        float2 q = p - offset;
+        float angle = seed * 6.2831853 + Hash21(float2(seed * 41.0 + fi, 19.0)) * 1.2;
+        q = Rotate2(q, angle);
+        q *= float2(0.94 + Hash21(float2(seed * 47.0 + fi, 23.0)) * 0.14,
+                    0.92 + Hash21(float2(seed * 53.0, fi + 29.0)) * 0.16);
+        float radial = length(q);
+        float broad = Fbm3(float3(worldPos.xz * (3.4 + seed * 1.1 + fi * 0.35) + seed * 11.0 + fi, seed * 31.0));
+        float fine = Noise3(float3(worldPos.xz * (15.0 + seed * 4.0 + fi * 1.7) + seed * 7.0, seed * 71.0 + fi));
+        float cellular = Fbm3(float3(worldPos.xz * (8.4 + fi * 1.5) + seed * 19.0, seed * 89.0 + fi));
+        float edgeNoise = (broad - 0.5) * (0.18 + localGrow * 0.22) + (fine - 0.5) * 0.055;
+        float spotScale = i == 0 ? 1.0 : (0.54 + Hash21(float2(seed * 79.0, fi + 31.0)) * 0.20);
+        float radius = lerp(0.022, maxRadius * spotScale, localGrow);
+        float coreEdge = (broad - 0.5) * 0.028 + (fine - 0.5) * 0.012;
+        float coreGrow = smoothstep(0.0, 1.0, saturate(age * speed * (0.58 + fi * 0.08)));
+        float coreNoise = (cellular - 0.5) * (0.020 + coreGrow * 0.035) + coreEdge;
+        float core = 1.0 - smoothstep(radius * (0.070 + coreGrow * 0.040) + coreNoise,
+            radius * (0.18 + coreGrow * 0.145) + coreNoise, radial);
+        float front = 1.0 - smoothstep(radius * 0.36 + edgeNoise,
+            radius + 0.34 + edgeNoise, radial);
+        float soakMask = smoothstep(0.20, 0.82, broad + (cellular - 0.5) * 0.44 + (fine - 0.5) * 0.14);
+        float feather = smoothstep(0.03, 0.82, front);
+        float capillary = smoothstep(0.64, 0.93, cellular + fine * 0.10) *
+            (1.0 - smoothstep(radius * 0.70, radius + 0.48, radial + (broad - 0.5) * 0.12));
+        darkCore = max(darkCore, core * enabled);
+        sourceField = max(sourceField, front * enabled);
+        soakedLayer = max(soakedLayer, max(feather * soakMask, capillary * 0.45) * enabled);
+    }
+    float fibers = smoothstep(0.46, 0.90, Fbm3(float3(worldPos.xz * 18.0 + seed * 13.0, seed * 79.0)));
+    float dryBreak = smoothstep(0.58, 0.91, Fbm3(float3(worldPos.xz * 10.5 + seed * 23.0, seed * 101.0)));
+    float mottledSoak = sourceField * (0.24 + soakedLayer * 0.36) + soakedLayer * (0.88 + fibers * 0.20);
+    float sharedSoak = smoothstep(0.13, 0.64, mottledSoak);
+    sharedSoak *= 1.0 - dryBreak * (0.28 + grow * 0.18);
+    float shape = max(darkCore * 0.94, sharedSoak * (0.30 + fibers * 0.16));
+    float border = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    shape *= smoothstep(0.004, 0.032, border) * smoothstep(0.02, 0.55, grow);
+    thickness = saturate(darkCore * (0.78 + grow * 0.14) + sharedSoak * 0.12);
+    return shape;
 }
 
 )" R"(
@@ -4260,21 +4414,27 @@ float4 PSMain(VSOut input) : SV_TARGET
     float2 rawUv = input.uv;
     float2 uv = frac(rawUv);
 
-    if (materialId > 13.5 && materialId < 14.5)
+    if ((materialId > 13.5 && materialId < 14.5) || (materialId > 24.5 && materialId < 25.5))
     {
+        float waterLiquid = step(24.5, materialId);
         float rawSeed = frac(input.material);
         float wallLeakSurface = step(0.96, rawSeed);
+        float centerSeepSurface = step(0.43, rawSeed) * (1.0 - step(0.95, rawSeed));
         float seed = rawSeed;
         if (wallLeakSurface > 0.5)
         {
             seed = saturate((rawSeed - 0.965) / 0.025);
         }
+        else if (centerSeepSurface > 0.5)
+        {
+            seed = saturate((rawSeed - 0.43) / 0.52);
+        }
         else if (rawSeed >= 0.02 && rawSeed <= 0.42)
         {
             seed = saturate((rawSeed - 0.02) / 0.40);
         }
-        float wet = saturate(gHorror0.y);
-        float2 bloodUv = uv;
+        float wet = lerp(saturate(gHorror0.y), 1.0, waterLiquid);
+        float2 bloodUv = lerp(uv, rawUv, waterLiquid);
         float2 bloodUvMeters = BloodUvWorldMeters(rawUv, input.worldPos);
         float drips = 0.0;
         float thickness = 0.0;
@@ -4283,14 +4443,38 @@ float4 PSMain(VSOut input) : SV_TARGET
         float ceilingMask = smoothstep(0.45, 0.82, -N.y);
         float animMask = 0.0;
         float leakAge = 0.0;
-        SelectBloodRevealSlot(float4(gBlood0.xy, gBlood0.z, gBlood1.y), gBlood0.w, input.worldPos.xz, time, animMask, leakAge);
-        SelectBloodRevealSlot(gBlood2, 1.0, input.worldPos.xz, time, animMask, leakAge);
-        SelectBloodRevealSlot(gBlood3, 1.0, input.worldPos.xz, time, animMask, leakAge);
-        SelectBloodRevealSlot(gBlood4, 1.0, input.worldPos.xz, time, animMask, leakAge);
-        SelectBloodRevealSlot(gBlood5, 1.0, input.worldPos.xz, time, animMask, leakAge);
-        SelectBloodRevealSlot(gBlood6, 1.0, input.worldPos.xz, time, animMask, leakAge);
-        SelectBloodRevealSlot(gBlood7, 1.0, input.worldPos.xz, time, animMask, leakAge);
-        SelectBloodRevealSlot(gBlood8, 1.0, input.worldPos.xz, time, animMask, leakAge);
+        if (waterLiquid > 0.5)
+        {
+            float waterDebugActive = step(1.0, gTransition0.w);
+            float waterDebugPhase = frac(gTransition0.w);
+            if (waterDebugActive > 0.5)
+            {
+                animMask = 1.0;
+                leakAge = waterDebugPhase * 54.0;
+            }
+            else
+            {
+                SelectBloodRevealSlot(float4(gBlood0.xy, gBlood0.z, gBlood1.y), gBlood0.w, input.worldPos.xz, time, animMask, leakAge);
+                SelectBloodRevealSlot(gBlood2, 1.0, input.worldPos.xz, time, animMask, leakAge);
+                SelectBloodRevealSlot(gBlood3, 1.0, input.worldPos.xz, time, animMask, leakAge);
+                SelectBloodRevealSlot(gBlood4, 1.0, input.worldPos.xz, time, animMask, leakAge);
+                SelectBloodRevealSlot(gBlood5, 1.0, input.worldPos.xz, time, animMask, leakAge);
+                SelectBloodRevealSlot(gBlood6, 1.0, input.worldPos.xz, time, animMask, leakAge);
+                SelectBloodRevealSlot(gBlood7, 1.0, input.worldPos.xz, time, animMask, leakAge);
+                SelectBloodRevealSlot(gBlood8, 1.0, input.worldPos.xz, time, animMask, leakAge);
+            }
+        }
+        else
+        {
+            SelectBloodRevealSlot(float4(gBlood0.xy, gBlood0.z, gBlood1.y), gBlood0.w, input.worldPos.xz, time, animMask, leakAge);
+            SelectBloodRevealSlot(gBlood2, 1.0, input.worldPos.xz, time, animMask, leakAge);
+            SelectBloodRevealSlot(gBlood3, 1.0, input.worldPos.xz, time, animMask, leakAge);
+            SelectBloodRevealSlot(gBlood4, 1.0, input.worldPos.xz, time, animMask, leakAge);
+            SelectBloodRevealSlot(gBlood5, 1.0, input.worldPos.xz, time, animMask, leakAge);
+            SelectBloodRevealSlot(gBlood6, 1.0, input.worldPos.xz, time, animMask, leakAge);
+            SelectBloodRevealSlot(gBlood7, 1.0, input.worldPos.xz, time, animMask, leakAge);
+            SelectBloodRevealSlot(gBlood8, 1.0, input.worldPos.xz, time, animMask, leakAge);
+        }
         float alpha = 0.0;
         float bloodQuality = clamp(gBlood1.w, 0.25, 1.0);
         float requestedStreams = clamp(round(gBlood1.x), 4.0, 32.0);
@@ -4304,6 +4488,8 @@ float4 PSMain(VSOut input) : SV_TARGET
             : clamp(round(streamCount * lerp(0.32, 0.70, bloodQuality)), 2.0, streamCount);
         float streamWidthScale = max(0.10, gBlood1.z) * lerp(1.55, 1.0, bloodQuality);
         static const bool highBloodDetail = BRM_ENABLE_HIGH_BLOOD != 0;
+
+)" R"(
 
         if (wallMask > 0.45)
         {
@@ -4342,14 +4528,17 @@ float4 PSMain(VSOut input) : SV_TARGET
                 float streamStrength = lerp(0.24, 1.18, densityBand) * lerp(0.58, 1.12, Hash21(float2(seed * 173.0 + fi, 47.0)));
                 float streamDelay = r0 * 4.6 + fi * (0.05 + r2 * 0.18) +
                     Hash21(float2(seed * 251.0 + fi, 157.0)) * 1.7;
+                streamDelay *= lerp(1.0, 0.62, waterLiquid);
                 float streamAge = max(0.0, leakAge - streamDelay);
                 float speedPhase = streamAge * (0.62 + r2 * 0.54) + seed * 17.0 + fi * 2.13;
                 float flowAge = max(0.0, streamAge * (0.90 + r1 * 0.18) +
                     sin(speedPhase) * (0.10 + r0 * 0.08) +
                     sin(speedPhase * 2.17 + r2 * 6.0) * 0.032);
+                flowAge *= lerp(1.0, 1.34, waterLiquid);
                 float sourceReady = smoothstep(0.10 + r2 * 0.55, 0.90 + r1 * 1.05, flowAge);
                 float streamGrow = smoothstep(0.0, 1.0,
-                    saturate((flowAge - (0.20 + r2 * 0.75)) * (0.052 + r1 * 0.055)));
+                    saturate((flowAge - (0.20 + r2 * 0.75) * lerp(1.0, 0.68, waterLiquid)) *
+                    (0.052 + r1 * 0.055) * lerp(1.0, 1.24, waterLiquid)));
                 float reachRoll = Hash21(float2(seed * 197.0 + fi, 109.0));
                 float partialReach = 0.30 + Hash21(float2(seed * 211.0 + fi, 113.0)) * 0.52;
                 float fullReach = 1.02 + Hash21(float2(seed * 223.0 + fi, 127.0)) * 0.18;
@@ -4392,9 +4581,9 @@ float4 PSMain(VSOut input) : SV_TARGET
                     trailGate * permanentTrace * streamStrength;
                 sdfWet += field;
                 sdfCore += field * field;
-                float soakDelay = 3.2 + r2 * 10.0 + y * (7.0 + r1 * 12.0);
+                float soakDelay = (3.2 + r2 * 10.0 + y * (7.0 + r1 * 12.0)) * lerp(1.0, 0.74, waterLiquid);
                 float soakAge = max(0.0, flowAge - soakDelay);
-                float soakGrow = smoothstep(0.0, 1.0, saturate(soakAge * (0.070 + r0 * 0.058)));
+                float soakGrow = smoothstep(0.0, 1.0, saturate(soakAge * (0.070 + r0 * 0.058) * lerp(1.0, 1.18, waterLiquid)));
                 float soakNoise = 0.72 + 0.28 * Hash21(float2(fi * 17.0 + seed * 61.0, floor(y * 16.0) + floor(u * 9.0)));
                 if (highBloodDetail)
                 {
@@ -4487,131 +4676,194 @@ float4 PSMain(VSOut input) : SV_TARGET
 
         else if (floorMask > 0.45)
         {
-            float u = bloodUv.x;
-            float away = 1.0 - bloodUv.y;
-            float pooled = 0.0;
-            float pooledField = 0.0;
-            float wetRim = 0.0;
-            float lobeThickness = 0.0;
-            [loop]
-            for (int i = 0; i < 32; ++i)
+            if (centerSeepSurface > 0.5)
             {
-                float fi = (float)i;
-                if (fi >= floorStreamCount) break;
-                float r0 = Hash21(float2(seed * 47.0 + fi, 3.0));
-                float r1 = Hash21(float2(seed * 31.0, fi + 5.0));
-                float r2 = Hash21(float2(fi + 9.0, seed * 71.0));
-                float clusterCount = 2.0 + floor(Hash21(float2(seed * 83.0, 19.0)) * 3.0);
-                float clusterId = floor(fmod(fi + floor(seed * 31.0), clusterCount));
-                float uniformCenter = 0.055 + ((fi + 0.20 + r0 * 0.60) / max(1.0, streamCount)) * 0.89;
-                float clusterCenter = 0.08 + Hash21(float2(seed * 89.0 + clusterId * 5.7, 13.0)) * 0.84;
-                float clusterSpread = 0.025 + Hash21(float2(seed * 97.0 + clusterId, 29.0)) * 0.080;
-                float clusteredCenter = clusterCenter + (Hash21(float2(seed * 131.0 + fi, 37.0)) - 0.5) * clusterSpread;
-                float center = clamp(lerp(uniformCenter, clusteredCenter, 0.58 + Hash21(float2(seed * 151.0 + fi, 43.0)) * 0.34), 0.045, 0.955);
-                float densityBase = Hash21(float2(center * 17.0 + seed * 11.0, clusterId * 3.1 + 5.0));
-                if (highBloodDetail)
+                float centerThickness = 0.0;
+                float centerSpeed = lerp(0.026, 0.017, waterLiquid);
+                float centerRadius = lerp(0.56, 0.72, waterLiquid);
+                float source = CenterSeepPool(bloodUv, input.worldPos, seed, leakAge, centerSpeed, centerRadius, centerThickness);
+                alpha = source * floorMask * smoothstep(0.0, lerp(0.45, 0.82, waterLiquid), leakAge);
+                alpha = smoothstep(lerp(0.020, 0.012, waterLiquid), lerp(0.118, 0.090, waterLiquid), alpha);
+                thickness = centerThickness * alpha;
+                drips = 0.0;
+            }
+            else
+            {
+                float u = bloodUv.x;
+                float away = 1.0 - bloodUv.y;
+                float pooled = 0.0;
+                float pooledField = 0.0;
+                float wetRim = 0.0;
+                float earlySoakField = 0.0;
+                float lobeThickness = 0.0;
+                [loop]
+                for (int i = 0; i < 32; ++i)
                 {
-                    densityBase = smoothstep(0.24, 0.78, Fbm3(float3(center * 4.2, seed * 18.0, clusterId * 2.3)));
-                }
-                float densityBand = densityBase;
-                float streamStrength = lerp(0.24, 1.18, densityBand) * lerp(0.58, 1.12, Hash21(float2(seed * 173.0 + fi, 47.0)));
-                float streamDelay = wallLeakSurface > 0.5
-                    ? (r0 * 4.6 + fi * (0.05 + r2 * 0.18) + Hash21(float2(seed * 251.0 + fi, 157.0)) * 1.7)
-                    : (r0 * 2.2 + fi * 0.16);
-                float streamAge = max(0.0, leakAge - streamDelay);
-                float flowAge = streamAge;
-                if (wallLeakSurface > 0.5)
-                {
-                    float speedPhase = streamAge * (0.62 + r2 * 0.54) + seed * 17.0 + fi * 2.13;
-                    flowAge = max(0.0, streamAge * (0.90 + r1 * 0.18) +
-                        sin(speedPhase) * (0.10 + r0 * 0.08) +
-                        sin(speedPhase * 2.17 + r2 * 6.0) * 0.032);
-                }
-                float streamGrowRate = wallLeakSurface > 0.5
-                    ? (0.052 + r1 * 0.050)
-                    : (0.088 + r1 * 0.066);
-                float streamGrow = smoothstep(0.0, 1.0, saturate(flowAge * streamGrowRate));
-                float len = saturate(0.160 + streamGrow * (0.92 + r1 * 0.24));
-                float reachFloor = smoothstep(0.83, 0.98, len) * streamStrength;
-                float contact = reachFloor;
-                if (wallLeakSurface > 0.5)
-                {
-                    contact = smoothstep(0.98, 1.075, len) * smoothstep(11.0, 16.0, flowAge) * streamStrength;
-                }
-                float poolDelay = wallLeakSurface > 0.5 ? (12.0 + r2 * 4.0) : 4.8;
-                float poolAge = max(0.0, flowAge - poolDelay - r2 * (wallLeakSurface > 0.5 ? 1.2 : 1.9));
-                float poolGrowRate = wallLeakSurface > 0.5 ? (0.052 + r1 * 0.034) : (0.112 + r1 * 0.056);
-                float poolGrow = smoothstep(0.0, 1.0, saturate(poolAge * poolGrowRate)) * contact;
-                float leanAtFloor = (r1 - 0.5) * (0.0025 + r2 * 0.0035);
-                float bottomWobble = 0.0;
-                if (wallLeakSurface > 0.5)
-                {
-                    bottomWobble = (Hash21(float2(fi * 5.1 + seed * 23.0, 3.0)) - 0.5) * (0.0007 + r2 * 0.0010);
+                    float fi = (float)i;
+                    if (fi >= floorStreamCount) break;
+                    float r0 = Hash21(float2(seed * 47.0 + fi, 3.0));
+                    float r1 = Hash21(float2(seed * 31.0, fi + 5.0));
+                    float r2 = Hash21(float2(fi + 9.0, seed * 71.0));
+                    float clusterCount = 2.0 + floor(Hash21(float2(seed * 83.0, 19.0)) * 3.0);
+                    float clusterId = floor(fmod(fi + floor(seed * 31.0), clusterCount));
+                    float uniformCenter = 0.055 + ((fi + 0.20 + r0 * 0.60) / max(1.0, streamCount)) * 0.89;
+                    float clusterCenter = 0.08 + Hash21(float2(seed * 89.0 + clusterId * 5.7, 13.0)) * 0.84;
+                    float clusterSpread = 0.025 + Hash21(float2(seed * 97.0 + clusterId, 29.0)) * 0.080;
+                    float clusteredCenter = clusterCenter + (Hash21(float2(seed * 131.0 + fi, 37.0)) - 0.5) * clusterSpread;
+                    float center = clamp(lerp(uniformCenter, clusteredCenter, 0.58 + Hash21(float2(seed * 151.0 + fi, 43.0)) * 0.34), 0.045, 0.955);
+                    float densityBase = Hash21(float2(center * 17.0 + seed * 11.0, clusterId * 3.1 + 5.0));
                     if (highBloodDetail)
                     {
-                        bottomWobble = (Fbm3(float3(2.2, fi * 1.7, seed * 23.0)) - 0.5) * (0.0011 + r2 * 0.0018);
+                        densityBase = smoothstep(0.24, 0.78, Fbm3(float3(center * 4.2, seed * 18.0, clusterId * 2.3)));
                     }
+                    float densityBand = densityBase;
+                    float streamStrength = lerp(0.24, 1.18, densityBand) * lerp(0.58, 1.12, Hash21(float2(seed * 173.0 + fi, 47.0)));
+                    float streamDelay = wallLeakSurface > 0.5
+                        ? (r0 * 3.4 + fi * (0.05 + r2 * 0.16) + Hash21(float2(seed * 251.0 + fi, 157.0)) * 1.1)
+                        : (r0 * 2.2 + fi * 0.16);
+                    float streamAge = max(0.0, leakAge - streamDelay);
+                    float flowAge = streamAge;
+                    if (wallLeakSurface > 0.5)
+                    {
+                        float speedPhase = streamAge * (0.62 + r2 * 0.54) + seed * 17.0 + fi * 2.13;
+                        flowAge = max(0.0, streamAge * (0.90 + r1 * 0.18) +
+                            sin(speedPhase) * (0.10 + r0 * 0.08) +
+                            sin(speedPhase * 2.17 + r2 * 6.0) * 0.032);
+                    }
+                    float streamGrowRate = wallLeakSurface > 0.5
+                        ? (0.074 + r1 * 0.062)
+                        : (0.088 + r1 * 0.066);
+                    float streamGrow = smoothstep(0.0, 1.0, saturate(flowAge * streamGrowRate));
+                    float len = saturate(0.160 + streamGrow * (0.92 + r1 * 0.24));
+                    float reachFloor = smoothstep(0.83, 0.98, len) * streamStrength;
+                    float contact = reachFloor;
+                    if (wallLeakSurface > 0.5)
+                    {
+                        float waterFloorHit = smoothstep(0.88, 1.00, len) * smoothstep(5.8, 9.8, flowAge);
+                        float bloodFloorHit = smoothstep(0.985, 1.075, len) * smoothstep(12.0, 17.0, flowAge);
+                        contact = lerp(bloodFloorHit, waterFloorHit, waterLiquid) * streamStrength;
+                    }
+                    float poolDelay = wallLeakSurface > 0.5
+                        ? lerp(11.8 + r2 * 4.8, 3.8 + r2 * 2.4, waterLiquid)
+                        : 4.8;
+                    float extraDelay = r2 * (wallLeakSurface > 0.5 ? lerp(1.3, 0.45, waterLiquid) : 1.9);
+                    float poolAge = max(0.0, flowAge - poolDelay - extraDelay);
+                    float poolGrowRate = wallLeakSurface > 0.5 ? (0.034 + r1 * 0.030) : (0.112 + r1 * 0.056);
+                    poolGrowRate *= wallLeakSurface > 0.5 ? lerp(1.0, 1.42, waterLiquid) : lerp(1.0, 0.56, waterLiquid);
+                    float poolGrow = smoothstep(0.0, 1.0, saturate(poolAge * poolGrowRate)) * contact;
+                    float leanAtFloor = (r1 - 0.5) * (0.0025 + r2 * 0.0035);
+                    float bottomWobble = 0.0;
+                    if (wallLeakSurface > 0.5)
+                    {
+                        bottomWobble = (Hash21(float2(fi * 5.1 + seed * 23.0, 3.0)) - 0.5) * (0.0007 + r2 * 0.0010);
+                        if (highBloodDetail)
+                        {
+                            bottomWobble = (Fbm3(float3(2.2, fi * 1.7, seed * 23.0)) - 0.5) * (0.0011 + r2 * 0.0018);
+                        }
+                    }
+                    float sourceU = center + leanAtFloor + bottomWobble;
+                    float edgeNoise = Hash21(float2(floor(u * 12.0) + fi, floor(away * 10.0) + seed * 23.0)) - 0.5;
+                    if (highBloodDetail)
+                    {
+                        edgeNoise = Fbm3(float3(u * 7.5 + fi, away * 4.0, seed * 23.0)) - 0.5;
+                    }
+                    float spreadAway = wallLeakSurface > 0.5
+                        ? (0.070 + poolGrow * (1.02 + r2 * 0.58) + edgeNoise * 0.046)
+                        : (0.070 + poolGrow * (0.78 + r2 * 0.48) + edgeNoise * 0.040);
+                    float spreadSide = (wallLeakSurface > 0.5
+                        ? (0.032 + poolGrow * (0.155 + r1 * 0.210))
+                        : (0.030 + poolGrow * (0.115 + r1 * 0.180))) * lerp(0.78, 1.0, streamWidthScale);
+                    spreadAway *= lerp(1.0, 1.34, waterLiquid);
+                    spreadSide *= lerp(1.0, 1.18, waterLiquid);
+                    float sideWorld = (u - sourceU) * bloodUvMeters.x;
+                    float awayWorld = away * bloodUvMeters.y;
+                    float soakRag = Fbm3(float3(input.worldPos.xz * (7.0 + r2 * 7.0) + fi * 0.37, seed * 31.0 + fi));
+                    if (wallLeakSurface > 0.5)
+                    {
+                        float soakPoolDelay = lerp(9.4 + r2 * 3.8, 3.1 + r2 * 2.0, waterLiquid);
+                        float soakPoolAge = max(0.0, flowAge - soakPoolDelay);
+                        float waterBottomReached = smoothstep(0.86, 0.99, len) * smoothstep(4.8, 8.8, flowAge);
+                        float bloodBottomReached = smoothstep(0.965, 1.055, len) * smoothstep(10.5, 15.5, flowAge);
+                        float bottomReached = lerp(bloodBottomReached, waterBottomReached, waterLiquid);
+                        float soakGrowRate = (0.038 + r1 * 0.032) * lerp(1.0, 1.30, waterLiquid);
+                        float soakGrow = smoothstep(0.0, 1.0, saturate(soakPoolAge * soakGrowRate)) *
+                            bottomReached * streamStrength;
+                        float soakSpreadAway = 0.055 + soakGrow * (0.72 + r2 * 0.42) + edgeNoise * 0.042;
+                        float soakSpreadSide = (0.030 + soakGrow * (0.170 + r1 * 0.150)) * lerp(0.82, 1.0, streamWidthScale);
+                        soakSpreadAway *= lerp(1.0, 1.42, waterLiquid);
+                        soakSpreadSide *= lerp(1.0, 1.18, waterLiquid);
+                        float soakSideWorld = max(0.016, soakSpreadSide * bloodUvMeters.x);
+                        float soakAwayWorld = max(0.018, soakSpreadAway * bloodUvMeters.x);
+                        float2 soakQ = float2(sideWorld / soakSideWorld, awayWorld / soakAwayWorld);
+                        float soakBreakup = (soakRag - 0.5) * (0.28 + soakGrow * 0.34);
+                        float soakLayer = 1.0 - smoothstep(0.72, 1.14, dot(soakQ, soakQ) + soakBreakup);
+                        soakLayer *= smoothstep(0.0, 0.16, soakGrow);
+                        earlySoakField = max(earlySoakField, soakLayer * (0.24 + soakGrow * 0.18));
+                    }
+                    float spreadSideWorld = max(0.010, spreadSide * bloodUvMeters.x);
+                    float spreadAwayWorld = max(0.012, spreadAway * bloodUvMeters.x);
+                    float2 q = float2(sideWorld / spreadSideWorld, awayWorld / spreadAwayWorld);
+                    float edgeBreakup = (soakRag - 0.5) * (0.34 + poolGrow * 0.42);
+                    float lobe = 1.0 - smoothstep(0.70, 1.05, dot(q, q) + edgeBreakup);
+                    lobe *= smoothstep(0.0, 0.14, poolGrow);
+                    float feeder = exp(-(sideWorld * sideWorld) / max(0.000035, spreadSideWorld * spreadSideWorld * 0.22)) *
+                        (1.0 - smoothstep(0.0, (0.135 + poolGrow * 0.075) * bloodUvMeters.x, awayWorld)) * contact;
+                    float capillary = smoothstep(0.62, 0.92,
+                        Fbm3(float3(input.worldPos.xz * (18.0 + r1 * 12.0) + fi, seed * 57.0))) *
+                        (1.0 - smoothstep(0.72, 1.35, dot(q, q))) * smoothstep(0.12, 0.85, poolGrow) * contact * 0.22;
+                    lobe = max(lobe, capillary);
+                    pooled = max(pooled, lobe);
+                    pooledField += saturate(lobe) * (0.62 + poolGrow * 0.32) + feeder * 0.22;
+                    wetRim = max(wetRim, feeder);
+                    lobeThickness = max(lobeThickness, lobe * (0.64 + poolGrow * 0.54) + feeder * 0.52);
                 }
-                float sourceU = center + leanAtFloor + bottomWobble;
-                float edgeNoise = Hash21(float2(floor(u * 12.0) + fi, floor(away * 10.0) + seed * 23.0)) - 0.5;
+                float sdfMerge = smoothstep(0.42, 1.18, pooledField + wetRim * 0.40);
+                float merged = saturate(max(max(pooled, sdfMerge), earlySoakField * 0.58) + wetRim * 0.72);
+                float lateralNoise = (Hash21(float2(floor(u * 11.0) + seed * 11.0, floor(away * 8.0))) - 0.5) * 0.024;
                 if (highBloodDetail)
                 {
-                    edgeNoise = Fbm3(float3(u * 7.5 + fi, away * 4.0, seed * 23.0)) - 0.5;
+                    lateralNoise = (Fbm3(float3(u * 6.1, away * 3.7, seed * 11.0)) - 0.5) * 0.030;
                 }
-                float spreadAway = 0.070 + poolGrow * (0.78 + r2 * 0.48) + edgeNoise * 0.040;
-                float spreadSide = (0.030 + poolGrow * (0.115 + r1 * 0.180)) * lerp(0.78, 1.0, streamWidthScale);
-                float sideWorld = (u - sourceU) * bloodUvMeters.x;
-                float awayWorld = away * bloodUvMeters.y;
-                float spreadSideWorld = max(0.010, spreadSide * bloodUvMeters.x);
-                float spreadAwayWorld = max(0.012, spreadAway * bloodUvMeters.x);
-                float2 q = float2(sideWorld / spreadSideWorld, awayWorld / spreadAwayWorld);
-                float soakRag = Fbm3(float3(input.worldPos.xz * (7.0 + r2 * 7.0) + fi * 0.37, seed * 31.0 + fi));
-                float edgeBreakup = (soakRag - 0.5) * (0.34 + poolGrow * 0.42);
-                float lobe = 1.0 - smoothstep(0.70, 1.05, dot(q, q) + edgeBreakup);
-                lobe *= smoothstep(0.0, 0.14, poolGrow);
-                float feeder = exp(-(sideWorld * sideWorld) / max(0.000035, spreadSideWorld * spreadSideWorld * 0.22)) *
-                    (1.0 - smoothstep(0.0, (0.135 + poolGrow * 0.075) * bloodUvMeters.x, awayWorld)) * contact;
-                float capillary = smoothstep(0.62, 0.92,
-                    Fbm3(float3(input.worldPos.xz * (18.0 + r1 * 12.0) + fi, seed * 57.0))) *
-                    (1.0 - smoothstep(0.72, 1.35, dot(q, q))) * smoothstep(0.12, 0.85, poolGrow) * contact * 0.22;
-                lobe = max(lobe, capillary);
-                pooled = max(pooled, lobe);
-                pooledField += saturate(lobe) * (0.62 + poolGrow * 0.32) + feeder * 0.22;
-                wetRim = max(wetRim, feeder);
-                lobeThickness = max(lobeThickness, lobe * (0.64 + poolGrow * 0.54) + feeder * 0.52);
+                float lateral = smoothstep(0.030 + lateralNoise, 0.070 + lateralNoise, u) *
+                    (1.0 - smoothstep(0.930 - lateralNoise, 0.970 - lateralNoise, u));
+                float farEdgeNoise = (Fbm3(float3(u * 4.7 + seed * 23.0, away * 2.1, seed * 67.0)) - 0.5) * 0.16 +
+                    (Noise3(float3(u * 13.0, away * 8.0, seed * 97.0)) - 0.5) * 0.045;
+                float waterFarFade = 1.0 - smoothstep(1.56 + farEdgeNoise, 1.94 + farEdgeNoise, away);
+                float waterNearFade = smoothstep(-0.030 + farEdgeNoise * 0.24, 0.045 + farEdgeNoise * 0.24, away);
+                float floorCardFade = lerp(1.0, lateral * waterFarFade * waterNearFade, waterLiquid);
+                float seam = 1.0 - smoothstep(0.0, 0.040, away);
+                float floodNoise = 0.70 + 0.30 * Fbm3(float3(input.worldPos.xz * 2.7 + seed * 9.0, seed * 31.0));
+                float floorFrontNoise = (Fbm3(float3(u * 3.1 + seed * 17.0, away * 1.9, seed * 53.0)) - 0.5) * 0.20 +
+                    (Noise3(float3(u * 10.0, away * 5.5, seed * 79.0)) - 0.5) * 0.055;
+                float lateFeatherStart = lerp(14.0, 10.0, waterLiquid);
+                float lateFeatherEnd = lerp(34.0, 52.0, waterLiquid);
+                float lateFeather = smoothstep(lateFeatherStart, lateFeatherEnd, leakAge) *
+                    smoothstep(0.22, 0.86, pooledField + wetRim * 0.70) *
+                    smoothstep(0.56, 0.91, floodNoise + floorFrontNoise * 0.55) *
+                    (1.0 - smoothstep(lerp(0.74, 0.88, waterLiquid), lerp(1.16, 1.42, waterLiquid), away)) *
+                    lateral * lerp(0.22, 0.38, waterLiquid);
+                merged = saturate(merged + lateFeather);
+                merged *= floorCardFade;
+                wetRim *= floorCardFade;
+                earlySoakField *= floorCardFade;
+                lobeThickness *= floorCardFade;
+                float soakNoise = 0.78 + 0.22 * Hash21(float2(floor(input.worldPos.x * 7.0) + seed * 41.0, floor(input.worldPos.z * 7.0)));
+                float fibers = 0.82 + 0.18 * Hash21(float2(floor(input.worldPos.x * 9.0) + seed * 47.0, floor(input.worldPos.z * 9.0)));
+                if (highBloodDetail)
+                {
+                    soakNoise = 0.65 + 0.35 * Fbm3(float3(input.worldPos.xz * 10.0, seed * 41.0));
+                    fibers = 0.70 + 0.30 * Fbm3(float3(input.worldPos.xz * 11.0, seed * 41.0));
+                }
+                float soak = saturate(merged + earlySoakField * lerp(0.42, 0.68, waterLiquid)) *
+                    lateral * lerp(0.22, 0.36, waterLiquid) * soakNoise;
+                alpha = max(max(merged, soak * fibers), seam * lateral * wetRim * 0.75);
+                alpha = smoothstep(lerp(0.024, 0.014, waterLiquid), lerp(0.112, 0.088, waterLiquid), alpha);
+                thickness = saturate(lobeThickness * 0.86 + soak * lerp(0.28, 0.48, waterLiquid) +
+                    earlySoakField * lerp(0.070, 0.16, waterLiquid) + seam * wetRim * 0.46);
+                drips = saturate(merged + seam * wetRim * 0.45);
+                thickness *= alpha;
+                drips *= alpha;
             }
-            float sdfMerge = smoothstep(0.42, 1.18, pooledField + wetRim * 0.40);
-            float merged = saturate(max(pooled, sdfMerge) + wetRim * 0.72);
-            float lateralNoise = (Hash21(float2(floor(u * 11.0) + seed * 11.0, floor(away * 8.0))) - 0.5) * 0.024;
-            if (highBloodDetail)
-            {
-                lateralNoise = (Fbm3(float3(u * 6.1, away * 3.7, seed * 11.0)) - 0.5) * 0.030;
-            }
-            float lateral = smoothstep(0.030 + lateralNoise, 0.070 + lateralNoise, u) *
-                (1.0 - smoothstep(0.930 - lateralNoise, 0.970 - lateralNoise, u));
-            float seam = 1.0 - smoothstep(0.0, 0.040, away);
-            float floodNoise = 0.70 + 0.30 * Fbm3(float3(input.worldPos.xz * 2.7 + seed * 9.0, seed * 31.0));
-            float floorFrontNoise = (Fbm3(float3(u * 3.1 + seed * 17.0, away * 1.9, seed * 53.0)) - 0.5) * 0.20 +
-                (Noise3(float3(u * 10.0, away * 5.5, seed * 79.0)) - 0.5) * 0.055;
-            float lateFeather = smoothstep(14.0, 34.0, leakAge) *
-                smoothstep(0.22, 0.86, pooledField + wetRim * 0.70) *
-                smoothstep(0.56, 0.91, floodNoise + floorFrontNoise * 0.55) *
-                (1.0 - smoothstep(0.74, 1.16, away)) * lateral * 0.22;
-            merged = saturate(merged + lateFeather);
-            float soakNoise = 0.78 + 0.22 * Hash21(float2(floor(input.worldPos.x * 7.0) + seed * 41.0, floor(input.worldPos.z * 7.0)));
-            float fibers = 0.82 + 0.18 * Hash21(float2(floor(input.worldPos.x * 9.0) + seed * 47.0, floor(input.worldPos.z * 9.0)));
-            if (highBloodDetail)
-            {
-                soakNoise = 0.65 + 0.35 * Fbm3(float3(input.worldPos.xz * 10.0, seed * 41.0));
-                fibers = 0.70 + 0.30 * Fbm3(float3(input.worldPos.xz * 11.0, seed * 41.0));
-            }
-            float soak = saturate(merged) * lateral * 0.22 * soakNoise;
-            alpha = max(max(merged, soak * fibers), seam * lateral * wetRim * 0.75);
-            alpha = smoothstep(0.024, 0.112, alpha);
-            thickness = saturate(lobeThickness * 0.86 + soak * 0.28 + seam * wetRim * 0.46);
-            drips = saturate(merged + seam * wetRim * 0.45);
-            thickness *= alpha;
-            drips *= alpha;
         }
 
 )" R"(
@@ -4658,10 +4910,12 @@ float4 PSMain(VSOut input) : SV_TARGET
                     float densityBand = densityBase;
                     float streamStrength = lerp(0.24, 1.18, densityBand) * lerp(0.58, 1.12, Hash21(float2(seed * 173.0 + fi, 47.0)));
                     float streamAge = max(0.0, leakAge - r0 * 2.2 - fi * 0.16);
-                    float sourceGrow = smoothstep(0.0, 1.0, saturate(streamAge * (0.065 + r1 * 0.040)));
+                    float sourceGrow = smoothstep(0.0, 1.0, saturate(streamAge * (0.065 + r1 * 0.040) * lerp(1.0, 0.72, waterLiquid)));
                     float sourceReady = smoothstep(0.25, 1.15, streamAge);
                     float spreadAway = 0.030 + sourceGrow * (0.145 + r2 * 0.095);
                     float spreadSide = (0.018 + r2 * 0.022) * streamWidthScale * (1.0 + sourceGrow * 1.10);
+                    spreadAway *= lerp(1.0, 1.22, waterLiquid);
+                    spreadSide *= lerp(1.0, 1.14, waterLiquid);
                     float edgeNoise = (Hash21(float2(floor(u * 12.0) + fi, floor(away * 10.0) + seed * 23.0)) - 0.5) * 0.010 * sourceGrow;
                     if (highBloodDetail)
                     {
@@ -4693,7 +4947,7 @@ float4 PSMain(VSOut input) : SV_TARGET
                 float ceilingNoise = Fbm3(float3(input.worldPos.xz * 4.8 + seed * 7.0, seed * 37.0));
                 float fineNoise = Noise3(float3(input.worldPos.xz * 18.0 + seed * 5.0, seed * 83.0));
                 float organicMask = smoothstep(0.22, 0.70, ceilingNoise + (fineNoise - 0.5) * 0.20);
-                float rimAge = smoothstep(5.5, 11.5, leakAge);
+                float rimAge = smoothstep(lerp(5.5, 4.0, waterLiquid), lerp(11.5, 17.0, waterLiquid), leakAge);
                 float rimNoise = Fbm3(float3(u * 5.4 + seed * 13.0, away * 3.2, seed * 47.0));
                 float rimFine = Noise3(float3(u * 19.0 + seed * 7.0, away * 9.0, seed * 71.0));
                 float rimWidth = 0.026 + rimNoise * 0.034;
@@ -4705,33 +4959,31 @@ float4 PSMain(VSOut input) : SV_TARGET
                 float soakFrontNoise = (Fbm3(float3(u * 3.4 + seed * 13.0, away * 1.7, seed * 41.0)) - 0.5) * 0.22 +
                     (Noise3(float3(u * 11.0, away * 5.0, seed * 73.0)) - 0.5) * 0.06;
                 float rimFeed = smoothstep(0.04, 0.30, topSource);
-                float soakReach = saturate((leakAge - 16.0) / 40.0);
-                float unevenCeilingReach = saturate(soakReach + rimFeed * 0.12 + soakFrontNoise);
+                float soakReach = saturate((leakAge - lerp(7.5, 5.0, waterLiquid)) / lerp(34.0, 50.0, waterLiquid));
+                float unevenCeilingReach = saturate(soakReach + rimFeed * 0.22 + soakFrontNoise);
                 float ceilingFront = 1.0 - smoothstep(unevenCeilingReach,
-                    unevenCeilingReach + 0.13 + abs(soakFrontNoise) * 0.08,
+                    unevenCeilingReach + 0.17 + abs(soakFrontNoise) * 0.10,
                     away);
-                float ceilingSoak = smoothstep(17.0, 43.0, leakAge) * ceilingFront * smoothstep(0.008, 0.095, away) *
-                    (1.0 - smoothstep(0.93 + edgeJitterV, 1.06 + edgeJitterV, away)) *
+                float ceilingSoak = smoothstep(lerp(8.0, 5.0, waterLiquid), lerp(31.0, 52.0, waterLiquid), leakAge) *
+                    ceilingFront * smoothstep(0.006, 0.058, away) *
+                    (1.0 - smoothstep(1.01 + edgeJitterV, 1.11 + edgeJitterV, away)) *
                     cardEdgeFade * organicMask * (0.62 + ceilingNoise * 0.38);
-                topSource = saturate(topSource * cardEdgeFade + ceilingSoak * 0.22 + delayedRim * (0.48 + rimFeed * 0.38));
+                topSource = saturate(topSource * cardEdgeFade + ceilingSoak * lerp(0.52, 0.74, waterLiquid) +
+                    delayedRim * (lerp(0.52, 0.68, waterLiquid) + rimFeed * 0.40));
                 alpha = topSource * raggedEdge * ceilingMask * smoothstep(0.0, 0.35, leakAge);
-                alpha = smoothstep(0.014, 0.092, alpha);
-                thickness = saturate(topThickness * 0.86 + ceilingSoak * 0.30 + delayedRim * 0.42) * alpha;
+                alpha = smoothstep(lerp(0.014, 0.008, waterLiquid), lerp(0.092, 0.072, waterLiquid), alpha);
+                thickness = saturate(topThickness * 0.86 + ceilingSoak * lerp(0.54, 0.78, waterLiquid) +
+                    delayedRim * lerp(0.42, 0.58, waterLiquid)) * alpha;
             }
             else
             {
-                float2 p = bloodUv * 2.0 - 1.0;
-                p.x *= 1.16;
-                float radial = length(p);
-                float ragged = (Fbm3(float3(p * 6.5, seed * 29.0)) - 0.5) * 0.20;
-                float source = 1.0 - smoothstep(0.50 + ragged * 0.55, 0.86 + ragged * 0.70, radial);
-                float capillary = smoothstep(0.48, 0.80, Fbm3(float3(input.worldPos.xz * 8.5 + seed * 11.0, seed * 37.0))) *
-                    (1.0 - smoothstep(0.74 + ragged * 0.30, 1.08 + ragged * 0.45, radial));
-                source = max(source, capillary * 0.52);
-                alpha = source * ceilingMask * smoothstep(0.0, 0.65, leakAge);
-                alpha = smoothstep(0.032, 0.128, alpha);
-                thickness = source * 0.56;
-                thickness *= alpha;
+                float centerThickness = 0.0;
+                float centerSpeed = lerp(0.024, 0.016, waterLiquid);
+                float centerRadius = lerp(0.58, 0.74, waterLiquid);
+                float source = CenterSeepPool(bloodUv, input.worldPos, seed, leakAge, centerSpeed, centerRadius, centerThickness);
+                alpha = source * ceilingMask * smoothstep(0.0, lerp(0.65, 1.05, waterLiquid), leakAge);
+                alpha = smoothstep(lerp(0.024, 0.012, waterLiquid), lerp(0.116, 0.088, waterLiquid), alpha);
+                thickness = centerThickness * alpha;
             }
             drips = 0.0;
         }
@@ -4742,7 +4994,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         alpha = wetAlpha * animMask;
         thickness = wetThickness * animMask;
         drips = wetDrips * animMask;
-        if (alpha < 0.045) discard;
+        if (alpha < lerp(0.045, 0.026, waterLiquid)) discard;
 
         float2 local = bloodUv * 2.0 - 1.0;
         float2 bulgeSlope = -local * thickness * (0.08 + wet * 0.08);
@@ -4767,7 +5019,7 @@ float4 PSMain(VSOut input) : SV_TARGET
             specLight * (0.58 + wet * 1.85) * saturate(alpha + thickness * 0.35);
         float grime = Fbm3(input.worldPos * float3(8.0, 5.0, 8.0) + seed * 31.0);
         float filmAlpha = saturate(alpha * (0.58 + thickness * 0.38 + drips * 0.12 + wet * 0.035));
-        if (filmAlpha < 0.045) discard;
+        if (filmAlpha < lerp(0.045, 0.026, waterLiquid)) discard;
         float lightEnergy = saturate(flashlight * 0.88 + overhead * 0.38 + sparkLight * 0.62 + exitGlow * 0.34 + gLighting0.z * 0.06);
         float3 thinBlood = float3(0.320, 0.0140, 0.0052);
         float3 pooledBlood = float3(0.092, 0.0024, 0.0012);
@@ -4776,6 +5028,19 @@ float4 PSMain(VSOut input) : SV_TARGET
         color = lerp(color, color * float3(0.54, 0.28, 0.24), drips * 0.18);
         color += float3(0.72, 0.62, 0.48) * spec;
         color += exitGreen * (0.06 + wet * 0.16) * saturate(alpha + thickness * 0.18);
+        if (waterLiquid > 0.5)
+        {
+            float waterCore = saturate(alpha * 0.74 + thickness * 0.26);
+            float waterFresnel = pow(1.0 - saturate(dot(worldN, V)), 3.0);
+            float waterSpec = spec * (0.54 + waterCore * 1.10) + waterFresnel * specLight * (0.08 + waterCore * 0.18);
+            float3 thinTint = float3(0.045, 0.070, 0.076) * (0.42 + lightEnergy * 0.34);
+            float3 deepTint = float3(0.025, 0.044, 0.052) * (0.36 + lightEnergy * 0.26);
+            float3 clearFilm = lerp(thinTint, deepTint, saturate(thickness * 0.80 + drips * 0.20));
+            float3 reflectedLamp = float3(0.42, 0.56, 0.58) * waterSpec;
+            color = clearFilm * (0.48 + waterCore * 0.38) + reflectedLamp;
+            color += exitGreen * (0.018 + waterCore * 0.052);
+            filmAlpha = saturate(alpha * (0.20 + thickness * 0.11 + drips * 0.045));
+        }
         color *= 1.0 - CornerAO(input.worldPos, worldN) * 0.45;
         float fog = saturate((dist - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 3.2);
@@ -6528,6 +6793,25 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         const float invX = 1.0f / std::max(0.001f, std::abs(scaleX));
         const float invY = 1.0f / std::max(0.001f, std::abs(scaleY));
         const float invZ = 1.0f / std::max(0.001f, std::abs(scaleZ));
+        XMFLOAT3 meshSpan{
+            std::max(0.001f, mesh.max.x - mesh.min.x),
+            std::max(0.001f, mesh.max.y - mesh.min.y),
+            std::max(0.001f, mesh.max.z - mesh.min.z)
+        };
+        auto generatedUv = [&](const Vertex& src) {
+            float nx = (src.pos.x - mesh.min.x) / meshSpan.x;
+            float ny = (src.pos.y - mesh.min.y) / meshSpan.y;
+            float nz = (src.pos.z - mesh.min.z) / meshSpan.z;
+            XMFLOAT3 nAbs{std::abs(src.normal.x), std::abs(src.normal.y), std::abs(src.normal.z)};
+            XMFLOAT2 uv = nAbs.y >= nAbs.x && nAbs.y >= nAbs.z
+                ? XMFLOAT2{nx, nz}
+                : (nAbs.x >= nAbs.z ? XMFLOAT2{nz, 1.0f - ny} : XMFLOAT2{nx, 1.0f - ny});
+            int materialId = std::clamp(static_cast<int>(std::floor(src.material)), 0, kMaterialCount - 1);
+            if (materialId == 22) {
+                uv = {0.20f + uv.x * 0.60f, 0.28f + uv.y * 0.36f};
+            }
+            return uv;
+        };
 
         uint32_t base = static_cast<uint32_t>(vertices.size());
         vertices.reserve(vertices.size() + mesh.vertices.size());
@@ -6539,7 +6823,8 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 Add3(Scale3(up, src.normal.y * invY), Scale3(forward, src.normal.z * invZ))), up);
             XMFLOAT3 tangent = Normalize3(Add3(Scale3(right, src.tangent.x * scaleX),
                 Add3(Scale3(up, src.tangent.y * scaleY), Scale3(forward, src.tangent.z * scaleZ))), right);
-            vertices.push_back({pos, normal, tangent, src.uv, materialOverride >= 0.0f ? materialOverride : src.material});
+            XMFLOAT2 uv = mesh.generatedUvFallback ? generatedUv(src) : src.uv;
+            vertices.push_back({pos, normal, tangent, uv, materialOverride >= 0.0f ? materialOverride : src.material});
         }
         for (uint32_t n = 0; n < static_cast<uint32_t>(mesh.vertices.size()); ++n) {
             uint32_t idx = base + n;
@@ -7397,6 +7682,137 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             return true;
         };
 
+        auto addDebugPropInspectionModel = [&]() {
+            if (!gEffectDebugViewer || gDebugSliceEffect != DebugSliceEffect::Props) return;
+            int propIndex = WrapDebugPropIndex(gDebugPropIndex);
+            const StaticPropMesh* mesh = nullptr;
+            switch (propIndex) {
+            case 0: mesh = &chairPropMeshes_[0]; break;
+            case 1: mesh = &chairPropMeshes_[1]; break;
+            case 2:
+            case 3: mesh = &chairPropMeshes_[2]; break;
+            case 4: mesh = &cabinetPropMesh_; break;
+            case 5: mesh = &deskPropMesh_; break;
+            case 6:
+            case 7: mesh = &trashBinPropMesh_; break;
+            case 8: mesh = &deskLampPropMesh_; break;
+            case 9: mesh = &cassettePropMesh_; break;
+            case 10: mesh = &airVentPropMesh_; break;
+            case 11: mesh = &exitSignPropMesh_; break;
+            case 12: mesh = &ceilingLampPropMeshes_[0]; break;
+            case 13: mesh = &ceilingLampPropMeshes_[1]; break;
+            case 14: mesh = &ceilingLampPropMeshes_[2]; break;
+            case 15: mesh = &ceilingLampPropMeshes_[3]; break;
+            default: break;
+            }
+
+            int tiles = std::clamp(gDebugSliceTiles, 1, 5);
+            float centerX = ox + (1.0f + static_cast<float>(tiles) * 0.5f) * tileW;
+            float centerZ = oz + (1.0f + static_cast<float>(tiles) * 0.5f) * tileD;
+            float targetMax = 1.22f;
+            float yaw = kPi;
+            float pitch = 0.0f;
+            switch (propIndex) {
+            case 3:
+                pitch = kPi * 0.5f;
+                targetMax = 1.12f;
+                break;
+            case 6:
+                targetMax = 0.58f;
+                break;
+            case 7:
+                pitch = kPi * 0.5f;
+                targetMax = 0.62f;
+                break;
+            case 4:
+                targetMax = 1.44f;
+                break;
+            case 5:
+                targetMax = 1.62f;
+                yaw = kPi * 0.5f;
+                break;
+            case 8:
+                targetMax = 0.56f;
+                break;
+            case 9:
+                targetMax = 0.58f;
+                break;
+            case 10:
+                targetMax = 0.86f;
+                break;
+            case 11:
+                targetMax = 1.18f;
+                break;
+            case 12:
+            case 13:
+            case 14:
+            case 15:
+                targetMax = 1.36f;
+                yaw = kPi * 0.5f;
+                break;
+            default:
+                break;
+            }
+
+            if (mesh && !mesh->vertices.empty()) {
+                float spanX = propSpan(*mesh, 0);
+                float spanY = propSpan(*mesh, 1);
+                float spanZ = propSpan(*mesh, 2);
+                float spanMax = std::max(spanX, std::max(spanY, spanZ));
+                float scale = std::clamp(targetMax / std::max(0.001f, spanMax), 0.035f, 12.0f);
+                bool wallMounted = propIndex == 10 || propIndex == 11;
+                bool suspendedLamp = propIndex >= 12 && propIndex <= 15;
+                if (wallMounted || suspendedLamp) {
+                    float c = std::cos(yaw);
+                    float s = std::sin(yaw);
+                    XMFLOAT3 right{c, 0.0f, -s};
+                    XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+                    XMFLOAT3 forward{s, 0.0f, c};
+                    XMFLOAT3 meshCenter{
+                        (mesh->min.x + mesh->max.x) * 0.5f,
+                        (mesh->min.y + mesh->max.y) * 0.5f,
+                        (mesh->min.z + mesh->max.z) * 0.5f
+                    };
+                    XMFLOAT3 desiredCenter{
+                        centerX,
+                        wallMounted ? settings_.wallHeightMeters * 0.54f : 1.08f,
+                        wallMounted ? centerZ - tileD * 0.34f : centerZ
+                    };
+                    XMFLOAT3 centeredOffset = Add3(Scale3(right, meshCenter.x * scale),
+                        Add3(Scale3(up, meshCenter.y * scale), Scale3(forward, meshCenter.z * scale)));
+                    XMFLOAT3 origin = Add3(desiredCenter, Scale3(centeredOffset, -1.0f));
+                    AppendStaticPropMesh(vertices, indices, *mesh, origin, yaw, scale, scale, scale,
+                        0.0f, -1.0f, &propShadowIndices);
+                    propLookPoints_.push_back(desiredCenter);
+                    return;
+                }
+                AppendStaticPropMeshGrounded(vertices, indices, *mesh, {centerX, 0.0f, centerZ},
+                    yaw, scale, scale, scale, pitch, -1.0f, &propShadowIndices);
+                float lookY = std::clamp((mesh->max.y - mesh->min.y) * scale * 0.55f, 0.16f, 1.15f);
+                propLookPoints_.push_back({centerX, lookY, centerZ});
+                return;
+            }
+
+            if (propIndex == 10) {
+                float panelY = settings_.wallHeightMeters * 0.54f;
+                float panelZ = centerZ - tileD * 0.34f;
+                AddOrientedBox(vertices, indices, {centerX, panelY, panelZ}, {0.52f, 0.18f, 0.018f}, kPi, 10.0f);
+                AddOrientedBox(vertices, indices, {centerX, panelY, panelZ - 0.026f}, {0.42f, 0.11f, 0.010f}, kPi, 5.0f);
+                for (int slot = -3; slot <= 3; ++slot) {
+                    AddOrientedBox(vertices, indices,
+                        {centerX, panelY + static_cast<float>(slot) * 0.030f, panelZ - 0.044f},
+                        {0.36f, 0.0048f, 0.006f}, kPi, 8.0f);
+                }
+                propLookPoints_.push_back({centerX, panelY, panelZ});
+                return;
+            }
+
+            AddOrientedBox(vertices, indices, {centerX, 0.18f, centerZ}, {0.42f, 0.18f, 0.42f}, 0.0f, 5.0f);
+            propLookPoints_.push_back({centerX, 0.18f, centerZ});
+        };
+
+        addDebugPropInspectionModel();
+
         auto addRoomClutterGroup = [&](Tile t, int groupIndex, uint32_t scatterSeed) {
             if (!IsRoomLike(t)) return false;
             XMFLOAT3 c = maze_.WorldCenter(t, 0.0f);
@@ -7789,7 +8205,8 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         float loosePaperChance = std::min(1.0f, 0.082f * paperDensity);
         float paperHallwayChance = std::min(1.0f, 0.13f * hallwayPaperDensity);
         float ventChance = gEffectDebugViewer && gDebugSliceEffect == DebugSliceEffect::AirVents ? 1.0f : 0.026f;
-        float waterDamageChance = std::min(1.0f, 0.050f * std::clamp(settings_.waterDamageDensity, 0.0f, 4.0f));
+        float waterDamageChance = 0.0f;
+        float waterLikeDamageChance = std::min(1.0f, 0.050f * std::clamp(settings_.waterDamageDensity, 0.0f, 4.0f));
 
         auto waterMaterial = [](float seed, float bandStart, float bandWidth) {
             float h = std::fmod(std::abs(seed) * 37.719f + 0.137f, 1.0f);
@@ -8310,7 +8727,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             }
         }
 
-        if (gEffectDebugViewer && DebugSliceEffectIsWater(gDebugSliceEffect)) {
+        if (false && gEffectDebugViewer && DebugSliceEffectIsWater(gDebugSliceEffect)) {
             bool showFloorWater = gDebugSliceEffect == DebugSliceEffect::FloorWater ||
                 gDebugSliceEffect == DebugSliceEffect::WallWater;
             bool showCeilingWater = gDebugSliceEffect == DebugSliceEffect::CeilingWater ||
@@ -8454,6 +8871,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 }
             }
 
+            bool emitWaterLiquid = false;
             auto addBloodScare = [&](XMFLOAT3 pos, float span) {
                 if (span < 0.56f) return;
                 BloodScarePoint p{};
@@ -8463,13 +8881,39 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                     : XMFLOAT3{pos.x, std::clamp(pos.y, 0.18f, wallH - 0.055f), pos.z};
                 p.radius = std::clamp(1.25f + span * 0.72f, 1.75f, 4.35f);
                 p.focusDelaySeconds = 0.26f + LampHash(pos.x * 3.1f + span, pos.z * 5.7f) * 0.58f;
+                p.waterLiquid = emitWaterLiquid;
+                if (emitWaterLiquid) {
+                    p.dreadScale = 0.30f;
+                }
                 bloodScarePoints_.push_back(p);
             };
 
             std::unordered_map<int, int> bloodCeilingLayers;
+            std::unordered_set<int> bloodCenterSeepCovered;
+            std::vector<FloorFootprint> bloodCeilingReservations;
+            constexpr float kLiquidFloorReservationPad = 0.010f;
+            auto liquidMaterial = [&](float rawSeed) {
+                return (emitWaterLiquid ? 25.0f : 14.0f) + rawSeed;
+            };
+            auto bloodTileKey = [&](Tile tile) {
+                return tile.y * std::max(1, maze_.w) + tile.x;
+            };
+            auto bloodCeilingFootprintClear = [&](float px, float pz, float width, float depth, float yaw, float pad = 0.012f) {
+                if (!footprintFitsMaze(px, pz, width, depth, yaw, pad)) return false;
+                FloorFootprint candidate = makeFootprint(px, pz, width, depth, yaw, pad);
+                for (const FloorFootprint& reserved : bloodCeilingReservations) {
+                    if (footprintOverlap(candidate, reserved)) return false;
+                }
+                return true;
+            };
+            auto reserveBloodCeilingFootprint = [&](float px, float pz, float width, float depth, float yaw, float pad = 0.012f) {
+                if (!bloodCeilingFootprintClear(px, pz, width, depth, yaw, pad)) return false;
+                bloodCeilingReservations.push_back(makeFootprint(px, pz, width, depth, yaw, pad));
+                return true;
+            };
             auto nextBloodCeilingY = [&](float px, float pz, float seed) {
                 Tile tile = maze_.TileFromWorld(px, pz);
-                int key = tile.y * std::max(1, maze_.w) + tile.x;
+                int key = bloodTileKey(tile);
                 int& layer = bloodCeilingLayers[key];
                 int usedLayer = std::min(layer, 10);
                 ++layer;
@@ -8478,13 +8922,14 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             };
 
             auto addBloodFloor = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift) {
-                if (!longFloorFootprintClear(px, pz, w, d, yaw)) {
+                if (!longFloorFootprintClear(px, pz, w, d, yaw, kLiquidFloorReservationPad)) {
                     w *= 0.62f;
                     d *= 0.62f;
-                    if (!floorFootprintClear(px, pz, w, d, yaw)) return false;
+                    if (!floorFootprintClear(px, pz, w, d, yaw, kLiquidFloorReservationPad)) return false;
                 }
+                if (!reserveFloorFootprint(px, pz, w, d, yaw, kLiquidFloorReservationPad)) return false;
                 AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
-                    kBloodFloorDecalLift + layerLift, 14.02f + std::fmod(seed, 0.93f));
+                    kBloodFloorDecalLift + layerLift, liquidMaterial(0.02f + std::fmod(seed, 0.93f)));
                 addBloodScare({px, 0.10f, pz}, std::max(w, d));
                 return true;
             };
@@ -8495,8 +8940,42 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                     d *= 0.58f;
                     if (!floorFootprintClear(px, pz, w, d, yaw)) return false;
                 }
+                if (!reserveBloodCeilingFootprint(px, pz, w, d, yaw)) return false;
                 AddCeilingCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
-                    nextBloodCeilingY(px, pz, seed), 14.08f + std::fmod(seed, 0.87f));
+                    nextBloodCeilingY(px, pz, seed), liquidMaterial(0.08f + std::fmod(seed, 0.87f)));
+                addBloodScare({px, wallH - 0.08f, pz}, std::max(w, d));
+                return true;
+            };
+
+            auto addCenterSeepFloor = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift) {
+                if (!reserveFloorFootprint(px, pz, w, d, yaw, kLiquidFloorReservationPad)) return false;
+                AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
+                    kBloodFloorDecalLift + layerLift, liquidMaterial(0.43f + std::fmod(seed, 0.50f)));
+                addBloodScare({px, 0.10f, pz}, std::max(w, d));
+                return true;
+            };
+
+            auto addCenterSeepCeiling = [&](float px, float pz, float w, float d, float yaw, float seed) {
+                if (!reserveBloodCeilingFootprint(px, pz, w, d, yaw, 0.010f)) return false;
+                AddCeilingCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
+                    nextBloodCeilingY(px, pz, seed + 0.29f), liquidMaterial(0.43f + std::fmod(seed, 0.50f)));
+                addBloodScare({px, wallH - 0.08f, pz}, std::max(w, d));
+                return true;
+            };
+
+            auto addBloodCeilingFloorPair = [&](float px, float pz, float w, float d, float yaw, float seed, float floorScale = 0.92f) {
+                float floorW = w * floorScale;
+                float floorD = d * floorScale;
+                if (!floorFootprintClear(px, pz, floorW, floorD, yaw, kLiquidFloorReservationPad)) return false;
+                if (!bloodCeilingFootprintClear(px, pz, w, d, yaw, 0.010f)) return false;
+                floorReservations.push_back(makeFootprint(px, pz, floorW, floorD, yaw, kLiquidFloorReservationPad));
+                bloodCeilingReservations.push_back(makeFootprint(px, pz, w, d, yaw, 0.010f));
+                float material = liquidMaterial(0.43f + std::fmod(seed, 0.50f));
+                AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, floorW, floorD, yaw,
+                    kBloodFloorDecalLift, material);
+                AddCeilingCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
+                    nextBloodCeilingY(px, pz, seed + 0.29f), material);
+                addBloodScare({px, 0.10f, pz}, std::max(floorW, floorD));
                 addBloodScare({px, wallH - 0.08f, pz}, std::max(w, d));
                 return true;
             };
@@ -8573,7 +9052,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 XMFLOAT3 b = Add3(center, Add3(Scale3(right,  w * 0.5f), Scale3(up, -h * 0.5f)));
                 XMFLOAT3 c0 = Add3(center, Add3(Scale3(right,  w * 0.5f), Scale3(up,  h * 0.5f)));
                 XMFLOAT3 d0 = Add3(center, Add3(Scale3(right, -w * 0.5f), Scale3(up,  h * 0.5f)));
-                AddQuadUV(vertices, transparentIndices, a, b, c0, d0, normal, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, 14.11f + std::fmod(seed, 0.83f));
+                AddQuadUV(vertices, transparentIndices, a, b, c0, d0, normal, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, liquidMaterial(0.11f + std::fmod(seed, 0.83f)));
                 float bottomY = center.y - h * 0.5f;
                 if (bottomY > wallBloodFloorMargin + 0.045f) {
                     int dripStrips = 1 + static_cast<int>(LampHash(seed * 41.0f + center.x, center.z - seed * 13.0f) * 3.0f);
@@ -8592,7 +9071,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                         XMFLOAT3 bc = Add3(bridgeCenter, Add3(Scale3(right,  stripW * 0.5f), Scale3(up,  bridgeH * 0.5f)));
                         XMFLOAT3 bd = Add3(bridgeCenter, Add3(Scale3(right, -stripW * 0.5f), Scale3(up,  bridgeH * 0.5f)));
                         AddQuadUV(vertices, transparentIndices, ba, bb, bc, bd, normal, right, {0, 1}, {1, 1}, {1, 0}, {0, 0},
-                            14.37f + std::fmod(seed + r0 * 0.61f + static_cast<float>(strip) * 0.17f, 0.51f));
+                            liquidMaterial(0.37f + std::fmod(seed + r0 * 0.61f + static_cast<float>(strip) * 0.17f, 0.51f)));
                     }
                 }
                 BloodScarePoint scare{};
@@ -8607,6 +9086,10 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 scare.radius = std::clamp(1.25f + std::max(w, h) * 0.72f, 1.75f, 4.35f);
                 scare.focusDelaySeconds = 0.30f + LampHash(seed * 43.0f + center.x, center.z) * 0.64f;
                 scare.requireFacing = true;
+                scare.waterLiquid = emitWaterLiquid;
+                if (emitWaterLiquid) {
+                    scare.dreadScale = 0.30f;
+                }
                 bloodScarePoints_.push_back(scare);
                 return true;
             };
@@ -8710,6 +9193,36 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 }
             };
 
+            auto addWaterFloorBorderContinuation = [&](Tile t, int side, const XMFLOAT3& wallCenter, const XMFLOAT3& right,
+                const XMFLOAT3& inward, float width, float sourceDepth, float material, float seed, int tag) {
+                if (!emitWaterLiquid) return false;
+                Tile n = neighborForSide(t, oppositeSide(side));
+                if (!maze_.IsOpen(n.x, n.y)) return false;
+                float axisLength = (side == 0 || side == 1) ? tileD : tileW;
+                float crossLength = (side == 0 || side == 1) ? tileW : tileD;
+                float continuationDepth = axisLength * (0.54f + Rand01(tag, 1511, scatterSeed) * 0.38f);
+                float continuationWidth = std::min(crossLength * 0.98f, width * (1.06f + Rand01(tag, 1517, scatterSeed) * 0.20f));
+                float startDistance = std::max(0.04f, axisLength - 0.020f);
+                XMFLOAT3 nearCenter = Add3({wallCenter.x, kBloodFloorDecalLift + 0.0015f, wallCenter.z},
+                    Scale3(inward, startDistance));
+                nearCenter = Add3(nearCenter, Scale3(right, (Rand01(tag, 1523, scatterSeed) - 0.5f) * width * 0.10f));
+                XMFLOAT3 farCenter = Add3(nearCenter, Scale3(inward, continuationDepth));
+                if (!footprintFitsMaze((nearCenter.x + farCenter.x) * 0.5f, (nearCenter.z + farCenter.z) * 0.5f,
+                        continuationWidth, continuationDepth, sideForwardYaw(side), 0.010f)) {
+                    return false;
+                }
+                XMFLOAT3 nearLeft = Add3(nearCenter, Scale3(right, -continuationWidth * 0.5f));
+                XMFLOAT3 nearRight = Add3(nearCenter, Scale3(right, continuationWidth * 0.5f));
+                XMFLOAT3 farRight = Add3(nearRight, Scale3(inward, continuationDepth));
+                XMFLOAT3 farLeft = Add3(nearLeft, Scale3(inward, continuationDepth));
+                float uvFar = -continuationDepth / std::max(0.08f, sourceDepth);
+                AddQuadUV(vertices, transparentIndices,
+                    farLeft, farRight, nearRight, nearLeft,
+                    {0.0f, 1.0f, 0.0f}, right,
+                    {0.0f, uvFar}, {1.0f, uvFar}, {1.0f, 0.0f}, {0.0f, 0.0f}, material);
+                return true;
+            };
+
             auto addCeilingPropagation = [&](Tile t, float px, float pz, float w, float d, float yaw, float seed, int tag, int sourceSide) {
                 XMFLOAT3 c = maze_.WorldCenter(t, 0.0f);
                 float halfX = std::abs(std::cos(yaw)) * w * 0.5f + std::abs(std::sin(yaw)) * d * 0.5f;
@@ -8747,7 +9260,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                         float centerZ = c.z + dir.z * (axis * 0.5f + length * 0.24f);
                         float spreadYaw = sideForwardYaw(side) + (Rand01(tag * 23 + side, 1041, scatterSeed) - 0.5f) * 0.26f;
                         float spreadSeed = std::fmod(seed + 0.23f + static_cast<float>(side) * 0.093f, 0.87f);
-                        if (addBloodCeiling(centerX, centerZ, width, length, spreadYaw, spreadSeed)) {
+                        if (addBloodCeilingFloorPair(centerX, centerZ, width, length, spreadYaw, spreadSeed, 0.84f)) {
                             addBloodCeilingWallRunoffs(n, centerX, centerZ, width, length, spreadYaw,
                                 spreadSeed, tag * 31 + side + 17, oppositeSide(side));
                         }
@@ -8798,7 +9311,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                     float ceilingD = runWidth * (0.76f + Rand01(runIndex, 839, scatterSeed) * 0.58f);
                     float ceilingYaw = yaw + (Rand01(runIndex, 853, scatterSeed) - 0.5f) * 0.38f;
                     float ceilingSeed = Rand01(runIndex, 857, scatterSeed);
-                    if (addBloodCeiling(ceilingCenter.x, ceilingCenter.z, ceilingW, ceilingD, ceilingYaw, ceilingSeed)) {
+                    if (addBloodCeilingFloorPair(ceilingCenter.x, ceilingCenter.z, ceilingW, ceilingD, ceilingYaw, ceilingSeed, 0.86f)) {
                         addCeilingPropagation(t, ceilingCenter.x, ceilingCenter.z, ceilingW, ceilingD, ceilingYaw, ceilingSeed, runIndex, -1);
                     }
                 }
@@ -8864,7 +9377,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                     float ceilingW = base * (0.78f + Rand01(burstIndex, 647, scatterSeed) * 0.86f);
                     float ceilingD = base * (0.64f + Rand01(burstIndex, 653, scatterSeed) * 0.78f);
                     float ceilingYaw = yaw + Rand01(burstIndex, 659, scatterSeed) * 0.9f;
-                    if (addBloodCeiling(ceilingX, ceilingZ, ceilingW, ceilingD, ceilingYaw, r1)) {
+                    if (addBloodCeilingFloorPair(ceilingX, ceilingZ, ceilingW, ceilingD, ceilingYaw, r1, 0.86f)) {
                         addCeilingPropagation(t, ceilingX, ceilingZ, ceilingW, ceilingD, ceilingYaw, r1, burstIndex, -1);
                     }
                 }
@@ -8897,6 +9410,59 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                     addBloodFloor(px + dx, pz + dz, dw, dd, dyaw, Rand01(burstIndex * 31 + d, 743, scatterSeed),
                         static_cast<float>(d) * kBloodFloorDecalLayerStep);
                 }
+            };
+
+            auto addBloodCenterDripTile = [&](Tile t, int dripIndex) {
+                if (!maze_.IsOpen(t.x, t.y) || t == maze_.start || t == maze_.exit) return false;
+                if (bloodCenterSeepCovered.find(bloodTileKey(t)) != bloodCenterSeepCovered.end()) return false;
+                if (!maze_.IsOpen(t.x, t.y - 1) || !maze_.IsOpen(t.x, t.y + 1) ||
+                    !maze_.IsOpen(t.x - 1, t.y) || !maze_.IsOpen(t.x + 1, t.y)) {
+                    return false;
+                }
+                XMFLOAT3 c = maze_.WorldCenter(t, 0.0f);
+                bool diagNW = maze_.IsOpen(t.x - 1, t.y - 1);
+                bool diagNE = maze_.IsOpen(t.x + 1, t.y - 1);
+                bool diagSW = maze_.IsOpen(t.x - 1, t.y + 1);
+                bool diagSE = maze_.IsOpen(t.x + 1, t.y + 1);
+                bool roomCanvas = diagNW && diagNE && diagSW && diagSE;
+                bool eastWestCanvas = Rand01(dripIndex, 1303, scatterSeed) < 0.5f;
+                float w = tileW * (roomCanvas ? (1.62f + Rand01(dripIndex, 1307, scatterSeed) * 0.24f) :
+                    (eastWestCanvas ? (1.92f + Rand01(dripIndex, 1311, scatterSeed) * 0.24f) : 0.92f));
+                float d = tileD * (roomCanvas ? (1.62f + Rand01(dripIndex, 1313, scatterSeed) * 0.24f) :
+                    (eastWestCanvas ? 0.92f : (1.92f + Rand01(dripIndex, 1317, scatterSeed) * 0.24f)));
+                float yaw = 0.0f;
+                float px = c.x + (Rand01(dripIndex, 1321, scatterSeed) - 0.5f) * tileW * 0.10f;
+                float pz = c.z + (Rand01(dripIndex, 1327, scatterSeed) - 0.5f) * tileD * 0.10f;
+                float seed = Rand01(dripIndex, 1331, scatterSeed);
+                bool placed = addBloodCeilingFloorPair(px, pz, w, d, yaw, seed, 1.0f);
+                if (!placed) {
+                    w = tileW * 0.96f;
+                    d = tileD * 0.96f;
+                    px = c.x;
+                    pz = c.z;
+                    placed = addBloodCeilingFloorPair(px, pz, w, d, yaw, seed, 1.0f);
+                }
+                if (placed) {
+                    auto markCovered = [&](Tile covered) {
+                        if (maze_.IsOpen(covered.x, covered.y)) bloodCenterSeepCovered.insert(bloodTileKey(covered));
+                    };
+                    markCovered(t);
+                    if (w > tileW * 1.15f) {
+                        markCovered({t.x - 1, t.y});
+                        markCovered({t.x + 1, t.y});
+                    }
+                    if (d > tileD * 1.15f) {
+                        markCovered({t.x, t.y - 1});
+                        markCovered({t.x, t.y + 1});
+                    }
+                    if (w > tileW * 1.15f && d > tileD * 1.15f) {
+                        markCovered({t.x - 1, t.y - 1});
+                        markCovered({t.x + 1, t.y - 1});
+                        markCovered({t.x - 1, t.y + 1});
+                        markCovered({t.x + 1, t.y + 1});
+                    }
+                }
+                return placed;
             };
 
             auto addBloodLeak = [&](Tile t, int side, int leakIndex, bool wallOnly = false) {
@@ -8944,7 +9510,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 XMFLOAT3 b = Add3(wallCenter, Add3(Scale3(right,  leakW * 0.5f), Scale3(up, -h * 0.5f)));
                 XMFLOAT3 c0 = Add3(wallCenter, Add3(Scale3(right,  leakW * 0.5f), Scale3(up,  h * 0.5f)));
                 XMFLOAT3 d0 = Add3(wallCenter, Add3(Scale3(right, -leakW * 0.5f), Scale3(up,  h * 0.5f)));
-                float sourceMat = 14.965f + seed * 0.025f;
+                float sourceMat = liquidMaterial(0.965f + seed * 0.025f);
                 float wallMat = sourceMat;
                 AddQuadUV(vertices, transparentIndices, a, b, c0, d0, normal, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, wallMat);
 
@@ -9004,6 +9570,10 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 XMFLOAT3 floorCenter = Add3({wallCenter.x, 0.0f, wallCenter.z}, Scale3(inward, poolD * 0.5f + 0.006f));
                 if (addSeamCards) {
                     addFloorSeamCard(poolD, sourceMat);
+                    if (emitWaterLiquid && canSpreadForward) {
+                        addWaterFloorBorderContinuation(t, side, wallCenter, right, inward, poolW, poolD,
+                            sourceMat, seed, leakIndex * 17 + side);
+                    }
                 }
                 if (wallOnly || gBloodDebugEveryWall) return true;
 
@@ -9014,9 +9584,254 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 scare.radius = std::clamp(1.95f + std::max(poolW, poolD) * 0.96f, 2.65f, 5.65f);
                 scare.focusDelaySeconds = 0.34f + Rand01(leakIndex, 733, scatterSeed) * 0.66f;
                 scare.requireFacing = true;
+                scare.waterLiquid = emitWaterLiquid;
+                if (emitWaterLiquid) {
+                    scare.dreadScale = 0.30f;
+                }
                 bloodScarePoints_.push_back(scare);
                 return true;
             };
+
+            auto emitWaterDamageUsingBloodSystem = [&]() {
+                bool waterDebug = gEffectDebugViewer && DebugSliceEffectIsWater(gDebugSliceEffect);
+                if (!waterDebug && waterLikeDamageChance <= 0.0001f) return;
+                emitWaterLiquid = true;
+                if (waterDebug) {
+                    int debugIndex = 0;
+                    for (Tile t : openTiles) {
+                        int sideCount = 0;
+                        for (int side = 0; side < 4; ++side) {
+                            if (wallHasSurface(t, side)) {
+                                ++sideCount;
+                                addBloodLeak(t, side, 30000 + debugIndex++);
+                            }
+                        }
+                        if (sideCount == 0) {
+                            addBloodCenterDripTile(t, 33000 + debugIndex++);
+                        }
+                    }
+                    emitWaterLiquid = false;
+                    return;
+                }
+
+                int waterIndex = 0;
+                for (Tile t : openTiles) {
+                    if (t == maze_.start || t == maze_.exit) continue;
+                    int sides[4]{};
+                    int sideCount = 0;
+                    if (wallHasSurface(t, 0)) sides[sideCount++] = 0;
+                    if (wallHasSurface(t, 1)) sides[sideCount++] = 1;
+                    if (wallHasSurface(t, 2)) sides[sideCount++] = 2;
+                    if (wallHasSurface(t, 3)) sides[sideCount++] = 3;
+                    float chance = waterLikeDamageChance;
+                    if (sideCount == 0) chance *= 0.58f;
+                    if (Rand01(waterIndex, 2501, scatterSeed) > chance) {
+                        ++waterIndex;
+                        continue;
+                    }
+                    if (sideCount == 0) {
+                        addBloodCenterDripTile(t, 25000 + waterIndex);
+                    } else {
+                        int side = sides[std::min(sideCount - 1,
+                            static_cast<int>(Rand01(waterIndex, 2507, scatterSeed) * static_cast<float>(sideCount)))];
+                        addBloodLeak(t, side, 25000 + waterIndex);
+                    }
+                    ++waterIndex;
+                }
+                emitWaterLiquid = false;
+            };
+
+            emitWaterDamageUsingBloodSystem();
+
+            auto waterLikeMaterial = [](float seed, float rawSeed) {
+                return 25.0f + rawSeed + std::fmod(std::abs(seed) * 0.0017f, 0.0009f);
+            };
+
+            auto addWaterLikeFloor = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift, float rawSeed) {
+                if (!footprintFitsMaze(px, pz, w, d, yaw, 0.010f)) return false;
+                AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
+                    kBloodFloorDecalLift + 0.010f + layerLift, waterLikeMaterial(seed, rawSeed));
+                return true;
+            };
+
+            auto addWaterLikeCeiling = [&](float px, float pz, float w, float d, float yaw, float seed, float rawSeed) {
+                if (!reserveBloodCeilingFootprint(px, pz, w, d, yaw, 0.010f)) return false;
+                AddCeilingCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
+                    nextBloodCeilingY(px, pz, seed + 0.61f), waterLikeMaterial(seed, rawSeed));
+                return true;
+            };
+
+            auto addWaterLikeCenterTile = [&](Tile t, int dripIndex) {
+                if (!maze_.IsOpen(t.x, t.y) || (!gEffectDebugViewer && (t == maze_.start || t == maze_.exit))) return false;
+                if (bloodCenterSeepCovered.find(bloodTileKey(t)) != bloodCenterSeepCovered.end()) return false;
+                if (!maze_.IsOpen(t.x, t.y - 1) || !maze_.IsOpen(t.x, t.y + 1) ||
+                    !maze_.IsOpen(t.x - 1, t.y) || !maze_.IsOpen(t.x + 1, t.y)) {
+                    return false;
+                }
+                XMFLOAT3 c = maze_.WorldCenter(t, 0.0f);
+                bool diagNW = maze_.IsOpen(t.x - 1, t.y - 1);
+                bool diagNE = maze_.IsOpen(t.x + 1, t.y - 1);
+                bool diagSW = maze_.IsOpen(t.x - 1, t.y + 1);
+                bool diagSE = maze_.IsOpen(t.x + 1, t.y + 1);
+                bool roomCanvas = diagNW && diagNE && diagSW && diagSE;
+                bool eastWestCanvas = Rand01(dripIndex, 2303, scatterSeed) < 0.5f;
+                float w = tileW * (roomCanvas ? (1.62f + Rand01(dripIndex, 2307, scatterSeed) * 0.24f) :
+                    (eastWestCanvas ? (1.92f + Rand01(dripIndex, 2311, scatterSeed) * 0.24f) : 0.92f));
+                float d = tileD * (roomCanvas ? (1.62f + Rand01(dripIndex, 2313, scatterSeed) * 0.24f) :
+                    (eastWestCanvas ? 0.92f : (1.92f + Rand01(dripIndex, 2317, scatterSeed) * 0.24f)));
+                float px = c.x + (Rand01(dripIndex, 2321, scatterSeed) - 0.5f) * tileW * 0.10f;
+                float pz = c.z + (Rand01(dripIndex, 2327, scatterSeed) - 0.5f) * tileD * 0.10f;
+                float seed = Rand01(dripIndex, 2331, scatterSeed);
+                bool ceilingPlaced = addWaterLikeCeiling(px, pz, w, d, 0.0f, seed, 0.43f + std::fmod(seed, 0.50f));
+                bool floorPlaced = addWaterLikeFloor(px, pz, w, d, 0.0f, seed, 0.0f, 0.43f + std::fmod(seed, 0.50f));
+                bool placed = ceilingPlaced && floorPlaced;
+                if (placed) {
+                    auto markCovered = [&](Tile covered) {
+                        if (maze_.IsOpen(covered.x, covered.y)) bloodCenterSeepCovered.insert(bloodTileKey(covered));
+                    };
+                    markCovered(t);
+                    if (w > tileW * 1.15f) {
+                        markCovered({t.x - 1, t.y});
+                        markCovered({t.x + 1, t.y});
+                    }
+                    if (d > tileD * 1.15f) {
+                        markCovered({t.x, t.y - 1});
+                        markCovered({t.x, t.y + 1});
+                    }
+                    if (w > tileW * 1.15f && d > tileD * 1.15f) {
+                        markCovered({t.x - 1, t.y - 1});
+                        markCovered({t.x + 1, t.y - 1});
+                        markCovered({t.x - 1, t.y + 1});
+                        markCovered({t.x + 1, t.y + 1});
+                    }
+                }
+                return placed;
+            };
+
+            auto addWaterLikeLeak = [&](Tile t, int side, int leakIndex, bool wallOnly = false) {
+                if (!wallHasSurface(t, side)) return false;
+                XMFLOAT3 c = maze_.WorldCenter(t, 0.0f);
+                float seed = Rand01(leakIndex, 2401, scatterSeed);
+                float wallSpan = (side == 0 || side == 1) ? tileW : tileD;
+                float leakW = wallSpan * (0.82f + Rand01(leakIndex, 2407, scatterSeed) * 0.13f);
+                float lateralLimit = std::max(0.0f, wallSpan * 0.5f - leakW * 0.5f - 0.16f);
+                float lateral = (Rand01(leakIndex, 2409, scatterSeed) - 0.5f) * lateralLimit * 2.0f;
+                float topY = wallH - 0.0015f;
+                float bottomY = 0.0015f;
+                float h = std::max(0.2f, topY - bottomY);
+                float centerY = (topY + bottomY) * 0.5f;
+                XMFLOAT3 normal{0.0f, 0.0f, 1.0f};
+                XMFLOAT3 right{1.0f, 0.0f, 0.0f};
+                XMFLOAT3 inward{0.0f, 0.0f, 1.0f};
+                XMFLOAT3 wallCenter{c.x, centerY, c.z};
+                constexpr float kWaterLikeWallDecalInset = 0.0045f;
+                constexpr float kWaterLikeSeamInset = 0.0010f;
+                if (side == 0) {
+                    normal = {0.0f, 0.0f, 1.0f};
+                    right = {1.0f, 0.0f, 0.0f};
+                    inward = {0.0f, 0.0f, 1.0f};
+                    wallCenter = {c.x + lateral, centerY, c.z - tileD * 0.5f + kWaterLikeWallDecalInset};
+                } else if (side == 1) {
+                    normal = {0.0f, 0.0f, -1.0f};
+                    right = {-1.0f, 0.0f, 0.0f};
+                    inward = {0.0f, 0.0f, -1.0f};
+                    wallCenter = {c.x + lateral, centerY, c.z + tileD * 0.5f - kWaterLikeWallDecalInset};
+                } else if (side == 2) {
+                    normal = {1.0f, 0.0f, 0.0f};
+                    right = {0.0f, 0.0f, 1.0f};
+                    inward = {1.0f, 0.0f, 0.0f};
+                    wallCenter = {c.x - tileW * 0.5f + kWaterLikeWallDecalInset, centerY, c.z + lateral};
+                } else {
+                    normal = {-1.0f, 0.0f, 0.0f};
+                    right = {0.0f, 0.0f, -1.0f};
+                    inward = {-1.0f, 0.0f, 0.0f};
+                    wallCenter = {c.x + tileW * 0.5f - kWaterLikeWallDecalInset, centerY, c.z + lateral};
+                }
+
+                XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+                XMFLOAT3 a = Add3(wallCenter, Add3(Scale3(right, -leakW * 0.5f), Scale3(up, -h * 0.5f)));
+                XMFLOAT3 b = Add3(wallCenter, Add3(Scale3(right,  leakW * 0.5f), Scale3(up, -h * 0.5f)));
+                XMFLOAT3 c0 = Add3(wallCenter, Add3(Scale3(right,  leakW * 0.5f), Scale3(up,  h * 0.5f)));
+                XMFLOAT3 d0 = Add3(wallCenter, Add3(Scale3(right, -leakW * 0.5f), Scale3(up,  h * 0.5f)));
+                float sourceMat = waterLikeMaterial(seed, 0.965f + seed * 0.025f);
+                AddQuadUV(vertices, transparentIndices, a, b, c0, d0, normal, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, sourceMat);
+
+                float axisLength = (side == 0 || side == 1) ? tileD : tileW;
+                Tile forwardTile = neighborForSide(t, oppositeSide(side));
+                bool canSpreadForward = maze_.IsOpen(forwardTile.x, forwardTile.y);
+                float sourceD = axisLength * (0.88f + Rand01(leakIndex, 2419, scatterSeed) * 0.10f);
+                if (canSpreadForward) sourceD += axisLength * (0.16f + Rand01(leakIndex, 2421, scatterSeed) * 0.22f);
+                float seamYaw = sideForwardYaw(side);
+                XMFLOAT3 ceilingEdge = Add3({wallCenter.x, wallH - kBloodCeilingDecalInset, wallCenter.z},
+                    Scale3(inward, -kWaterLikeWallDecalInset));
+                XMFLOAT3 ceilingCenter = Add3(ceilingEdge, Scale3(inward, sourceD * 0.5f + kWaterLikeSeamInset));
+                addWaterLikeCeiling(ceilingCenter.x, ceilingCenter.z, leakW, sourceD, seamYaw, seed, 0.965f + seed * 0.025f);
+                float poolD = axisLength * (0.86f + Rand01(leakIndex, 2427, scatterSeed) * 0.12f);
+                if (canSpreadForward) poolD += axisLength * (0.18f + Rand01(leakIndex, 2429, scatterSeed) * 0.24f);
+                XMFLOAT3 floorCenter = Add3({wallCenter.x, 0.0f, wallCenter.z}, Scale3(inward, poolD * 0.5f + 0.006f));
+                addWaterLikeFloor(floorCenter.x, floorCenter.z, leakW, poolD, seamYaw, seed, 0.0f, 0.965f + seed * 0.025f);
+
+                if (!wallOnly && !gEffectDebugViewer) {
+                    BloodScarePoint scare{};
+                    scare.pos = {floorCenter.x, 0.10f, floorCenter.z};
+                    scare.source = {wallCenter.x, wallH - 0.035f, wallCenter.z};
+                    scare.normal = normal;
+                    scare.radius = std::clamp(1.65f + std::max(leakW, poolD) * 0.70f, 2.10f, 4.80f);
+                    scare.focusDelaySeconds = 0.22f + Rand01(leakIndex, 2433, scatterSeed) * 0.44f;
+                    scare.requireFacing = true;
+                    scare.dreadScale = 0.42f;
+                    scare.revealBlood = false;
+                    bloodScarePoints_.push_back(scare);
+                }
+                return true;
+            };
+
+            auto emitWaterLikeDamage = [&]() {
+                bool waterDebug = gEffectDebugViewer && DebugSliceEffectIsWater(gDebugSliceEffect);
+                if (!waterDebug && waterLikeDamageChance <= 0.0001f) return;
+                if (waterDebug) {
+                    int debugIndex = 0;
+                    for (Tile t : openTiles) {
+                        int sideCount = 0;
+                        for (int side = 0; side < 4; ++side) {
+                            if (wallHasSurface(t, side)) {
+                                ++sideCount;
+                                addWaterLikeLeak(t, side, 30000 + debugIndex++, true);
+                            }
+                        }
+                        if (sideCount == 0) {
+                            addWaterLikeCenterTile(t, 33000 + debugIndex++);
+                        }
+                    }
+                    return;
+                }
+                int waterIndex = 0;
+                for (Tile t : openTiles) {
+                    if (t == maze_.start || t == maze_.exit) continue;
+                    int sides[4]{};
+                    int sideCount = 0;
+                    if (wallHasSurface(t, 0)) sides[sideCount++] = 0;
+                    if (wallHasSurface(t, 1)) sides[sideCount++] = 1;
+                    if (wallHasSurface(t, 2)) sides[sideCount++] = 2;
+                    if (wallHasSurface(t, 3)) sides[sideCount++] = 3;
+                    float chance = waterLikeDamageChance;
+                    if (sideCount == 0) chance *= 0.58f;
+                    if (Rand01(waterIndex, 2501, scatterSeed) > chance) {
+                        ++waterIndex;
+                        continue;
+                    }
+                    if (sideCount == 0) {
+                        addWaterLikeCenterTile(t, 25000 + waterIndex);
+                    } else {
+                        int side = sides[std::min(sideCount - 1,
+                            static_cast<int>(Rand01(waterIndex, 2507, scatterSeed) * static_cast<float>(sideCount)))];
+                        addWaterLikeLeak(t, side, 25000 + waterIndex);
+                    }
+                    ++waterIndex;
+                }
+            };
+
+            if (false) emitWaterLikeDamage();
 
             if (settings_.bloodStudyView) {
                 bloodStudyTile_ = FindBloodStudyTile();
@@ -9029,7 +9844,9 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                     }
                 }
                 if (studyLeaks <= 0) {
-                    addBloodBurst(bloodStudyTile_, 30017);
+                    if (!addBloodCenterDripTile(bloodStudyTile_, 30017)) {
+                        addBloodBurst(bloodStudyTile_, 30017);
+                    }
                 }
             }
 
@@ -9043,8 +9860,10 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                 float densityGate = std::clamp(settings_.bloodSplatterDensity, 0.0f, 1.0f);
                 float coverage = std::clamp(settings_.bloodWorldCoverage * densityGate * coverageScale, 0.0f, 1.0f);
                 for (Tile t : openTiles) {
+                    int wallSides = 0;
                     for (int side = 0; side < 4; ++side) {
                         if (!wallHasSurface(t, side)) continue;
+                        ++wallSides;
                         if (coverage < 0.999f && Rand01(worldLeakIndex, 1201, scatterSeed) > coverage) {
                             ++worldLeakIndex;
                             continue;
@@ -9052,16 +9871,26 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                         addBloodLeak(t, side, 20000 + worldLeakIndex, true);
                         ++worldLeakIndex;
                     }
+                    if (wallSides == 0) {
+                        if (coverage >= 0.999f || Rand01(worldLeakIndex, 1207, scatterSeed) <= coverage * 0.62f) {
+                            addBloodCenterDripTile(t, 20000 + worldLeakIndex);
+                        }
+                        ++worldLeakIndex;
+                    }
                 }
             }
 
-            if (gBloodDebugEveryWall) {
+            if (gBloodDebugEveryWall && gDebugSliceEffect == DebugSliceEffect::Blood) {
                 int debugLeakIndex = 0;
                 for (Tile t : openTiles) {
                     for (int side = 0; side < 4; ++side) {
                         if (wallHasSurface(t, side)) {
                             addBloodLeak(t, side, 10000 + debugLeakIndex++);
                         }
+                    }
+                    if (maze_.IsOpen(t.x, t.y - 1) && maze_.IsOpen(t.x, t.y + 1) &&
+                        maze_.IsOpen(t.x - 1, t.y) && maze_.IsOpen(t.x + 1, t.y)) {
+                        addBloodCenterDripTile(t, 13000 + debugLeakIndex++);
                     }
                 }
             } else {
@@ -9078,7 +9907,12 @@ float4 PostPS(PostVSOut input) : SV_TARGET
                     if (!maze_.IsOpen(t.x, t.y + 1)) sides[sideCount++] = 1;
                     if (!maze_.IsOpen(t.x - 1, t.y)) sides[sideCount++] = 2;
                     if (!maze_.IsOpen(t.x + 1, t.y)) sides[sideCount++] = 3;
-                    if (sideCount == 0) continue;
+                    if (sideCount == 0) {
+                        if (addBloodCenterDripTile(t, b)) {
+                            ++placedBloodLeaks;
+                        }
+                        continue;
+                    }
                     int side = sides[std::min(sideCount - 1, static_cast<int>(Rand01(b, 579, scatterSeed) * static_cast<float>(sideCount)))];
                     if (addBloodLeak(t, side, b)) {
                         ++placedBloodLeaks;
@@ -11627,6 +12461,8 @@ struct App {
     HWND debugNextEffect = nullptr;
     HWND debugSize = nullptr;
     HWND debugReset = nullptr;
+    HWND debugPrevProp = nullptr;
+    HWND debugNextProp = nullptr;
     HWND loadingOverlay = nullptr;
     bool loadingWarmupPending = false;
     ULONGLONG loadingWarmupStart = 0;
@@ -11658,6 +12494,8 @@ constexpr int kDebugPrevEffectId = 5101;
 constexpr int kDebugNextEffectId = 5102;
 constexpr int kDebugSizeId = 5103;
 constexpr int kDebugResetId = 5104;
+constexpr int kDebugPrevPropId = 5105;
+constexpr int kDebugNextPropId = 5106;
 
 DebugSliceEffect StepDebugSliceEffect(DebugSliceEffect effect, int delta) {
     int count = static_cast<int>(DebugSliceEffect::Count);
@@ -11669,14 +12507,21 @@ DebugSliceEffect StepDebugSliceEffect(DebugSliceEffect effect, int delta) {
 void UpdateDebugSliceControls(HWND hwnd) {
     if (!gApp || !gEffectDebugViewer) return;
     wchar_t title[160]{};
-    swprintf_s(title, L"Backrooms Maze Effect Slice Debug - %s - %dx%d",
-        DebugSliceEffectName(gDebugSliceEffect), gDebugSliceTiles, gDebugSliceTiles);
+    if (gDebugSliceEffect == DebugSliceEffect::Props) {
+        swprintf_s(title, L"Backrooms Maze Effect Slice Debug - Props - %s (%d/%d)",
+            DebugPropName(gDebugPropIndex), WrapDebugPropIndex(gDebugPropIndex) + 1, kDebugPropCount);
+    } else {
+        swprintf_s(title, L"Backrooms Maze Effect Slice Debug - %s - %dx%d",
+            DebugSliceEffectName(gDebugSliceEffect), gDebugSliceTiles, gDebugSliceTiles);
+    }
     SetWindowTextW(hwnd, title);
     if (gApp->debugSize) {
         wchar_t sizeText[48]{};
         swprintf_s(sizeText, L"Grid: %dx%d", gDebugSliceTiles, gDebugSliceTiles);
         SetWindowTextW(gApp->debugSize, sizeText);
     }
+    if (gApp->debugPrevProp) EnableWindow(gApp->debugPrevProp, TRUE);
+    if (gApp->debugNextProp) EnableWindow(gApp->debugNextProp, TRUE);
 }
 
 void RedrawDebugSliceControls() {
@@ -11685,7 +12530,9 @@ void RedrawDebugSliceControls() {
         gApp->debugPrevEffect,
         gApp->debugNextEffect,
         gApp->debugSize,
-        gApp->debugReset
+        gApp->debugReset,
+        gApp->debugPrevProp,
+        gApp->debugNextProp
     };
     for (HWND control : controls) {
         if (!control) continue;
@@ -11985,13 +12832,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_COMMAND:
         if (gApp && gEffectDebugViewer && hwnd == gApp->hwnd) {
             int id = LOWORD(wParam);
-            if (id == kDebugPrevEffectId || id == kDebugNextEffectId || id == kDebugSizeId || id == kDebugResetId) {
+            if (id == kDebugPrevEffectId || id == kDebugNextEffectId || id == kDebugSizeId || id == kDebugResetId ||
+                id == kDebugPrevPropId || id == kDebugNextPropId) {
                 if (id == kDebugPrevEffectId) {
                     gDebugSliceEffect = StepDebugSliceEffect(gDebugSliceEffect, -1);
                 } else if (id == kDebugNextEffectId) {
                     gDebugSliceEffect = StepDebugSliceEffect(gDebugSliceEffect, 1);
                 } else if (id == kDebugSizeId) {
                     gDebugSliceTiles = gDebugSliceTiles >= 5 ? 1 : gDebugSliceTiles + 1;
+                } else if (id == kDebugPrevPropId || id == kDebugNextPropId) {
+                    if (gDebugSliceEffect != DebugSliceEffect::Props) {
+                        gDebugSliceEffect = DebugSliceEffect::Props;
+                    }
+                    gDebugPropIndex = WrapDebugPropIndex(gDebugPropIndex + (id == kDebugPrevPropId ? -1 : 1));
                 } else if (id == kDebugResetId) {
                     gApp->renderer.ResetDebugSliceAnimation();
                     UpdateDebugSliceControls(hwnd);
@@ -13294,7 +14147,8 @@ int RunScreensaver(HINSTANCE hInstance, RunMode mode, HWND previewParent) {
         gDebugSliceEffect = DebugSliceEffect::Blood;
         gDebugSliceTiles = std::clamp(gDebugSliceTiles, 1, 5);
     }
-    gBloodDebugEveryWall = gEffectDebugViewer && gDebugSliceEffect == DebugSliceEffect::Blood;
+    gBloodDebugEveryWall = gEffectDebugViewer &&
+        (gDebugSliceEffect == DebugSliceEffect::Blood || DebugSliceEffectIsWater(gDebugSliceEffect));
     bool diagnosticWindowMode = monsterPreviewMode || bloodDebugMode;
     MonsterPreviewView monsterPreviewView = MonsterPreviewView::Orbit;
     if (mode == RunMode::MonsterPreviewFront) monsterPreviewView = MonsterPreviewView::Front;
@@ -13382,6 +14236,10 @@ int RunScreensaver(HINSTANCE hInstance, RunMode mode, HWND previewParent) {
             210, 10, 104, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugSizeId)), hInstance, nullptr);
         gApp->debugReset = CreateWindowW(L"BUTTON", L"Reset anim", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             322, 10, 104, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugResetId)), hInstance, nullptr);
+        gApp->debugPrevProp = CreateWindowW(L"BUTTON", L"< Prop", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            434, 10, 84, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugPrevPropId)), hInstance, nullptr);
+        gApp->debugNextProp = CreateWindowW(L"BUTTON", L"Prop >", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            526, 10, 84, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDebugNextPropId)), hInstance, nullptr);
         UpdateDebugSliceControls(hwnd);
         RedrawDebugSliceControls();
     }
