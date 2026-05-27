@@ -344,7 +344,7 @@
         float doorwayLightStrength = 0.0f;
         if (runtimeMode_ == RendererRuntimeMode::MainMenu && exitDoorAngle_ > 0.001f) {
             exitDoorOpen = SmoothStep(0.03f, 0.95f, exitDoorAngle_ / 1.38f);
-            XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -1.34f);
+            XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -4.85f);
             doorwayLightPos = Add3(exitDoorCenter_, throughDoor);
             doorwayLightPos.y = exitDoorCenter_.y + 1.02f;
             doorwayLightStrength = exitDoorOpen * 12.0f;
