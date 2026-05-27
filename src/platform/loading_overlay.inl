@@ -104,9 +104,9 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
                     uint8_t a = hasTransparency ? srcA : std::max(rgbCoverage, darkCoverage);
                     float alpha = static_cast<float>(a) / 255.0f;
                     size_t dst = src;
-                    tinted[dst + 0] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgB), 255.0f, alpha));
-                    tinted[dst + 1] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgG), 255.0f, alpha));
-                    tinted[dst + 2] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgR), 255.0f, alpha));
+                    tinted[dst + 0] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgB), 91.0f, alpha));
+                    tinted[dst + 1] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgG), 119.0f, alpha));
+                    tinted[dst + 2] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgR), 126.0f, alpha));
                     tinted[dst + 3] = 255;
                 }
             }

@@ -1156,7 +1156,14 @@
         }
         float layerScale = p.nearLayer > 1.5f ? RandRange(1.85f, 3.10f) : (p.nearLayer > 0.5f ? RandRange(1.25f, 2.05f) : 1.0f);
         p.size = baseSize * layerScale * std::clamp(settings_.airParticleSize, 0.20f, 4.0f);
-        p.aspect = RandRange(0.86f, 1.16f);
+        float aspectRoll = RandRange(0.0f, 1.0f);
+        if (aspectRoll < 0.18f) {
+            p.aspect = RandRange(1.75f, 3.20f);
+        } else if (aspectRoll < 0.36f) {
+            p.aspect = RandRange(0.34f, 0.62f);
+        } else {
+            p.aspect = RandRange(0.74f, 1.38f);
+        }
         p.seed = RandRange(0.0f, 1.0f);
         p.angle = RandRange(0.0f, kPi * 2.0f);
         p.spin = RandRange(-0.18f, 0.18f);

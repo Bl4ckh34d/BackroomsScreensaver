@@ -185,13 +185,12 @@
     void AppendMenuButtonPlaques(std::vector<Vertex>& verts, std::vector<Vertex>& transparentVerts) {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
-        XMFLOAT3 right{1.0f, 0.0f, 0.0f};
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+        MenuPlaquePlacement primaryPlaque = MenuButtonPlacement(0);
+        XMFLOAT3 right = primaryPlaque.right;
         XMFLOAT3 inward{0.0f, 0.0f, -1.0f};
         float wallZ = c.z + maze_.tileD * 0.5f;
-        float z = wallZ - 0.040f;
-        float x = c.x + maze_.tileW * 0.14f;
-        float startY = 1.50f;
+        float x = primaryPlaque.center.x + 0.14f;
         float bloodTopY = settings_.wallHeightMeters - 0.006f;
         float bloodBottomY = 0.012f;
         float bloodCenterY = (bloodTopY + bloodBottomY) * 0.5f;
@@ -229,13 +228,13 @@
             up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, kMenuPoolBloodMaterial);
         for (int i = 0; i < 3; ++i) {
             bool hover = menuHoverButtonIndex_ == i;
-            float y = startY - static_cast<float>(i) * 0.34f;
             float material = hover ? 10.72f : 9.70f;
-            XMFLOAT3 plaqueCenter{x, y, z};
-            AppendDynamicBoxAxes(verts, plaqueCenter, right, up, inward, {0.72f, 0.122f, 0.070f}, material);
-            AppendDynamicBoxAxes(verts, {x - 0.71f, y, z + 0.033f}, right, up, inward, {0.018f, 0.134f, 0.048f}, 10.0f);
-            XMFLOAT3 labelCenter = Add3(plaqueCenter, Scale3(inward, 0.070f));
-            XMFLOAT3 hw = Scale3(right, 0.610f);
+            MenuPlaquePlacement plaque = MenuButtonPlacement(i);
+            AppendDynamicBoxAxes(verts, plaque.center, plaque.right, up, plaque.inward, {plaque.halfW, plaque.halfH, 0.070f}, material);
+            XMFLOAT3 capCenter = Add3(plaque.center, Add3(Scale3(plaque.right, -plaque.halfW + 0.012f), Scale3(plaque.inward, -0.035f)));
+            AppendDynamicBoxAxes(verts, capCenter, plaque.right, up, plaque.inward, {0.018f, plaque.halfH + 0.012f, 0.048f}, 10.0f);
+            XMFLOAT3 labelCenter = Add3(plaque.center, Scale3(plaque.inward, 0.071f));
+            XMFLOAT3 hw = Scale3(plaque.right, plaque.halfW * 0.84f);
             XMFLOAT3 hh = Scale3(up, 0.081f);
             float v0 = (static_cast<float>(i) + 0.12f) / 3.0f;
             float v1 = (static_cast<float>(i) + 0.88f) / 3.0f;
@@ -245,7 +244,7 @@
                 Add3(labelCenter, Add3(hw, Scale3(hh, -1.0f))),
                 Add3(labelCenter, Add3(hw, hh)),
                 Add3(labelCenter, Add3(Scale3(hw, -1.0f), hh)),
-                inward, right, {0.06f, v1}, {0.94f, v1}, {0.94f, v0}, {0.06f, v0}, labelMaterial);
+                plaque.inward, plaque.right, {0.06f, v1}, {0.94f, v1}, {0.94f, v0}, {0.06f, v0}, labelMaterial);
         }
     }
 
@@ -543,8 +542,10 @@
             float angle = p.angle;
             XMFLOAT3 side = Normalize3(Add3(Scale3(right, std::cos(angle)), Scale3(up, std::sin(angle))), right);
             XMFLOAT3 vertical = Normalize3(Add3(Scale3(up, std::cos(angle)), Scale3(right, -std::sin(angle))), up);
-            float halfW = size * (0.82f + p.aspect * 0.10f);
-            float halfH = size * (0.82f + (1.0f / std::max(0.60f, p.aspect)) * 0.10f);
+            float aspect = std::clamp(p.aspect, 0.32f, 3.40f);
+            float aspectRoot = std::sqrt(aspect);
+            float halfW = size * std::clamp(aspectRoot, 0.58f, 1.84f);
+            float halfH = size * std::clamp(1.0f / aspectRoot, 0.54f, 1.76f);
             XMFLOAT3 hw = Scale3(side, halfW);
             XMFLOAT3 hh = Scale3(vertical, halfH);
             float material = 15.0f + std::min(0.985f, lifeFade * 0.94f + p.seed * 0.035f);

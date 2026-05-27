@@ -76,6 +76,14 @@ enum class MonsterPreviewView {
     Top
 };
 
+struct MenuPlaquePlacement {
+    XMFLOAT3 center{};
+    XMFLOAT3 right{1.0f, 0.0f, 0.0f};
+    XMFLOAT3 inward{0.0f, 0.0f, -1.0f};
+    float halfW = 0.72f;
+    float halfH = 0.122f;
+};
+
 class Renderer {
 public:
     bool Initialize(HWND hwnd, const Settings* settingsOverride = nullptr, bool monsterPreview = false,
@@ -315,13 +323,8 @@ public:
 
     bool MenuButtonScreenRect(int index, RECT& out) const {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu || index < 0 || index >= 3) return false;
-        XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
-        XMFLOAT3 center{
-            c.x + maze_.tileW * 0.14f,
-            1.50f - static_cast<float>(index) * 0.34f,
-            c.z + maze_.tileD * 0.5f - 0.064f
-        };
-        return ProjectMenuQuadToScreen(center, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.72f, 0.122f, out);
+        MenuPlaquePlacement plaque = MenuButtonPlacement(index);
+        return ProjectMenuQuadToScreen(plaque.center, plaque.right, {0.0f, 1.0f, 0.0f}, plaque.halfW, plaque.halfH, out);
     }
 
     bool MenuExitDoorScreenRect(RECT& out) const {
@@ -1017,6 +1020,33 @@ private:
         settings_.bloodWorldFlickerIntensity = 0.0f;
         settings_.fogStartMeters = std::max(settings_.fogStartMeters, 4.2f);
         settings_.fogEndMeters = std::max(settings_.fogEndMeters, 9.5f);
+    }
+
+    MenuPlaquePlacement MenuButtonPlacement(int index) const {
+        XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
+        const float northWallZ = c.z + maze_.tileD * 0.5f - 0.045f;
+        const float eastWallX = c.x + maze_.tileW * 1.5f - 0.045f;
+        MenuPlaquePlacement plaque{};
+        plaque.halfW = 0.80f;
+        plaque.halfH = 0.136f;
+        switch (index) {
+        case 0:
+            plaque.center = {c.x - maze_.tileW * 0.02f, 1.54f, northWallZ};
+            plaque.right = {1.0f, 0.0f, 0.0f};
+            plaque.inward = {0.0f, 0.0f, -1.0f};
+            break;
+        case 1:
+            plaque.center = {eastWallX, 1.34f, c.z + maze_.tileD * 0.22f};
+            plaque.right = {0.0f, 0.0f, -1.0f};
+            plaque.inward = {-1.0f, 0.0f, 0.0f};
+            break;
+        default:
+            plaque.center = {c.x + maze_.tileW * 0.68f, 1.12f, northWallZ};
+            plaque.right = {1.0f, 0.0f, 0.0f};
+            plaque.inward = {0.0f, 0.0f, -1.0f};
+            break;
+        }
+        return plaque;
     }
 
     bool ProjectMenuQuadToScreen(XMFLOAT3 center, XMFLOAT3 right, XMFLOAT3 up, float halfW, float halfH, RECT& out) const {

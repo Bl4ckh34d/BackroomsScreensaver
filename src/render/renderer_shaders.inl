@@ -1030,6 +1030,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float rawSeed = frac(input.material);
         float wallLeakSurface = step(0.96, rawSeed);
         float centerSeepSurface = step(0.43, rawSeed) * (1.0 - step(0.95, rawSeed));
+        float menuCenterSeepSurface = centerSeepSurface * step(0.62, rawSeed) * (1.0 - step(0.70, rawSeed));
         float seed = rawSeed;
         if (wallLeakSurface > 0.5)
         {
@@ -1289,10 +1290,10 @@ float4 PSMain(VSOut input) : SV_TARGET
             if (centerSeepSurface > 0.5)
             {
                 float centerThickness = 0.0;
-                float centerSpeed = lerp(0.026, 0.017, waterLiquid);
-                float centerRadius = lerp(0.56, 0.72, waterLiquid);
+                float centerSpeed = lerp(0.026, 0.017, waterLiquid) * lerp(1.0, 3.15, menuCenterSeepSurface);
+                float centerRadius = lerp(0.56, 0.72, waterLiquid) * lerp(1.0, 1.18, menuCenterSeepSurface);
                 float source = CenterSeepPool(bloodUv, input.worldPos, seed, leakAge, centerSpeed, centerRadius, centerThickness);
-                alpha = source * floorMask * smoothstep(0.0, lerp(0.45, 0.82, waterLiquid), leakAge);
+                alpha = source * floorMask * smoothstep(0.0, lerp(0.45, 0.82, waterLiquid) * lerp(1.0, 0.34, menuCenterSeepSurface), leakAge);
                 alpha = smoothstep(lerp(0.020, 0.012, waterLiquid), lerp(0.118, 0.090, waterLiquid), alpha);
                 thickness = centerThickness * alpha;
                 drips = 0.0;
@@ -1588,10 +1589,10 @@ float4 PSMain(VSOut input) : SV_TARGET
             else
             {
                 float centerThickness = 0.0;
-                float centerSpeed = lerp(0.024, 0.016, waterLiquid);
-                float centerRadius = lerp(0.58, 0.74, waterLiquid);
+                float centerSpeed = lerp(0.024, 0.016, waterLiquid) * lerp(1.0, 3.45, menuCenterSeepSurface);
+                float centerRadius = lerp(0.58, 0.74, waterLiquid) * lerp(1.0, 1.20, menuCenterSeepSurface);
                 float source = CenterSeepPool(bloodUv, input.worldPos, seed, leakAge, centerSpeed, centerRadius, centerThickness);
-                alpha = source * ceilingMask * smoothstep(0.0, lerp(0.65, 1.05, waterLiquid), leakAge);
+                alpha = source * ceilingMask * smoothstep(0.0, lerp(0.65, 1.05, waterLiquid) * lerp(1.0, 0.32, menuCenterSeepSurface), leakAge);
                 alpha = smoothstep(lerp(0.024, 0.012, waterLiquid), lerp(0.116, 0.088, waterLiquid), alpha);
                 thickness = centerThickness * alpha;
             }
@@ -2219,7 +2220,21 @@ float4 PSMain(VSOut input) : SV_TARGET
         float h0 = Hash31(stable + 3.0);
         float h1 = Hash31(stable.yzx + 17.0);
         float h2 = Hash31(stable.zxy + 41.0);
-        float2 q = p;
+        float strandAngle = h0 * 6.2831853;
+        float2 strandDir = float2(cos(strandAngle), sin(strandAngle));
+        float2 strandPerp = float2(-strandDir.y, strandDir.x);
+        float strandX = dot(p, strandDir);
+        float strandY = dot(p, strandPerp);
+        float strandTaper = 1.0 - smoothstep(0.42 + h1 * 0.22, 1.05 + h2 * 0.16, abs(strandX));
+        float waviness = sin(strandX * (10.0 + h0 * 11.0) + variant * 31.0 + time * 0.05) * (0.020 + h1 * 0.026);
+        float hairA = exp(-pow(abs(strandY - waviness), 1.35) * (74.0 + h2 * 86.0)) * strandTaper;
+        float hairB = exp(-pow(abs(strandY - 0.075 - waviness * 0.55), 1.28) * (96.0 + h0 * 72.0)) *
+            (1.0 - smoothstep(0.25 + h2 * 0.16, 0.92, abs(strandX + 0.14)));
+        float hairC = exp(-pow(abs(strandY + 0.060 + waviness * 0.70), 1.32) * (110.0 + h1 * 60.0)) *
+            (1.0 - smoothstep(0.18 + h0 * 0.22, 0.86, abs(strandX - 0.10)));
+        float clumpBreak = smoothstep(0.18, 0.72, Fbm3(float3(p * (8.0 + h2 * 7.0) + variant * 17.0, variant * 53.0)));
+        float hairClump = max(hairA, max(hairB * 0.76, hairC * 0.62)) * lerp(0.54, 1.0, clumpBreak);
+        float2 q = p + strandPerp * waviness * 0.45;
         float lobesA = sin(angle * (5.0 + floor(h0 * 4.0)) + variant * 38.0 + time * 0.035);
         float lobesB = sin(angle * (9.0 + floor(h1 * 5.0)) + variant * 71.0 - time * 0.026);
         float corner = sin(angle * (13.0 + floor(h2 * 4.0)) + h1 * 19.0);
@@ -2232,7 +2247,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float shell = smoothstep(edge + 0.24 + blur * 0.26, edge + 0.02, r) * (1.0 - blob);
         float holes = step(0.60 + blur * 0.18, Hash21(floor((q + variant) * (7.0 + h0 * 8.0))));
         blob *= lerp(1.0, 0.52, holes * (1.0 - blur * 0.45));
-        float shape = max(blob, shell * 0.28);
+        float shape = max(blob * 0.82, max(shell * 0.24, hairClump * (0.46 + h1 * 0.42)));
         float flecks = lerp(0.78, 1.10, Hash21(floor(q * (10.0 + h1 * 9.0)) + variant * 23.0));
         shape *= flecks * smoothstep(1.22, 0.35, length(p));
         if (shape < 0.018) discard;
