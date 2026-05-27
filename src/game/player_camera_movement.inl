@@ -2711,17 +2711,19 @@
         if (wantsMove) {
             AdvanceStepPhase(moveDistance, std::max(0.1f, smoothedMoveSpeed_));
         }
-        breathPhase_ += dt * (1.15f + runEffort_ * 4.6f + runIntensity_ * 1.25f) * kPi;
+        breathPhase_ += dt * (0.95f + runEffort_ * 2.2f + runIntensity_ * 0.85f) * kPi;
         if (breathPhase_ > kPi * 128.0f) {
             breathPhase_ = std::fmod(breathPhase_, kPi * 2.0f);
         }
 
         float eyeTarget = crouching ? 1.12f : 1.45f;
-        float bobAmount = settings_.headBobAmount * Lerp(0.24f, 1.85f, moveBlend) * (crouching ? 0.30f : 1.0f);
-        float sideBob = crouching ? 0.0f : std::sin(stepPhase_ * 0.5f) * (0.008f + runEffort_ * 0.018f);
-        float breathY = std::sin(breathPhase_) * (0.0035f + runIntensity_ * 0.015f + runEffort_ * 0.034f);
-        float desiredY = eyeTarget + playerVerticalOffset_ + std::abs(std::sin(stepPhase_)) * bobAmount + sideBob + breathY;
-        camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 14.0f);
+        float configuredBob = std::min(settings_.headBobAmount, 0.075f);
+        float bobAmount = configuredBob * Lerp(0.08f, 0.34f, moveBlend) * (crouching ? 0.16f : 1.0f);
+        float verticalBob = std::sin(stepPhase_ * 2.0f) * bobAmount;
+        float sideBob = crouching ? 0.0f : std::sin(stepPhase_) * (0.0025f + runEffort_ * 0.0045f);
+        float breathY = std::sin(breathPhase_) * (0.002f + runIntensity_ * 0.0045f + runEffort_ * 0.008f);
+        float desiredY = eyeTarget + playerVerticalOffset_ + verticalBob + sideBob + breathY;
+        camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 10.0f);
     }
 
     void UpdatePathFollower(float dt) {

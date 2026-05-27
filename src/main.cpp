@@ -1917,6 +1917,28 @@ public:
         gameInput_ = input;
     }
 
+    void ApplyGameSettings(const Settings& settings) {
+        auto applyLive = [&](Settings& target) {
+            target.gameFullscreen = settings.gameFullscreen;
+            target.gameResolutionWidth = settings.gameResolutionWidth;
+            target.gameResolutionHeight = settings.gameResolutionHeight;
+            target.allowWarpFallback = settings.allowWarpFallback;
+            target.exposure = settings.exposure;
+            target.bloomAmount = settings.bloomAmount;
+            target.motionBlurAmount = settings.motionBlurAmount;
+            target.airParticleDensity = settings.airParticleDensity;
+            target.mouseSensitivity = settings.mouseSensitivity;
+            target.invertMouseY = settings.invertMouseY;
+            target.audioMuted = settings.audioMuted;
+            target.audioMasterVolume = settings.audioMasterVolume;
+            target.audioEffectsVolume = settings.audioEffectsVolume;
+            target.audioAmbienceVolume = settings.audioAmbienceVolume;
+            target.audioMonsterVolume = settings.audioMonsterVolume;
+        };
+        applyLive(gameplaySettings_);
+        applyLive(settings_);
+    }
+
     void RestartGameRun() {
         gEffectDebugViewer = false;
         gBloodDebugEveryWall = false;
@@ -10384,7 +10406,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
     }
 
     // Player/camera movement, navigation, attention, chase, and camera-state helpers. 
-#include "player_camera_movement.inl"
+#include "game/player_camera_movement.inl"
 
     bool MonsterFootprintOpen(const XMFLOAT3& pos) const {
         float visualScale = std::clamp(settings_.monsterScale, 0.35f, 1.35f);
@@ -12739,6 +12761,7 @@ enum class ConfigDialogMode {
 };
 void ShowConfig(HWND owner, ConfigDialogMode mode = ConfigDialogMode::Full);
 HWND CreateEmbeddedConfig(HWND parent, ConfigDialogMode mode);
+HWND CreateGameSettingsPanel(HWND parent);
 HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance);
 void SetLoadingOverlayStatus(HWND overlay, const wchar_t* phase, const wchar_t* detail, bool complete);
 void LoadingProgressCallback(void* context, const StartupProgressUpdate& update);
@@ -12946,7 +12969,9 @@ void EnterGameSettings(HWND hwnd, ConfigDialogMode mode, GameState returnState) 
     SetGameMenuVisible(false);
     SetDebugControlsVisible(false);
     if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
-    gApp->gameConfig = CreateEmbeddedConfig(hwnd, mode);
+    gApp->gameConfig = mode == ConfigDialogMode::Game
+        ? CreateGameSettingsPanel(hwnd)
+        : CreateEmbeddedConfig(hwnd, mode);
     if (gApp->gameConfig) {
         RECT rc{};
         GetClientRect(hwnd, &rc);
@@ -13491,6 +13516,7 @@ struct ConfigState {
     HWND hwnd = nullptr;
     HWND tab = nullptr;
     HWND note = nullptr;
+    HWND scrollPane = nullptr;
     HWND scrollBar = nullptr;
     HWND preview = nullptr;
     HWND previewStatus = nullptr;
@@ -14403,7 +14429,7 @@ void ApplyConfigScroll(ConfigState* state) {
     }
 
     auto fullyVisibleAt = [](int y, int h) {
-        return y >= kConfigContentTop && y + h <= kConfigContentBottom;
+        return y >= 0 && y + h <= ConfigVisibleHeight();
     };
     for (const auto& header : state->headers) {
         int headerY = header.baseY - offset;
@@ -14428,9 +14454,8 @@ void ApplyConfigScroll(ConfigState* state) {
     }
 
     if (state->hwnd) {
-        RECT scrollRegion{12, kConfigContentTop - 4, 732, kConfigContentBottom + 4};
-        RedrawWindow(state->hwnd, &scrollRegion, nullptr,
-            RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+        HWND target = state->scrollPane ? state->scrollPane : state->hwnd;
+        RedrawWindow(target, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
     }
 }
 
@@ -14503,6 +14528,18 @@ LRESULT CALLBACK ConfigPreviewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK ConfigScrollPaneWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+    case WM_ERASEBKGND: {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        FillRect(reinterpret_cast<HDC>(wParam), &rc, GetSysColorBrush(COLOR_WINDOW));
+        return 1;
+    }
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     ConfigState* state = reinterpret_cast<ConfigState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     switch (msg) {
@@ -14532,6 +14569,9 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         state->note = CreateWindowW(L"STATIC", state->tabNotes.empty() ? L"" : state->tabNotes[0].c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT,
             30, 50, 660, 34, hwnd, nullptr, nullptr, nullptr);
         SendMessageW(state->note, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        state->scrollPane = CreateWindowExW(0, L"BackroomsMazeConfigScrollPane", L"",
+            WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+            0, kConfigContentTop, 714, ConfigVisibleHeight(), hwnd, nullptr, nullptr, nullptr);
 
         constexpr int kColumnCount = 2;
         constexpr int kColumnX[kColumnCount] = {26, 376};
@@ -14540,7 +14580,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         std::array<std::array<int, kColumnCount>, kConfigMaxTabCount> y{};
         std::array<std::array<const wchar_t*, kColumnCount>, kConfigMaxTabCount> group{};
         for (auto& tabY : y) {
-            tabY.fill(92);
+            tabY.fill(0);
         }
 
         for (const auto& def : state->fieldDefs) {
@@ -14548,9 +14588,9 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             size_t colIndex = static_cast<size_t>(def.column);
             if (tabIndex >= static_cast<size_t>(state->tabCount) || colIndex >= static_cast<size_t>(kColumnCount)) continue;
             if (group[tabIndex][colIndex] != def.group) {
-                if (y[tabIndex][colIndex] > 92) y[tabIndex][colIndex] += 10;
+                if (y[tabIndex][colIndex] > 0) y[tabIndex][colIndex] += 10;
                 HWND header = CreateWindowW(L"STATIC", def.group, WS_CHILD | SS_LEFT,
-                    kColumnX[colIndex], y[tabIndex][colIndex], 320, 22, hwnd, nullptr, nullptr, nullptr);
+                    kColumnX[colIndex], y[tabIndex][colIndex], 320, 22, state->scrollPane, nullptr, nullptr, nullptr);
                 SendMessageW(header, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
                 state->headers.push_back({def.tab, header, y[tabIndex][colIndex]});
                 group[tabIndex][colIndex] = def.group;
@@ -14560,14 +14600,14 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             int fieldY = y[tabIndex][colIndex];
             y[tabIndex][colIndex] += 30;
             HWND label = CreateWindowW(L"STATIC", def.label, WS_CHILD | SS_RIGHT | SS_NOPREFIX | SS_ENDELLIPSIS,
-                kColumnX[colIndex], fieldY + 4, kLabelW, 22, hwnd, nullptr, nullptr, nullptr);
+                kColumnX[colIndex], fieldY + 4, kLabelW, 22, state->scrollPane, nullptr, nullptr, nullptr);
             HWND control = nullptr;
             if (def.kind == ConfigFieldKind::Bool) {
                 control = CreateWindowW(L"BUTTON", L"", WS_CHILD | BS_AUTOCHECKBOX,
-                    kColumnX[colIndex] + kControlOffset, fieldY + 2, 24, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(def.id)), nullptr, nullptr);
+                    kColumnX[colIndex] + kControlOffset, fieldY + 2, 24, 22, state->scrollPane, reinterpret_cast<HMENU>(static_cast<INT_PTR>(def.id)), nullptr, nullptr);
             } else {
                 control = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL,
-                    kColumnX[colIndex] + kControlOffset, fieldY, def.width, 24, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(def.id)), nullptr, nullptr);
+                    kColumnX[colIndex] + kControlOffset, fieldY, def.width, 24, state->scrollPane, reinterpret_cast<HMENU>(static_cast<INT_PTR>(def.id)), nullptr, nullptr);
             }
             HWND slider = nullptr;
             if (IsEyeConfigField(def)) {
@@ -14575,7 +14615,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
                 slider = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
                     WS_CHILD | TBS_HORZ | TBS_NOTICKS,
                     editX + def.width + 8, fieldY - 1, 116, 26,
-                    hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kConfigEyeSliderBaseId + def.id - kConfigFieldBaseId)), nullptr, nullptr);
+                    state->scrollPane, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kConfigEyeSliderBaseId + def.id - kConfigFieldBaseId)), nullptr, nullptr);
                 SendMessageW(slider, TBM_SETRANGE, TRUE, MAKELPARAM(0, 1000));
                 SendMessageW(slider, TBM_SETPAGESIZE, 0, 20);
                 SendMessageW(slider, TBM_SETLINESIZE, 0, 4);
@@ -14586,7 +14626,7 @@ LRESULT CALLBACK ConfigWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         }
         for (int tab = 0; tab < state->tabCount; ++tab) {
             int bottom = std::max(y[static_cast<size_t>(tab)][0], y[static_cast<size_t>(tab)][1]) + 8;
-            state->contentHeight[static_cast<size_t>(tab)] = std::max(ConfigVisibleHeight(), bottom - kConfigContentTop);
+            state->contentHeight[static_cast<size_t>(tab)] = std::max(ConfigVisibleHeight(), bottom);
         }
         state->scrollBar = CreateWindowExW(0, L"SCROLLBAR", L"",
             WS_CHILD | SBS_VERT, 714, kConfigContentTop, 18, ConfigVisibleHeight(),
@@ -14820,6 +14860,7 @@ void ShowConfig(HWND owner, ConfigDialogMode mode) {
     HINSTANCE hInstance = GetModuleHandleW(nullptr);
     const wchar_t* cls = L"BackroomsMazeConfigWindow";
     const wchar_t* previewCls = L"BackroomsMazeConfigPreview";
+    const wchar_t* scrollPaneCls = L"BackroomsMazeConfigScrollPane";
 
     WNDCLASSW previewWc{};
     previewWc.lpfnWndProc = ConfigPreviewWndProc;
@@ -14828,6 +14869,14 @@ void ShowConfig(HWND owner, ConfigDialogMode mode) {
     previewWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     previewWc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     RegisterClassW(&previewWc);
+
+    WNDCLASSW scrollPaneWc{};
+    scrollPaneWc.lpfnWndProc = ConfigScrollPaneWndProc;
+    scrollPaneWc.hInstance = hInstance;
+    scrollPaneWc.lpszClassName = scrollPaneCls;
+    scrollPaneWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    scrollPaneWc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    RegisterClassW(&scrollPaneWc);
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = ConfigWndProc;
@@ -14860,6 +14909,8 @@ void ShowConfig(HWND owner, ConfigDialogMode mode) {
     }
 }
 
+#include "game/game_settings_panel.inl"
+
 HWND CreateEmbeddedConfig(HWND parent, ConfigDialogMode mode) {
     EnsureSettingsFile();
     INITCOMMONCONTROLSEX commonControls{sizeof(commonControls), ICC_TAB_CLASSES | ICC_STANDARD_CLASSES | ICC_BAR_CLASSES};
@@ -14868,6 +14919,7 @@ HWND CreateEmbeddedConfig(HWND parent, ConfigDialogMode mode) {
     HINSTANCE hInstance = GetModuleHandleW(nullptr);
     const wchar_t* cls = L"BackroomsMazeConfigWindow";
     const wchar_t* previewCls = L"BackroomsMazeConfigPreview";
+    const wchar_t* scrollPaneCls = L"BackroomsMazeConfigScrollPane";
 
     WNDCLASSW previewWc{};
     previewWc.lpfnWndProc = ConfigPreviewWndProc;
@@ -14876,6 +14928,14 @@ HWND CreateEmbeddedConfig(HWND parent, ConfigDialogMode mode) {
     previewWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     previewWc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     RegisterClassW(&previewWc);
+
+    WNDCLASSW scrollPaneWc{};
+    scrollPaneWc.lpfnWndProc = ConfigScrollPaneWndProc;
+    scrollPaneWc.hInstance = hInstance;
+    scrollPaneWc.lpszClassName = scrollPaneCls;
+    scrollPaneWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    scrollPaneWc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    RegisterClassW(&scrollPaneWc);
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = ConfigWndProc;

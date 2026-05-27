@@ -11,6 +11,10 @@ This file is the source of truth for turning the screensaver into a playable C++
 - [x] Split game settings into System, Graphics, Game, Controls, and Audio views.
 - [x] Add Debug-only settings view for overlays, effect tuning, autopilot tuning, and monster calibration.
 - [x] Embed game and debug settings as in-window game states instead of separate modal windows.
+- [x] Replace the player-facing Settings screen with a custom in-game panel instead of the legacy Win32 config dialog.
+- [x] Change game resolution from width/height sliders to a monitor-mode dropdown.
+- [x] Start splitting game-domain code into `src/game/`.
+- [x] Tune manual player head bob down so walking and sprinting feel less exaggerated.
 - [ ] Expand Debug into a full in-game test lab.
 - [ ] Add stealth/noise gameplay.
 - [ ] Replace placeholder monster with a procedural many-limbed creature.
@@ -23,6 +27,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 - [x] Filter game Settings to game-relevant categories instead of showing the full screensaver configuration.
 - [x] Add Debug Settings inside Debug for debug/test-only controls.
 - [x] Add fullscreen and window resolution settings for the game executable.
+- [x] Apply fullscreen/window size when Settings are saved, then return to the previous game menu state.
 - [x] Keep Debug wired to the existing effect/prop debug slice viewer.
 - [x] Single Player starts a playable maze run.
 - [x] Esc returns from Play or Debug to Main Menu.
