@@ -193,7 +193,7 @@
         float x = c.x + maze_.tileW * 0.14f;
         float startY = 1.50f;
         float bloodTopY = settings_.wallHeightMeters - 0.006f;
-        float bloodBottomY = 0.34f;
+        float bloodBottomY = 0.012f;
         float bloodCenterY = (bloodTopY + bloodBottomY) * 0.5f;
         float bloodHalfHeight = std::max(0.40f, (bloodTopY - bloodBottomY) * 0.5f);
         XMFLOAT3 bloodCenter{x + 0.22f, bloodCenterY, wallZ - 0.002f};
