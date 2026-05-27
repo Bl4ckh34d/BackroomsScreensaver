@@ -330,7 +330,7 @@ public:
     bool MenuExitDoorScreenRect(RECT& out) const {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return false;
         XMFLOAT3 center = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.035f));
-        return ProjectMenuQuadToScreen(center, exitDoorRight_, {0.0f, 1.0f, 0.0f}, 0.64f, 1.16f, out);
+        return ProjectMenuQuadToScreen(center, exitDoorRight_, {0.0f, 1.0f, 0.0f}, 0.67f, 1.18f, out);
     }
 
     void SetMenuHoverButtonIndex(int index) {

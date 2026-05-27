@@ -111,6 +111,7 @@ void ShadowPS(VSOut input)
         (materialId > 13.5 && materialId < 14.5) ||
         (materialId > 14.5 && materialId < 15.5) ||
         (materialId > 17.5 && materialId < 18.5) ||
+        (materialId > 18.5 && materialId < 19.5) ||
         (materialId > 24.5 && materialId < 25.5))
     {
         discard;
@@ -2291,6 +2292,21 @@ float4 PSMain(VSOut input) : SV_TARGET
         float fogVisibility = pow(1.0 - saturate(fog * gFog0.z), 2.2);
         glow *= fogVisibility;
         return float4(saturate(ApplyPost(glow) + glow * lerp(0.02, 0.18, hover)), saturate(label.a * lerp(0.95, 1.55, hover) * fogVisibility));
+    }
+
+    if (materialId > 18.5 && materialId < 19.5)
+    {
+        float strength = smoothstep(0.58, 0.94, frac(input.material));
+        float2 p = uv * 2.0 - 1.0;
+        float edge = smoothstep(1.12, 0.18, abs(p.x)) * smoothstep(1.12, 0.10, abs(p.y));
+        float haze = Fbm3(float3(input.worldPos.xz * 1.35 + p * 0.34, time * 0.045));
+        float streak = smoothstep(0.88, 0.24, abs(p.x + (haze - 0.5) * 0.26));
+        float dist = length(input.worldPos - cam);
+        float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.42), 1.45);
+        float alpha = edge * lerp(0.10, 0.28, strength) * (0.62 + streak * 0.55) * fogVisibility;
+        if (alpha < 0.008) discard;
+        float3 color = float3(1.0, 0.86, 0.56) * (2.4 + strength * 5.2) * (0.76 + haze * 0.32);
+        return float4(saturate(ApplyPost(color) + color * 0.12), saturate(alpha));
     }
 
     if (input.material > 10.50 && input.material < 10.90)

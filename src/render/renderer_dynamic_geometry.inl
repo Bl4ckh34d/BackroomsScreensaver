@@ -162,8 +162,8 @@
     }
 
     void AppendDynamicDoor(std::vector<Vertex>& verts) {
-        float halfW = 0.55f;
-        float halfH = 1.10f;
+        float halfW = 0.60f;
+        float halfH = 1.13f;
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
         float angle = exitDoorAngle_;
         XMFLOAT3 right = RotateYVec(exitDoorRight_, angle);
@@ -180,6 +180,46 @@
             Add3(knobCenter, Add3(kr, ku)),
             Add3(knobCenter, Add3(Scale3(kr, -1.0f), ku)),
             normal, right, 10.0f);
+    }
+
+    void AppendMenuDoorwayLight(std::vector<Vertex>& transparentVerts) {
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
+        float openT = SmoothStep(0.05f, 1.12f, exitDoorAngle_);
+        if (openT <= 0.001f) return;
+
+        XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+        XMFLOAT3 right = Normalize3(exitDoorRight_, {1.0f, 0.0f, 0.0f});
+        XMFLOAT3 inward = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
+        XMFLOAT3 behind = Scale3(inward, -1.0f);
+        XMFLOAT3 start = Add3(exitDoorCenter_, Add3(Scale3(behind, 0.10f), {0.0f, 0.04f, 0.0f}));
+        XMFLOAT3 room = Add3(exitDoorCenter_, Add3(Scale3(inward, 2.45f), {0.0f, -0.03f, 0.0f}));
+        float openMat = 19.62f + openT * 0.32f;
+
+        XMFLOAT3 nearSide = Scale3(right, 0.56f);
+        XMFLOAT3 farSide = Scale3(right, 1.28f);
+        XMFLOAT3 nearUp = Scale3(up, 1.02f);
+        XMFLOAT3 farUp = Scale3(up, 1.46f);
+        XMFLOAT3 centerYNear = Add3(start, {0.0f, 1.12f, 0.0f});
+        XMFLOAT3 centerYFar = Add3(room, {0.0f, 1.10f, 0.0f});
+
+        AppendDynamicQuadUV(transparentVerts,
+            Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), Scale3(nearUp, -1.0f))),
+            Add3(centerYNear, Add3(nearSide, Scale3(nearUp, -1.0f))),
+            Add3(centerYNear, Add3(nearSide, nearUp)),
+            Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), nearUp)),
+            inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.018f);
+        AppendDynamicQuadUV(transparentVerts,
+            Add3(centerYNear, Scale3(nearUp, -1.0f)),
+            Add3(centerYFar, Scale3(farUp, -1.0f)),
+            Add3(centerYFar, farUp),
+            Add3(centerYNear, nearUp),
+            right, inward, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat);
+        AppendDynamicQuadUV(transparentVerts,
+            Add3(centerYFar, Add3(Scale3(farSide, -1.0f), Scale3(up, -0.08f))),
+            Add3(centerYFar, Add3(farSide, Scale3(up, -0.08f))),
+            Add3(centerYNear, Add3(nearSide, Scale3(up, 0.18f))),
+            Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), Scale3(up, 0.18f))),
+            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.045f);
     }
 
     void AppendMenuButtonPlaques(std::vector<Vertex>& verts, std::vector<Vertex>& transparentVerts) {
@@ -613,6 +653,7 @@
         if (transparentVerts.capacity() < 131072) transparentVerts.reserve(131072);
         AppendDynamicDoor(opaqueVerts);
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            AppendMenuDoorwayLight(transparentVerts);
             AppendMenuButtonPlaques(opaqueVerts, transparentVerts);
         } else {
             AppendVentDrops(opaqueVerts);
