@@ -103,6 +103,7 @@ struct SceneConstants {
     XMFLOAT4 exitLight0;
     XMFLOAT4 exitLight1;
     XMFLOAT4 exitLight2;
+    XMFLOAT4 exitLight3;
     XMFLOAT4 monsterFog0;
 };
 
