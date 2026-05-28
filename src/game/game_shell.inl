@@ -508,8 +508,10 @@ void ActivateGameMenuCommand(HWND hwnd, int id) {
     gApp->gameMenuFadeIn = false;
     gApp->gameMenuFadeStart = GetTickCount64();
     if (id == kGameSinglePlayerId) {
-        gApp->gameMenuLampBurstStart = gApp->gameMenuFadeStart;
-        if (gApp->rendererInitialized) gApp->renderer.TriggerMainMenuLampBurst();
+        if (gApp->gameMenuLampBurstStart == 0) {
+            gApp->gameMenuLampBurstStart = gApp->gameMenuFadeStart;
+            if (gApp->rendererInitialized) gApp->renderer.TriggerMainMenuLampBurst();
+        }
     }
     InvalidateRect(hwnd, nullptr, FALSE);
 }
@@ -625,7 +627,7 @@ bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
     if (!gApp->renderer.Initialize(hwnd, nullptr, false, MonsterPreviewView::Orbit,
             gApp->loadingOverlay ? &loadingProgress : nullptr)) {
         if (gApp->loadingOverlay) {
-            DestroyWindow(gApp->loadingOverlay);
+            CloseLoadingOverlayWindow(gApp->loadingOverlay);
             gApp->loadingOverlay = nullptr;
         }
         MessageBoxW(hwnd, L"Direct3D initialization failed.", L"Backrooms Maze Game", MB_OK | MB_ICONERROR);
@@ -638,7 +640,7 @@ bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
             mode == RendererRuntimeMode::MainMenu ? L"Ready" : L"Ready",
             mode == RendererRuntimeMode::MainMenu ? L"Entering main menu." : L"Entering maze.",
             true);
-        DestroyWindow(gApp->loadingOverlay);
+        FinishLoadingOverlay(gApp->loadingOverlay);
         gApp->loadingOverlay = nullptr;
     }
     return true;
@@ -657,6 +659,8 @@ void EnterGameMainMenu(HWND hwnd) {
     gApp->gameMenuHoverId = 0;
     gApp->gameMenuHasMouse = false;
     gApp->gameMenuTrackingMouse = false;
+    gApp->gameMenuBloodStart = 0;
+    gApp->gameMenuLampBurstStart = 0;
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;
     if (gApp->rendererInitialized) {
@@ -689,7 +693,7 @@ void EnterGamePlay(HWND hwnd) {
         gApp->renderer.RestartGameRun();
         if (gApp->loadingOverlay) {
             SetLoadingOverlayStatus(gApp->loadingOverlay, L"Ready", L"Entering maze.", true);
-            DestroyWindow(gApp->loadingOverlay);
+            CloseLoadingOverlayWindow(gApp->loadingOverlay);
             gApp->loadingOverlay = nullptr;
         }
         gApp->gameRunStarted = true;

@@ -504,7 +504,7 @@
                 loadRuntimeNormal(26, L"assets\\models\\monster_face_mask\\horror_mask_normal.png");
                 loadRuntimeRoughnessFromGreen(26, L"assets\\models\\monster_face_mask\\horror_mask_metallicRoughness.png");
                 darkenWhiteChairPlastic(16);
-                darkenWhiteChairPlastic(17);
+                darkenWhiteChairPlastic(20);
                 darkenWhiteChairPlastic(22);
             }
         }

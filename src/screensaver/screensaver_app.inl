@@ -170,7 +170,7 @@ int RunScreensaver(HINSTANCE hInstance, RunMode mode, HWND previewParent) {
     if (!app.renderer.Initialize(hwnd, rendererSettings, monsterPreviewMode, monsterPreviewView,
             app.loadingOverlay ? &loadingProgress : nullptr)) {
         if (app.loadingOverlay) {
-            DestroyWindow(app.loadingOverlay);
+            CloseLoadingOverlayWindow(app.loadingOverlay);
             app.loadingOverlay = nullptr;
         }
         MessageBoxW(hwnd, L"Direct3D initialization failed.", L"Backrooms Maze", MB_OK | MB_ICONERROR);
@@ -190,7 +190,7 @@ int RunScreensaver(HINSTANCE hInstance, RunMode mode, HWND previewParent) {
         if (!clone->renderer.Initialize(clone->hwnd, rendererSettings, false, MonsterPreviewView::Orbit,
                 clone->loadingOverlay ? &cloneProgress : nullptr)) {
             if (clone->loadingOverlay) {
-                DestroyWindow(clone->loadingOverlay);
+                CloseLoadingOverlayWindow(clone->loadingOverlay);
                 clone->loadingOverlay = nullptr;
             }
             MessageBoxW(hwnd, L"Direct3D initialization failed on a cloned display.", L"Backrooms Maze", MB_OK | MB_ICONERROR);
@@ -232,7 +232,7 @@ int RunScreensaver(HINSTANCE hInstance, RunMode mode, HWND previewParent) {
         }
         if (overlay) {
             SetLoadingOverlayStatus(overlay, L"Ready", L"Entering maze.", true);
-            DestroyWindow(overlay);
+            CloseLoadingOverlayWindow(overlay);
             overlay = nullptr;
         }
         pending = false;

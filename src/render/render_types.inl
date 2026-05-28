@@ -93,6 +93,8 @@ struct GameInputSnapshot {
 struct SceneConstants {
     XMFLOAT4X4 viewProj;
     XMFLOAT4X4 lightViewProj;
+    XMFLOAT4X4 monsterEyeViewProj0;
+    XMFLOAT4X4 monsterEyeViewProj1;
     XMFLOAT4 cameraPosTime;
     XMFLOAT4 cameraDirAspect;
     XMFLOAT4 lighting0;
@@ -126,6 +128,10 @@ struct SceneConstants {
     XMFLOAT4 exitLight2;
     XMFLOAT4 exitLight3;
     XMFLOAT4 monsterFog0;
+    XMFLOAT4 monsterEye0;
+    XMFLOAT4 monsterEye1;
+    XMFLOAT4 monsterEye2;
+    XMFLOAT4 monsterEye3;
 };
 
 struct Tile {
@@ -167,6 +173,14 @@ struct RuntimeLampState {
     float damage = 0.0f;
     float sparkTimer = 0.0f;
     bool broken = false;
+    int humVariant = 0;
+    bool flickerWasDim = false;
+    float flickerClickCooldown = 0.0f;
+};
+
+struct LampHumCandidate {
+    size_t index = 0;
+    float distSq = 0.0f;
 };
 
 struct SteamEmitter {
@@ -175,6 +189,32 @@ struct SteamEmitter {
     float cooldown = 0.0f;
     bool panelDropped = false;
     bool triggered = false;
+};
+
+struct WetDripEmitter {
+    XMFLOAT3 pos{};
+    float interval = 1.0f;
+    float timer = 0.0f;
+    float volume = 0.30f;
+    float age = 0.0f;
+    float audibleDelay = 0.0f;
+};
+
+struct WetFloorFootprint {
+    XMFLOAT2 center{};
+    XMFLOAT2 right{1.0f, 0.0f};
+    XMFLOAT2 forward{0.0f, 1.0f};
+    float halfW = 0.0f;
+    float halfD = 0.0f;
+};
+
+struct PlayerAudibleSoundPulse {
+    XMFLOAT3 pos{};
+    float radius = 0.0f;
+    float age = 0.0f;
+    float life = 0.90f;
+    bool processedByMonster = false;
+    bool heardByMonster = false;
 };
 
 struct SteamParticle {

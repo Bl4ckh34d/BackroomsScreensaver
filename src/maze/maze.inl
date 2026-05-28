@@ -48,12 +48,18 @@ struct Maze {
 
     std::vector<Tile> Neighbors(Tile t) const {
         std::vector<Tile> out;
+        out.reserve(4);
+        ForEachNeighbor(t, [&](Tile n) { out.push_back(n); });
+        return out;
+    }
+
+    template <typename Fn>
+    void ForEachNeighbor(Tile t, Fn&& fn) const {
         const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (auto& d : dirs) {
             Tile n{t.x + d[0], t.y + d[1]};
-            if (IsOpen(n.x, n.y)) out.push_back(n);
+            if (IsOpen(n.x, n.y)) fn(n);
         }
-        return out;
     }
 
     int OpenNeighborCount(Tile t) const {
@@ -208,12 +214,12 @@ struct Maze {
             Tile t = q.front();
             q.pop();
             int base = dist[static_cast<size_t>(t.y * w + t.x)];
-            for (Tile n : Neighbors(t)) {
+            ForEachNeighbor(t, [&](Tile n) {
                 auto idx = static_cast<size_t>(n.y * w + n.x);
-                if (dist[idx] >= 0) continue;
+                if (dist[idx] >= 0) return;
                 dist[idx] = base + 1;
                 q.push(n);
-            }
+            });
         }
         return dist;
     }
@@ -254,14 +260,14 @@ struct Maze {
             Tile cur = pq.top().t;
             pq.pop();
             if (cur == to) break;
-            for (Tile n : Neighbors(cur)) {
+            ForEachNeighbor(cur, [&](Tile n) {
                 int ni = idx(n);
                 float next = cost[static_cast<size_t>(idx(cur))] + 1.0f;
-                if (next >= cost[static_cast<size_t>(ni)]) continue;
+                if (next >= cost[static_cast<size_t>(ni)]) return;
                 cost[static_cast<size_t>(ni)] = next;
                 parent[static_cast<size_t>(ni)] = idx(cur);
                 pq.push({n, next + heuristic(n, to)});
-            }
+            });
         }
         if (!std::isfinite(cost[static_cast<size_t>(idx(to))])) return {};
         std::vector<Tile> out;
@@ -273,5 +279,30 @@ struct Maze {
         }
         std::reverse(out.begin(), out.end());
         return out;
+    }
+
+    int PathLength(Tile from, Tile to, int minLength = 0) const {
+        if (!IsOpen(from.x, from.y) || !IsOpen(to.x, to.y)) return 0;
+        const int count = w * h;
+        std::vector<int> dist(static_cast<size_t>(count), -1);
+        auto idx = [this](Tile t) { return t.y * w + t.x; };
+        std::queue<Tile> q;
+        int fromIndex = idx(from);
+        dist[static_cast<size_t>(fromIndex)] = 1;
+        q.push(from);
+        while (!q.empty()) {
+            Tile cur = q.front();
+            q.pop();
+            int curDist = dist[static_cast<size_t>(idx(cur))];
+            if (cur == to) return curDist;
+            ForEachNeighbor(cur, [&](Tile n) {
+                int ni = idx(n);
+                if (dist[static_cast<size_t>(ni)] >= 0) return;
+                dist[static_cast<size_t>(ni)] = curDist + 1;
+                q.push(n);
+            });
+        }
+        (void)minLength;
+        return 0;
     }
 };

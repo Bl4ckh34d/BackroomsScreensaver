@@ -120,6 +120,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             gApp->gameMenuHasMouse = true;
             if (hover == kGameSinglePlayerId && gApp->gameMenuBloodStart == 0) {
                 gApp->gameMenuBloodStart = GetTickCount64();
+                gApp->gameMenuLampBurstStart = gApp->gameMenuBloodStart;
+                if (gApp->rendererInitialized) gApp->renderer.TriggerMainMenuLampBurst();
             }
             if (hover != gApp->gameMenuHoverId) {
                 gApp->gameMenuHoverId = hover;

@@ -26,6 +26,7 @@ target_link_libraries(BackroomsMaze PRIVATE
     d3d11
     dxgi
     d3dcompiler
+    xaudio2
     windowscodecs
     ole32
     comctl32
@@ -54,6 +55,7 @@ target_link_libraries(BackroomsMazeGame PRIVATE
     d3d11
     dxgi
     d3dcompiler
+    xaudio2
     windowscodecs
     ole32
     comctl32
@@ -73,6 +75,11 @@ foreach(target BackroomsMaze BackroomsMazeGame)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/assets/branding"
             "$<TARGET_FILE_DIR:${target}>/assets/branding"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:${target}>/assets/sounds"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target}>/assets/sounds"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/sounds"
+            "$<TARGET_FILE_DIR:${target}>/assets/sounds"
         COMMENT "Copying branding assets for ${target}"
     )
 endforeach()

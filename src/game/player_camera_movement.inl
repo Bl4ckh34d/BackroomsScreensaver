@@ -57,6 +57,8 @@
             lamp.damage = 0.0f;
             lamp.sparkTimer = RandRange(0.08f, 0.72f);
             lamp.broken = false;
+            lamp.flickerWasDim = false;
+            lamp.flickerClickCooldown = 0.0f;
         }
         if (!lampDamagePixels_.empty()) {
             std::fill(lampDamagePixels_.begin(), lampDamagePixels_.end(), 0);
@@ -155,6 +157,7 @@
         playerVerticalVelocity_ = 0.0f;
         playerStaminaRegenDelay_ = 0.0f;
         playerNoiseRadiusMeters_ = 0.0f;
+        playerAudibleSoundPulses_.clear();
         playerGrounded_ = true;
         monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
         monsterPath_.clear();
@@ -185,6 +188,8 @@
         monsterRecognizedForChase_ = false;
         monsterRecognitionTimer_ = 0.0f;
         monsterRecognitionDuration_ = 0.0f;
+        monsterCuriosityTimer_ = 0.0f;
+        monsterCuriosityDuration_ = 0.0f;
         monsterHeadBobPhase_ = RandRange(0.0f, kPi * 2.0f);
         monsterHeadScanPhase_ = RandRange(0.0f, kPi * 2.0f);
         monsterHeadYawOffset_ = 0.0f;
@@ -267,8 +272,8 @@
             camera_.y = 1.36f;
             target = {centerX, settings_.wallHeightMeters * 0.56f, oz + maze_.tileD + 0.020f};
         } else if (gDebugSliceEffect == DebugSliceEffect::Blood) {
-            camera_.y = 1.34f;
-            target = {centerX, settings_.wallHeightMeters * 0.52f, oz + maze_.tileD + 0.025f};
+            camera_.y = 1.82f;
+            target = {centerX, settings_.wallHeightMeters * 0.34f, centerZ + maze_.tileD * 0.12f};
         } else if (gDebugSliceEffect == DebugSliceEffect::Props) {
             float distanceScale = DebugPropCameraDistanceScale(gDebugPropIndex);
             float requestedZ = centerZ + maze_.tileD * distanceScale;
@@ -354,7 +359,8 @@
         flashlightPitch_ += (std::clamp(targetPitch, -0.86f, 0.70f) - flashlightPitch_) * std::min(1.0f, dt * 15.0f);
 
         float doorTarget = menuExitHover_ ? 1.0f : 0.0f;
-        menuDoorOpen_ += (doorTarget - menuDoorOpen_) * std::min(1.0f, dt * 6.5f);
+        float doorResponse = doorTarget > menuDoorOpen_ ? 2.35f : 5.8f;
+        menuDoorOpen_ += (doorTarget - menuDoorOpen_) * std::min(1.0f, dt * doorResponse);
         exitDoorAngle_ = menuDoorOpen_ * 1.38f;
 
         if (menuSinglePlayerHover_) {
@@ -380,11 +386,18 @@
                         nearest = &lamp;
                     }
                 }
-                BreakRuntimeLamp(*nearest);
+                if (nearest->broken) {
+                    PlayLightBulbBreakSoundAt(nearest->pos, 1.0f);
+                } else {
+                    BreakRuntimeLamp(*nearest);
+                }
             } else {
                 XMFLOAT3 c = maze_.WorldCenter(maze_.start, settings_.wallHeightMeters - 0.10f);
-                EmitSparkBurstAt(c, 3.1f);
-                ScheduleSparkChain(c, 2.1f, 3);
+                PlayLightBulbBreakSoundAt(c, 1.0f);
+                if (IsWetCeilingTile(maze_.start) || IsWetFootstepTile(maze_.start)) {
+                    EmitSparkBurstAt(c, 3.1f);
+                    ScheduleSparkChain(c, 2.1f, 3);
+                }
             }
         }
 
@@ -414,6 +427,7 @@
         CreateMazeMaskTexture();
         ResetSimulation();
         CreateMazeMesh();
+        SetupPersistentAudioEmitters();
     }
 
     Tile FindBloodStudyTile() const {
@@ -656,6 +670,10 @@
     }
 
     XMFLOAT3 MonsterEyeFocus() const {
+        if (monsterEyeWorldCount_ >= 2) {
+            return Scale3(Add3(monsterEyeWorld_[0], monsterEyeWorld_[1]), 0.5f);
+        }
+
         float modelY = std::clamp(settings_.monsterScale, 0.35f, 1.25f);
         float modelXZ = std::clamp(settings_.monsterScale, 0.35f, 1.35f);
         float hover = 0.22f + std::sin(time_ * 1.55f + monster_.x * 0.07f + monster_.z * 0.05f) * 0.050f;
@@ -663,23 +681,23 @@
         float faceYaw = monsterYaw_;
         if (canTrackPlayer) {
             float cameraYaw = std::atan2(camera_.x - monster_.x, camera_.z - monster_.z);
-            faceYaw += AngleWrap(cameraYaw - faceYaw) * 0.42f;
+            faceYaw += AngleWrap(cameraYaw - faceYaw) * 0.22f;
         }
 
         float deathHeadLock = deathActive_ ? SmoothStep(0.0f, 0.22f, deathTimer_) : 0.0f;
         float twitch = std::sin(time_ * 13.7f + monster_.x * 0.3f) * 0.035f;
         float liveLock = canTrackPlayer ? monsterHeadLockAmount_ : 0.0f;
         float headLock = std::max(deathHeadLock, liveLock);
-        float scanWeight = 1.0f - Clamp01(headLock);
-        float headYaw = faceYaw + monsterHeadYawOffset_ * scanWeight +
-            twitch * (1.0f - deathHeadLock * 0.85f) * scanWeight;
+        float scanWeight = 1.0f - SmoothStep(0.0f, 1.0f, Clamp01(headLock));
+        float headYaw = faceYaw + monsterHeadYawOffset_ * 0.24f * scanWeight +
+            twitch * 0.22f * (1.0f - deathHeadLock * 0.85f) * scanWeight;
         XMFLOAT3 hRight{std::cos(headYaw), 0.0f, -std::sin(headYaw)};
         XMFLOAT3 hUp{0.0f, 1.0f, 0.0f};
         XMFLOAT3 hForward{std::sin(headYaw), 0.0f, std::cos(headYaw)};
         XMFLOAT3 skull = Add3(monster_, OrientedOffset(hRight, hUp, hForward,
             0.0f, (1.34f + MonsterHeadBobOffset() * 0.55f) * modelY + hover, kMonsterHeadForwardOffset * 0.56f * modelXZ));
 
-        float headPitch = monsterHeadPitchOffset_ * scanWeight;
+        float headPitch = monsterHeadPitchOffset_ * 0.32f * scanWeight;
         if (std::abs(headPitch) > 0.0005f) {
             hForward = Normalize3(Add3(Scale3(hForward, std::cos(headPitch)), Scale3(hUp, std::sin(headPitch))), hForward);
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
@@ -688,7 +706,8 @@
         if (headLock > 0.001f) {
             XMFLOAT3 cameraFocus{camera_.x, camera_.y + 0.04f, camera_.z};
             XMFLOAT3 lookForward = Normalize3(Sub3(cameraFocus, skull), hForward);
-            hForward = Normalize3(Lerp3(hForward, lookForward, Clamp01(headLock)), lookForward);
+            float trackBlend = SmoothStep(0.0f, 1.0f, SmoothStep(0.0f, 1.0f, Clamp01(headLock)));
+            hForward = Normalize3(Lerp3(hForward, lookForward, trackBlend * 0.22f), lookForward);
             hRight = Normalize3(Cross3(hUp, hForward), hRight);
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
         }
@@ -789,19 +808,35 @@
             ventReactionTimer_ = 0.0f;
             monsterRecognitionTimer_ = std::max(0.0f, monsterRecognitionTimer_ - dt);
             if (monsterRecognitionTimer_ <= 0.0f) {
-                if (monsterRecognitionActive_ && !monsterRecognizedForChase_) {
+                if (monsterRecognitionActive_ && !monsterRecognizedForChase_ && !MonsterCuriosityActive()) {
+                    monsterCuriosityDuration_ = RandRange(0.98f, 1.26f);
+                    monsterCuriosityTimer_ = monsterCuriosityDuration_;
+                    monsterRecognitionActive_ = false;
+                }
+                if (MonsterCuriosityActive()) {
+                    monsterCuriosityTimer_ = std::max(0.0f, monsterCuriosityTimer_ - dt);
+                }
+                if (!MonsterCuriosityActive() && !monsterRecognizedForChase_) {
                     monsterRunLaunchMeters_ = 0.0f;
                     monsterRunLaunchActive_ = true;
                     runIntensity_ = std::max(runIntensity_, 0.86f);
                     runEffort_ = std::max(runEffort_, 0.94f);
                     smoothedMoveSpeed_ = std::max(smoothedMoveSpeed_, settings_.runSpeed * 0.42f);
+                    monsterRecognizedForChase_ = true;
                 }
-                monsterRecognitionActive_ = false;
-                monsterRecognizedForChase_ = true;
+                if (!MonsterCuriosityActive()) monsterRecognitionActive_ = false;
             }
             float hold = Lerp(2.4f, 5.2f, SmoothStep(0.12f, 0.82f, proximity));
             chaseMemoryTimer_ = std::max(chaseMemoryTimer_, hold);
         } else {
+            if (MonsterCuriosityActive()) {
+                monsterCuriosityTimer_ = std::max(0.0f, monsterCuriosityTimer_ - dt);
+                if (!MonsterCuriosityActive() && chaseMemoryTimer_ > 0.0f && !monsterRecognizedForChase_) {
+                    monsterRunLaunchMeters_ = 0.0f;
+                    monsterRunLaunchActive_ = true;
+                    monsterRecognizedForChase_ = true;
+                }
+            }
             monsterRecognitionActive_ = false;
             monsterRecognitionTimer_ = 0.0f;
             chaseMemoryTimer_ = std::max(0.0f, chaseMemoryTimer_ - dt);
@@ -823,6 +858,8 @@
             monsterRecognizedForChase_ = false;
             monsterRunLaunchActive_ = false;
             monsterRunLaunchMeters_ = 3.0f;
+            monsterCuriosityTimer_ = 0.0f;
+            monsterCuriosityDuration_ = 0.0f;
         }
         threatVisibleLast_ = threat;
     }
@@ -986,6 +1023,11 @@
             activeBloodScareIndex_ = -1;
             return;
         }
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && gameInput_.crouch) {
+            bloodFocusTimer_ = 0.0f;
+            activeBloodScareIndex_ = -1;
+            return;
+        }
         Tile cameraTile = CameraTile();
         XMFLOAT3 flashlightDir = FlashlightForward();
         for (size_t i = 0; i < bloodScarePoints_.size(); ++i) {
@@ -1083,7 +1125,7 @@
             float reactionScale = std::clamp(point.dreadScale, 0.20f, 1.35f);
             float spike = std::max(settings_.dreadJumpscareGain * 1.15f, 0.42f + closeness * 0.24f + gaze * 0.24f) * reactionScale;
             AddDread(spike);
-            AlertMonsterToPlayerTrigger(target);
+            EmitPlayerAudibleSoundAtCamera(JumpscareHearingRadius(0.92f), 1.10f);
             flashlightAgitation_ = std::max(flashlightAgitation_, (0.90f + closeness * 0.20f + gaze * 0.18f) * Lerp(0.62f, 1.0f, reactionScale));
             flashlightSnapCooldown_ = std::min(flashlightSnapCooldown_, 0.08f);
             stumbleTimer_ = std::max(stumbleTimer_, (0.10f + closeness * 0.08f) * reactionScale);
@@ -2126,9 +2168,7 @@
     }
 
     bool LampBrokenZone(int cellX, int cellZ) const {
-        float zx = std::floor(static_cast<float>(cellX) / 3.0f);
-        float zz = std::floor(static_cast<float>(cellZ) / 3.0f);
-        return LampHash(zx, zz) >= 1.0f - settings_.brokenZoneRatio;
+        return LampHash(static_cast<float>(cellX) + 83.7f, static_cast<float>(cellZ) - 29.4f) >= 1.0f - settings_.brokenZoneRatio;
     }
 
     bool LampIsOn(int cellX, int cellZ) const {
@@ -2566,13 +2606,13 @@
         while (!q.empty()) {
             Tile t = q.front();
             q.pop();
-            for (Tile n : maze_.Neighbors(t)) {
+            maze_.ForEachNeighbor(t, [&](Tile n) {
                 int ni = idx(n);
-                if (depth[static_cast<size_t>(ni)] >= 0) continue;
+                if (depth[static_cast<size_t>(ni)] >= 0) return;
                 parent[static_cast<size_t>(ni)] = idx(t);
                 depth[static_cast<size_t>(ni)] = depth[static_cast<size_t>(idx(t))] + 1;
                 q.push(n);
-            }
+            });
         }
 
         auto pathTo = [&](Tile target) {
@@ -2898,7 +2938,7 @@
         if (crouching) targetSpeed *= 0.52f;
 
         if (wantsSprint && !settings_.debugInfiniteStamina) {
-            playerStamina_ = std::max(0.0f, playerStamina_ - 14.5f * dt);
+            playerStamina_ = std::max(0.0f, playerStamina_ - 10.5f * dt);
             playerStaminaRegenDelay_ = 1.15f;
             if (playerStamina_ <= 0.0f) {
                 wantsSprint = false;
@@ -2910,7 +2950,7 @@
         } else {
             playerStaminaRegenDelay_ = std::max(0.0f, playerStaminaRegenDelay_ - dt);
             if (playerStaminaRegenDelay_ <= 0.0f) {
-                playerStamina_ = std::min(100.0f, playerStamina_ + 8.0f * dt);
+                playerStamina_ = std::min(100.0f, playerStamina_ + 6.0f * dt);
             }
         }
 
@@ -2920,19 +2960,6 @@
         smoothedMoveSpeed_ = MoveTowards(smoothedMoveSpeed_, wantsMove ? targetSpeed : 0.0f,
             speedAccel * dt);
         float moveDistance = smoothedMoveSpeed_ * dt;
-        float moveNoise = 0.0f;
-        if (wantsMove && smoothedMoveSpeed_ > 0.05f) {
-            float walkT = Clamp01(smoothedMoveSpeed_ / std::max(0.1f, walkSpeed));
-            if (crouching) {
-                moveNoise = Lerp(0.45f, 1.55f, walkT);
-            } else if (wantsSprint) {
-                float runT = Clamp01((smoothedMoveSpeed_ - walkSpeed) / std::max(0.1f, sprintSpeed - walkSpeed));
-                moveNoise = Lerp(4.0f, 9.4f, runT);
-            } else {
-                moveNoise = Lerp(1.8f, 4.2f, walkT);
-            }
-        }
-        playerNoiseRadiusMeters_ += (moveNoise - playerNoiseRadiusMeters_) * std::min(1.0f, dt * 5.8f);
         if (wantsMove && moveDistance > 0.0001f) {
             XMFLOAT3 forward = Forward();
             XMFLOAT3 right{std::cos(yaw_), 0.0f, -std::sin(yaw_)};
@@ -3549,18 +3576,6 @@
             (speedTarget > smoothedMoveSpeed_ ? accel : decel) * dt);
         float speed = smoothedMoveSpeed_;
         float moveDistance = std::min(dist, speed * dt);
-        float botNoise = 0.0f;
-        if (!softStopActive && moveDistance > 0.0001f && speed > 0.05f) {
-            float walkT = Clamp01(speed / std::max(0.1f, settings_.walkSpeed));
-            if (panicActive) {
-                float runT = Clamp01((speed - settings_.walkSpeed) /
-                    std::max(0.1f, settings_.runSpeed - settings_.walkSpeed));
-                botNoise = Lerp(4.0f, 9.4f, runT);
-            } else {
-                botNoise = Lerp(1.8f, 4.2f, walkT);
-            }
-        }
-        playerNoiseRadiusMeters_ += (botNoise - playerNoiseRadiusMeters_) * std::min(1.0f, dt * 9.0f);
         float invDist = 1.0f / std::max(0.001f, dist);
         bool movedSafely = MoveCameraSafely(dx * invDist * moveDistance, dz * invDist * moveDistance,
             moveDistance, speed, targetTileForMove, freeRunMove);

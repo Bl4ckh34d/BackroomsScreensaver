@@ -332,7 +332,7 @@ void BuildGameConfigModel(ConfigState* state) {
         L"Rendering, textures, lighting, post processing, particles, and visual atmosphere.",
         L"Maze generation, scare density, monster pressure, dread, and exit pacing.",
         L"Manual player control tuning and persisted key bindings.",
-        L"Audio settings are persisted now; the audio engine will consume them in a later milestone."
+        L"Audio settings control the in-game XAudio2 mix buses."
     };
 
     auto& f = state->fieldDefs;

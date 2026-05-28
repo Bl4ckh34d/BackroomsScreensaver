@@ -199,9 +199,9 @@ struct Settings {
     float ambientLight = 0.0f;
     float lampIntensity = 1.45f;
     float lampSpacing = 3.2f;
-    float lampOnRatio = 0.18f;
-    float lampFlickerRatio = 0.38f;
-    float brokenZoneRatio = 0.26f;
+    float lampOnRatio = 1.0f;
+    float lampFlickerRatio = 0.075f;
+    float brokenZoneRatio = 0.05f;
     float darkLampVisibleRatio = 1.0f;
     float fogStartMeters = 0.0f;
     float fogEndMeters = 12.0f;
@@ -439,8 +439,11 @@ std::filesystem::path CacheDirectory() {
 }
 
 bool StartupProfileEnabled() {
-    wchar_t value[8]{};
-    return GetEnvironmentVariableW(L"BACKROOMS_PROFILE_STARTUP", value, ARRAYSIZE(value)) > 0;
+    static const bool enabled = []() {
+        wchar_t value[8]{};
+        return GetEnvironmentVariableW(L"BACKROOMS_PROFILE_STARTUP", value, ARRAYSIZE(value)) > 0;
+    }();
+    return enabled;
 }
 
 void StartupProfileLine(const std::wstring& line) {
@@ -451,13 +454,18 @@ void StartupProfileLine(const std::wstring& line) {
 
 class StartupProfile {
 public:
-    explicit StartupProfile(const wchar_t* name) : name_(name), start_(GetTickCount64()), last_(start_) {
+    explicit StartupProfile(const wchar_t* name) : name_(name), enabled_(StartupProfileEnabled()) {
+        if (!enabled_) return;
+        start_ = NowMs();
+        last_ = start_;
         StartupProfileLine(L"[" + name_ + L"]");
     }
 
     void Mark(const wchar_t* label) {
-        ULONGLONG now = GetTickCount64();
+        if (!enabled_) return;
+        double now = NowMs();
         std::wostringstream line;
+        line << std::fixed << std::setprecision(3);
         line << name_ << L" " << label
              << L": +" << (now - last_) << L" ms"
              << L", total " << (now - start_) << L" ms";
@@ -466,9 +474,18 @@ public:
     }
 
 private:
+    static double NowMs() {
+        LARGE_INTEGER frequency{};
+        LARGE_INTEGER counter{};
+        QueryPerformanceFrequency(&frequency);
+        QueryPerformanceCounter(&counter);
+        return static_cast<double>(counter.QuadPart) * 1000.0 / static_cast<double>(std::max<LONGLONG>(1, frequency.QuadPart));
+    }
+
     std::wstring name_;
-    ULONGLONG start_ = 0;
-    ULONGLONG last_ = 0;
+    bool enabled_ = false;
+    double start_ = 0.0;
+    double last_ = 0.0;
 };
 
 std::wstring DefaultConfigText() {
@@ -525,9 +542,9 @@ std::wstring DefaultConfigText() {
       << L"AmbientLight=0\r\n"
       << L"LampIntensity=1.45\r\n"
       << L"LampSpacing=3.2\r\n"
-      << L"LampOnRatio=0.18\r\n"
-      << L"LampFlickerRatio=0.38\r\n"
-      << L"BrokenZoneRatio=0.26\r\n"
+      << L"LampOnRatio=1\r\n"
+      << L"LampFlickerRatio=0.075\r\n"
+      << L"BrokenZoneRatio=0.05\r\n"
       << L"DarkLampVisibleRatio=1.0\r\n"
       << L"FogStartMeters=0\r\n"
       << L"FogEndMeters=12\r\n"
@@ -935,15 +952,15 @@ Settings LoadSettings() {
         });
         if (lowered.find(L"white-tailed deer skull") != std::wstring::npos ||
             lowered.find(L"ram_skull") != std::wstring::npos) {
-            meshPath.clear();
+            meshPath = L"assets\\models\\monster_face_mask\\horror_mask.obj";
         }
     };
     normalizeLegacyMonsterMesh(s.monsterSkullMesh);
     normalizeLegacyMonsterMesh(s.monsterAltSkullMesh);
     if (s.monsterSkullMesh.empty()) {
         s.monsterSkullMesh = L"assets\\models\\monster_face_mask\\horror_mask.obj";
-        s.monsterSkullMaxTriangles = std::max(s.monsterSkullMaxTriangles, 65000);
-    } else {
+    }
+    {
         std::wstring loweredSkull = s.monsterSkullMesh;
         std::transform(loweredSkull.begin(), loweredSkull.end(), loweredSkull.begin(), [](wchar_t c) {
             return static_cast<wchar_t>(towlower(c));

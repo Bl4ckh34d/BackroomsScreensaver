@@ -18,6 +18,12 @@
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
+    bool PointWithinHorizontalRange(const XMFLOAT3& p, float maxDistance) const {
+        float dx = p.x - camera_.x;
+        float dz = p.z - camera_.z;
+        return dx * dx + dz * dz <= maxDistance * maxDistance;
+    }
+
     float ScareSensoryWeight(const XMFLOAT3& p, float visualDistance, float minDot, float loudDistance) const {
         if (PlayerLooksAt(p, visualDistance, minDot)) return 1.0f;
         float dist = DistanceToPoint(p);
@@ -55,6 +61,7 @@
 
     void EmitSparkBurstAt(const XMFLOAT3& pos, float intensity = 1.0f) {
         if (!settings_.sparkParticles || settings_.sparkMaxParticles <= 0) return;
+        PlaySparkSoundAt(pos, intensity);
         int count = static_cast<int>((5.0f + RandRange(0.0f, 8.9f)) * intensity);
         for (int i = 0; i < count && sparks_.size() < static_cast<size_t>(settings_.sparkMaxParticles); ++i) {
             float yaw = RandRange(-1.15f, 1.15f) + LampHash(pos.x, pos.z) * kPi;
@@ -99,13 +106,18 @@
         }
     }
 
+    bool LampCanEmitSparks(const RuntimeLampState& lamp) const {
+        return IsWetCeilingTile(lamp.tile) || IsWetFootstepTile(lamp.tile);
+    }
+
     void BreakRuntimeLamp(RuntimeLampState& lamp) {
         if (lamp.broken) return;
         lamp.broken = true;
         lamp.damage = 1.0f;
         lamp.sparkTimer = RandRange(1.2f, 3.4f);
         MarkLampDamagePixel(lamp.tile, lamp.damage);
-        if (settings_.sparkParticles) {
+        PlayLightBulbBreakSoundAt(lamp.pos, 1.0f);
+        if (settings_.sparkParticles && LampCanEmitSparks(lamp)) {
             float intensity = std::max(2.2f, PickBrokenLampSparkIntensity() * 1.18f);
             EmitSparkBurstAt(lamp.pos, intensity);
             ScheduleSparkChain(lamp.pos, intensity * settings_.effectBrokenLampChainIntensityScale,
@@ -113,10 +125,33 @@
         }
     }
 
+    bool BreakNearestRuntimeLampAt(const XMFLOAT3& pos, float maxDistance) {
+        RuntimeLampState* nearest = nullptr;
+        float bestSq = maxDistance * maxDistance;
+        for (RuntimeLampState& lamp : runtimeLamps_) {
+            if (lamp.broken) continue;
+            float dx = lamp.pos.x - pos.x;
+            float dy = lamp.pos.y - pos.y;
+            float dz = lamp.pos.z - pos.z;
+            float distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq <= bestSq) {
+                bestSq = distSq;
+                nearest = &lamp;
+            }
+        }
+        if (!nearest) return false;
+        BreakRuntimeLamp(*nearest);
+        return true;
+    }
+
     void UpdateBrokenRuntimeLampSparks(float dt, float minSeconds, float maxSeconds, float chainChance) {
         if (dt <= 0.0f || !settings_.sparkParticles || runtimeLamps_.empty()) return;
         for (RuntimeLampState& lamp : runtimeLamps_) {
             if (!lamp.broken) continue;
+            if (!LampCanEmitSparks(lamp)) {
+                lamp.sparkTimer = std::max(lamp.sparkTimer, maxSeconds);
+                continue;
+            }
             lamp.sparkTimer -= dt;
             if (lamp.sparkTimer > 0.0f) continue;
 
@@ -137,6 +172,7 @@
         float tileAvg = std::max(0.1f, maze_.TileAverage());
         float influenceRadius = std::max(tileAvg * 4.30f, 6.50f);
         float breakRadius = influenceRadius * 0.72f;
+        int maxTileReach = static_cast<int>(std::ceil(influenceRadius / std::max(0.1f, maze_.TileMinimum()))) + 1;
 
         struct MonsterLampInfluencePoint {
             XMFLOAT3 pos;
@@ -160,11 +196,15 @@
             float nearestDist = influenceRadius + 1.0f;
             bool affected = false;
             for (const MonsterLampInfluencePoint& point : influencePoints) {
+                int tileDx = std::abs(lamp.tile.x - point.tile.x);
+                int tileDz = std::abs(lamp.tile.y - point.tile.y);
+                if (tileDx > maxTileReach || tileDz > maxTileReach) continue;
                 float dx = lamp.pos.x - point.pos.x;
                 float dz = lamp.pos.z - point.pos.z;
-                float dist = std::sqrt(dx * dx + dz * dz);
-                if (dist > influenceRadius) continue;
+                float distSq = dx * dx + dz * dz;
+                if (distSq > influenceRadius * influenceRadius) continue;
                 if (!maze_.LineClear(point.tile, lamp.tile)) continue;
+                float dist = std::sqrt(distSq);
                 affected = true;
                 nearestDist = std::min(nearestDist, dist);
             }
@@ -192,7 +232,7 @@
             if (fail > 0.001f) {
                 lamp.sparkTimer -= dt * Lerp(0.85f, affected ? 3.5f : 1.7f, fail);
                 if (lamp.sparkTimer <= 0.0f) {
-                    if (settings_.sparkParticles) {
+                    if (settings_.sparkParticles && LampCanEmitSparks(lamp)) {
                         float intensity = Lerp(0.42f, 2.55f, fail);
                         EmitSparkBurstAt(lamp.pos, intensity);
                         if (fail > 0.68f && RandRange(0.0f, 1.0f) < Lerp(0.16f, 0.62f, fail)) {
@@ -216,6 +256,7 @@
     }
 
     void SpawnSteamBurst(const SteamEmitter& emitter, float intensity = 1.0f) {
+        PlayAirVentDustPuffAt(emitter.pos, intensity);
         int count = static_cast<int>(RandRange(12.0f, 26.0f) * intensity);
         for (int i = 0; i < count && steam_.size() < 420; ++i) {
             float side = RandRange(-0.42f, 0.42f);
@@ -285,10 +326,15 @@
             ventReactionTimer_ = 0.0f;
             return;
         }
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && gameInput_.crouch) {
+            scareCooldown_ = std::max(scareCooldown_, 0.35f);
+            ventReactionTimer_ = 0.0f;
+            return;
+        }
         if (settings_.fleshFlicker) {
             fleshFlickerCooldown_ = std::max(0.0f, fleshFlickerCooldown_ - dt);
             if (fleshFlickerCooldown_ <= 0.0f && fleshFlickerTimer_ <= 0.0f && scareCooldown_ <= 0.0f) {
-                fleshFlickerDuration_ = RandRange(settings_.fleshFlickerDuration * 0.82f, settings_.fleshFlickerDuration * 1.24f);
+                fleshFlickerDuration_ = RandRange(settings_.fleshFlickerDuration * 0.72f, settings_.fleshFlickerDuration * 0.92f);
                 fleshFlickerTimer_ = fleshFlickerDuration_;
                 fleshFlickerCooldown_ = RandRange(settings_.fleshFlickerMinSeconds, settings_.fleshFlickerMaxSeconds) * scareScale;
                 scareCooldown_ = std::max(scareCooldown_, fleshFlickerDuration_ + RandRange(8.0f, 18.0f) * scareScale);
@@ -325,6 +371,7 @@
 
         for (SparkEmitter& emitter : sparkEmitters_) {
             if (emitter.triggered) continue;
+            if (!PointWithinHorizontalRange(emitter.pos, maze_.TileAverage() * 3.1f)) continue;
             if (!ScareSourceAhead(emitter.pos,
                 maze_.TileMinimum() * 0.78f,
                 maze_.TileAverage() * 2.65f,
@@ -334,9 +381,11 @@
             if (scareCooldown_ <= 0.0f && sensory > 0.0f) {
                 emitter.triggered = true;
                 float intensity = PickBrokenLampSparkIntensity();
-                AlertMonsterToPlayerTrigger(emitter.pos);
-                SpawnSparkBurst(emitter, intensity);
-                ScheduleSparkChain(emitter.pos, intensity * settings_.effectBrokenLampChainIntensityScale, PickBrokenLampChainBursts());
+                EmitPlayerAudibleSound(emitter.pos, SparkHearingRadius(intensity), 1.18f);
+                if (!BreakNearestRuntimeLampAt(emitter.pos, maze_.TileMinimum() * 0.34f)) {
+                    SpawnSparkBurst(emitter, intensity);
+                    ScheduleSparkChain(emitter.pos, intensity * settings_.effectBrokenLampChainIntensityScale, PickBrokenLampChainBursts());
+                }
                 scareCooldown_ = RandRange(9.0f, 18.0f) * scareScale;
                 flashlightAgitation_ = std::max(flashlightAgitation_, 0.42f + sensory * 0.43f);
                 AddDread(settings_.dreadJumpscareGain *
@@ -351,6 +400,7 @@
 
         for (SteamEmitter& emitter : steamEmitters_) {
             if (emitter.triggered) continue;
+            if (!PointWithinHorizontalRange(emitter.pos, maze_.TileAverage() * 3.25f)) continue;
             if (!ScareSourceAhead(emitter.pos,
                 maze_.TileMinimum() * 0.82f,
                 maze_.TileAverage() * 2.80f,
@@ -359,7 +409,7 @@
             float sensory = std::max(ScareSensoryWeight(emitter.pos, 7.8f, 0.76f, 2.10f), 0.70f);
             if (sensory > 0.0f && scareCooldown_ <= 0.0f) {
                 emitter.triggered = true;
-                AlertMonsterToPlayerTrigger(emitter.pos);
+                EmitPlayerAudibleSound(emitter.pos, AirVentHearingRadius(), 1.18f);
                 SpawnSteamBurst(emitter, PickAirVentSteamIntensity());
                 if (!emitter.panelDropped &&
                     RandRange(0.0f, 1.0f) < settings_.effectAirVentPanelDropChance &&
@@ -458,7 +508,7 @@
                         d.roll = kPi * 0.5f;
                         SparkEmitter impact{{d.pos.x, d.pos.y + 0.08f, d.pos.z}, 0.0f};
                         SpawnSparkBurst(impact, 1.6f);
-                        AlertMonsterToPlayerTrigger(impact.pos);
+                        EmitPlayerAudibleSound(impact.pos, TileHearingRadius(8.0f), 1.05f);
                     }
                 }
             }

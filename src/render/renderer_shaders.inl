@@ -8,6 +8,8 @@ cbuffer SceneConstants : register(b0)
 {
     row_major float4x4 gViewProj;
     row_major float4x4 gLightViewProj;
+    row_major float4x4 gMonsterEyeViewProj0;
+    row_major float4x4 gMonsterEyeViewProj1;
     float4 gCameraPosTime;
     float4 gCameraDirAspect;
     float4 gLighting0;
@@ -41,6 +43,10 @@ float4 gSparkLight1;
     float4 gExitLight2;
     float4 gExitLight3;
     float4 gMonsterFog0;
+    float4 gMonsterEye0;
+    float4 gMonsterEye1;
+    float4 gMonsterEye2;
+    float4 gMonsterEye3;
 };
 
 Texture2DArray gAlbedo : register(t0);
@@ -50,6 +56,8 @@ Texture2D gMazeOpen : register(t3);
 Texture2DArray gMaterialProps : register(t4);
 Texture2D gFlashlightPattern : register(t5);
 Texture2D gLampDamage : register(t6);
+Texture2D gMonsterEyeShadow0 : register(t7);
+Texture2D gMonsterEyeShadow1 : register(t8);
 SamplerState gSampler : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 
@@ -106,9 +114,28 @@ VSOut VSMain(VSIn input)
         float meatRidge = (meatHeight - 0.48) * 2.0;
         float peristalsis = sin(along * 3.35 - time * 3.85 + seed * 11.0);
         float fine = sin(along * 8.7 + ring * 2.0 - time * 5.1 + seed * 23.0);
-        float squeeze = peristalsis * 0.052 + fine * 0.017 + meatRidge * (0.018 + abs(peristalsis) * 0.020);
+        float squeeze = peristalsis * 0.028 + fine * 0.009 + meatRidge * (0.010 + abs(peristalsis) * 0.011);
+        float2 noiseP = float2(along * 3.15 - time * 0.10 + seed * 7.0, input.uv.x * 4.0 + time * 0.035 + seed * 5.0);
+        float2 noiseCell = floor(noiseP);
+        float2 noiseFrac = frac(noiseP);
+        float2 noiseFade = noiseFrac * noiseFrac * noiseFrac * (noiseFrac * (noiseFrac * 6.0 - 15.0) + 10.0);
+        float h00 = frac(sin(dot(noiseCell + float2(0.0, 0.0) + seed, float2(127.1, 311.7))) * 43758.5453);
+        float h10 = frac(sin(dot(noiseCell + float2(1.0, 0.0) + seed, float2(127.1, 311.7))) * 43758.5453);
+        float h01 = frac(sin(dot(noiseCell + float2(0.0, 1.0) + seed, float2(127.1, 311.7))) * 43758.5453);
+        float h11 = frac(sin(dot(noiseCell + float2(1.0, 1.0) + seed, float2(127.1, 311.7))) * 43758.5453);
+        float2 g00 = float2(cos(h00 * 6.2831853), sin(h00 * 6.2831853));
+        float2 g10 = float2(cos(h10 * 6.2831853), sin(h10 * 6.2831853));
+        float2 g01 = float2(cos(h01 * 6.2831853), sin(h01 * 6.2831853));
+        float2 g11 = float2(cos(h11 * 6.2831853), sin(h11 * 6.2831853));
+        float n00 = dot(g00, noiseFrac - float2(0.0, 0.0));
+        float n10 = dot(g10, noiseFrac - float2(1.0, 0.0));
+        float n01 = dot(g01, noiseFrac - float2(0.0, 1.0));
+        float n11 = dot(g11, noiseFrac - float2(1.0, 1.0));
+        float softNoise = lerp(lerp(n00, n10, noiseFade.x), lerp(n01, n11, noiseFade.x), noiseFade.y) * 1.35;
+        float noisePulse = sin(time * 1.45 + along * 2.1 + seed * 31.0) * 0.5 + 0.5;
+        float secondLayer = softNoise * (0.008 + noisePulse * 0.010);
         float crawl = sin(along * 1.85 - time * 1.35 + seed * 7.0) * 0.030;
-        o.worldPos += input.normal * squeeze;
+        o.worldPos += input.normal * (squeeze + secondLayer);
         o.worldPos += input.tangent * (crawl + meatRidge * 0.006);
         o.worldPos.y += sin(along * 2.35 - time * 3.1 + seed * 13.0) * 0.025;
     }
@@ -626,7 +653,6 @@ float FixturePower(float3 worldPos, float time)
     float2 stride = gMaze0.zw;
     float2 lampOrigin = gMaze0.xy + gMaze0.zw * 0.5;
     float2 cell = floor((worldPos.xz - lampOrigin) / stride + 0.5);
-    float brokenZone = step(1.0 - gLighting1.w, Hash21(floor(cell / 3.0)));
     float h = Hash21(cell);
     float variation = lerp(0.86, 1.14, Hash21(cell + 53.0));
     float isOn = step(1.0 - gLighting1.y, h);
@@ -634,8 +660,8 @@ float FixturePower(float3 worldPos, float time)
     float tick = floor(time * (1.3 + Hash21(cell + 37.0) * 2.5));
     float event = step(0.86, Hash21(cell + tick + 71.0));
     float flutter = 0.18 + 0.82 * saturate(sin(time * (41.0 + h * 50.0)) * 0.5 + 0.5);
-    float buzz = 0.98 + 0.02 * sin(time * (55.0 + h * 80.0));
-    float basePower = (1.0 - brokenZone) * isOn * lerp(1.0, flutter, flickerFixture * event) * buzz * variation;
+    float buzz = lerp(1.0, 0.98 + 0.02 * sin(time * (55.0 + h * 80.0)), flickerFixture);
+    float basePower = isOn * lerp(1.0, flutter, flickerFixture * event) * buzz * variation;
     return basePower * LampFailureMultiplier(LampDamageAtWorld(worldPos.xz), h, time);
 }
 
@@ -934,6 +960,85 @@ float FlashlightAmount(float3 worldPos, float3 worldN)
     return cone * attenuation * gLighting0.x * (0.16 + diffuse * 1.12) * shadow * pattern;
 }
 
+float EyeShadowVisibility(Texture2D shadowMap, float4x4 eyeViewProj, float4 eyeData, float3 worldPos, float3 normal)
+{
+    if (eyeData.w <= 0.001)
+    {
+        return 0.0;
+    }
+
+    float3 samplePos = worldPos + normalize(normal) * 0.018;
+    float4 lightPos = mul(float4(samplePos, 1.0), eyeViewProj);
+    if (lightPos.w <= 0.0001)
+    {
+        return 0.0;
+    }
+
+    float3 ndc = lightPos.xyz / lightPos.w;
+    float2 uv = float2(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
+    if (uv.x <= 0.001 || uv.x >= 0.999 || uv.y <= 0.001 || uv.y >= 0.999 || ndc.z <= 0.0 || ndc.z >= 1.0)
+    {
+        return 0.0;
+    }
+
+    float3 toLight = normalize(eyeData.xyz - samplePos);
+    float slope = 1.0 - saturate(dot(normalize(normal), toLight));
+    float compareDepth = ndc.z - max(gShadow1.w * (0.75 + slope * 1.9), 0.00036);
+    float texel = max(gMonsterEye3.x, 0.0001);
+    float receiver = saturate(length(worldPos - eyeData.xyz) / max(gMonsterEye3.y, 0.01));
+    float filterRadius = lerp(0.65, 2.25, pow(receiver, 0.68));
+    float visible = 0.0;
+    float weightSum = 0.0;
+
+    [loop]
+    for (int y = -1; y <= 1; ++y)
+    {
+        [loop]
+        for (int x = -1; x <= 1; ++x)
+        {
+            float weight = 2.0 - max(abs((float)x), abs((float)y));
+            visible += shadowMap.SampleCmpLevelZero(gShadowSampler, uv + float2(x, y) * texel * filterRadius, compareDepth) * weight;
+            weightSum += weight;
+        }
+    }
+    return saturate(visible / max(weightSum, 0.001));
+}
+
+float MonsterEyeOne(float4 eyeData, float4 eyeDirData, Texture2D eyeShadow, float4x4 eyeViewProj, float3 worldPos, float3 worldN, float phaseOffset)
+{
+    float strength = eyeData.w;
+    if (strength <= 0.001)
+    {
+        return 0.0;
+    }
+
+    float3 fromEye = worldPos - eyeData.xyz;
+    float dist = length(fromEye);
+    float range = max(0.5, gMonsterEye3.y);
+    if (dist <= 0.001 || dist > range)
+    {
+        return 0.0;
+    }
+
+    float3 ray = fromEye / dist;
+    float3 eyeDir = normalize(eyeDirData.xyz + float3(0.0001, 0.0, 0.0001));
+    float alert = saturate(eyeDirData.w);
+    float outer = cos(lerp(34.0, 25.0, alert) * 0.01745329252);
+    float inner = cos(lerp(12.5, 7.5, alert) * 0.01745329252);
+    float cone = smoothstep(outer, inner, dot(ray, eyeDir));
+    float diffuse = saturate(dot(worldN, -ray) * 0.72 + 0.28);
+    float falloff = pow(saturate(1.0 - dist / range), 1.48) / (1.0 + dist * dist * lerp(0.080, 0.045, alert));
+    float shadow = EyeShadowVisibility(eyeShadow, eyeViewProj, eyeData, worldPos, worldN);
+    float4 lightClip = mul(float4(worldPos, 1.0), eyeViewProj);
+    float2 lightUv = lightClip.xy / max(lightClip.w, 0.0001) * 0.5 + 0.5;
+    float glass = gFlashlightPattern.Sample(gSampler, saturate(lightUv)).r;
+    float2 centered = lightUv * 2.0 - 1.0;
+    float lensFalloff = smoothstep(1.16, 0.12, dot(centered, centered));
+    float pattern = lerp(0.58, 1.16, glass) * (0.72 + lensFalloff * 0.28);
+    float pulse = 0.82 + 0.18 * sin(gCameraPosTime.w * lerp(6.0, 15.0, alert) + phaseOffset);
+    return cone * diffuse * falloff * shadow * strength * pattern * pulse;
+}
+
 float SparkLightOne(float3 worldPos, float3 worldN, float4 lightData)
 {
     if (lightData.w <= 0.001)
@@ -956,6 +1061,12 @@ float SparkLightOne(float3 worldPos, float3 worldN, float4 lightData)
 float SparkLight(float3 worldPos, float3 worldN)
 {
     return SparkLightOne(worldPos, worldN, gSparkLight0) + SparkLightOne(worldPos, worldN, gSparkLight1);
+}
+
+float MonsterEyeLight(float3 worldPos, float3 worldN)
+{
+    return MonsterEyeOne(gMonsterEye0, gMonsterEye2, gMonsterEyeShadow0, gMonsterEyeViewProj0, worldPos, worldN, 0.4) +
+        MonsterEyeOne(gMonsterEye1, gMonsterEye2, gMonsterEyeShadow1, gMonsterEyeViewProj1, worldPos, worldN, 2.1);
 }
 
 float3 ExitSignLight(float3 worldPos, float3 worldN, float materialId)
@@ -1572,13 +1683,16 @@ float4 PSMain(VSOut input) : SV_TARGET
                 {
                     lateralNoise = (Fbm3(float3(u * 6.1, away * 3.7, seed * 11.0)) - 0.5) * 0.030;
                 }
-                float lateral = smoothstep(0.030 + lateralNoise, 0.070 + lateralNoise, u) *
-                    (1.0 - smoothstep(0.930 - lateralNoise, 0.970 - lateralNoise, u));
                 float farEdgeNoise = (Fbm3(float3(u * 4.7 + seed * 23.0, away * 2.1, seed * 67.0)) - 0.5) * 0.16 +
                     (Noise3(float3(u * 13.0, away * 8.0, seed * 97.0)) - 0.5) * 0.045;
-                float waterFarFade = 1.0 - smoothstep(1.56 + farEdgeNoise, 1.94 + farEdgeNoise, away);
-                float waterNearFade = smoothstep(-0.030 + farEdgeNoise * 0.24, 0.045 + farEdgeNoise * 0.24, away);
-                float floorCardFade = lerp(1.0, lateral * waterFarFade * waterNearFade, waterLiquid);
+                float lateral = smoothstep(0.018 + lateralNoise, 0.112 + lateralNoise, u) *
+                    (1.0 - smoothstep(0.888 - lateralNoise, 0.982 - lateralNoise, u));
+                float waterFarStart = 0.68 + farEdgeNoise * 0.24;
+                float waterFarEnd = 0.96 + farEdgeNoise * 0.16;
+                float waterFarFade = 1.0 - smoothstep(waterFarStart, waterFarEnd, away);
+                float waterNearFade = smoothstep(-0.020 + farEdgeNoise * 0.16, 0.060 + farEdgeNoise * 0.16, away);
+                float raggedCardFade = lateral * waterFarFade * waterNearFade;
+                float floorCardFade = lerp(1.0, raggedCardFade, waterLiquid);
                 float seam = 1.0 - smoothstep(0.0, 0.040, away);
                 float floodNoise = 0.70 + 0.30 * Fbm3(float3(input.worldPos.xz * 2.7 + seed * 9.0, seed * 31.0));
                 float floorFrontNoise = (Fbm3(float3(u * 3.1 + seed * 17.0, away * 1.9, seed * 53.0)) - 0.5) * 0.20 +
@@ -1662,8 +1776,8 @@ float4 PSMain(VSOut input) : SV_TARGET
                     float sourceReady = smoothstep(0.25, 1.15, streamAge);
                     float spreadAway = 0.030 + sourceGrow * (0.145 + r2 * 0.095);
                     float spreadSide = (0.018 + r2 * 0.022) * streamWidthScale * (1.0 + sourceGrow * 1.10);
-                    spreadAway *= lerp(1.0, 1.22, waterLiquid);
-                    spreadSide *= lerp(1.0, 1.14, waterLiquid);
+                    spreadAway *= lerp(1.0, 1.58, waterLiquid);
+                    spreadSide *= lerp(1.0, 1.32, waterLiquid);
                     float edgeNoise = (Hash21(float2(floor(u * 12.0) + fi, floor(away * 10.0) + seed * 23.0)) - 0.5) * 0.010 * sourceGrow;
                     if (highBloodDetail)
                     {
@@ -1707,8 +1821,8 @@ float4 PSMain(VSOut input) : SV_TARGET
                 float soakFrontNoise = (Fbm3(float3(u * 3.4 + seed * 13.0, away * 1.7, seed * 41.0)) - 0.5) * 0.22 +
                     (Noise3(float3(u * 11.0, away * 5.0, seed * 73.0)) - 0.5) * 0.06;
                 float rimFeed = smoothstep(0.04, 0.30, topSource);
-                float soakReach = saturate((leakAge - lerp(7.5, 5.0, waterLiquid)) / lerp(34.0, 50.0, waterLiquid));
-                float unevenCeilingReach = saturate(soakReach + rimFeed * 0.22 + soakFrontNoise);
+                float soakReach = saturate((leakAge - lerp(7.5, 3.8, waterLiquid)) / lerp(34.0, 34.0, waterLiquid));
+                float unevenCeilingReach = saturate(soakReach * lerp(1.0, 1.32, waterLiquid) + rimFeed * lerp(0.22, 0.34, waterLiquid) + soakFrontNoise);
                 float ceilingFront = 1.0 - smoothstep(unevenCeilingReach,
                     unevenCeilingReach + 0.17 + abs(soakFrontNoise) * 0.10,
                     away);
@@ -2274,6 +2388,9 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 lampBase = float3(0.72 + lens * 0.24 - edge * 0.18,
                                  0.76 + lens * 0.23 - edge * 0.16,
                                  0.70 + lens * 0.20 - edge * 0.12);
+        float hueSeed = frac(input.material * 19.37 + 0.41);
+        float hueWarm = (hueSeed - 0.5) * 0.035;
+        lampBase *= float3(1.0 + hueWarm, 1.0 + hueWarm * 0.22, 1.0 - hueWarm * 0.65);
         float3 offBase = float3(0.91 + lens * 0.07 - edge * 0.055,
                                 0.92 + lens * 0.07 - edge * 0.050,
                                 0.86 + lens * 0.06 - edge * 0.045);
@@ -2397,6 +2514,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         if (shape < 0.018) discard;
 
         float flashlight = FlashlightAmount(input.worldPos, N);
+        float monsterEyeLight = MonsterEyeLight(input.worldPos, N);
         float3 doorwayDustLight = ExitSignLight(input.worldPos, N, materialId);
         float doorwayDust = saturate(max(doorwayDustLight.r, max(doorwayDustLight.g, doorwayDustLight.b)) * 0.20);
         float3 lightDir = normalize(gShadow1.xyz);
@@ -2410,10 +2528,11 @@ float4 PSMain(VSOut input) : SV_TARGET
         float lightFade = smoothstep(0.35, 1.10, lightDist) * (1.0 - smoothstep(gShadow2.y * 0.46, gShadow2.y * 0.82, lightDist));
         float depthFade = 1.0 - smoothstep(gFog0.y * 0.72, gFog0.y, length(input.worldPos - cam));
         float focusAlpha = lerp(1.0, 0.46, blur);
-        float particleLight = saturate(flashlight * centerBoost * lightFade + doorwayDust * 0.92);
+        float particleLight = saturate(flashlight * centerBoost * lightFade + doorwayDust * 0.92 + monsterEyeLight * 0.58);
         float alpha = shape * particleLight * depthFade * focusAlpha * (0.20 + variant * 0.12) * particleFade * (1.0 - saturate(gTransition0.z));
         if (alpha < 0.010) discard;
         float3 color = float3(0.72, 0.78, 0.72) * (0.20 + flashlight * (1.08 + centerLine * 0.82));
+        color += float3(1.0, 0.03, 0.015) * monsterEyeLight * 1.35;
         color += float3(0.91, 0.965, 1.0) * doorwayDust * (1.45 + shell * 0.55);
         color += float3(0.42, 0.48, 0.44) * shell * (0.08 + blur * 0.08 + centerLine * 0.08) * flashlightScale;
         float fog = saturate((length(input.worldPos - cam) - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
@@ -2503,8 +2622,13 @@ float4 PSMain(VSOut input) : SV_TARGET
         float hot = 0.82 + pow(ndv, 0.45) * 0.95 + rim * 0.34;
         float flutter = 0.96 + 0.04 * sin(time * 6.2 + input.material * 19.0);
         float bloodMaterial = smoothstep(0.79, 0.83, frac(input.material));
-        float3 hotBase = lerp(float3(8.8, 0.28, 0.075), float3(5.6, 0.025, 0.012), bloodMaterial);
-        float3 rimBase = lerp(float3(3.8, 0.065, 0.018), float3(1.9, 0.006, 0.003), bloodMaterial);
+        float externalMonsterEye = smoothstep(0.68, 0.74, frac(input.material)) * (1.0 - smoothstep(0.82, 0.88, frac(input.material)));
+        float3 fireHot = lerp(float3(8.8, 0.28, 0.075), float3(5.6, 0.025, 0.012), bloodMaterial);
+        float3 fireRim = lerp(float3(3.8, 0.065, 0.018), float3(1.9, 0.006, 0.003), bloodMaterial);
+        float3 eyeRedHot = float3(7.2, 0.015, 0.008);
+        float3 eyeRedRim = float3(2.8, 0.0, 0.0);
+        float3 hotBase = lerp(fireHot, eyeRedHot, externalMonsterEye);
+        float3 rimBase = lerp(fireRim, eyeRedRim, externalMonsterEye);
         float3 color = hotBase * hot * flutter;
         color += rimBase * rim;
         float eyeDimmer = input.material < 10.65 ? 0.38 : 1.0;
@@ -2672,6 +2796,7 @@ float4 PSMain(VSOut input) : SV_TARGET
     float dist = length(input.worldPos - cam);
     float flashlight = FlashlightAmount(input.worldPos, worldN);
     float sparkLight = SparkLight(input.worldPos, worldN);
+    float monsterEyeLight = MonsterEyeLight(input.worldPos, worldN);
     float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
     float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
 
@@ -2688,15 +2813,16 @@ float4 PSMain(VSOut input) : SV_TARGET
     }
     float3 color = base.rgb * (ambient + overhead + flashlight + sparkLight) * lerp(0.58, 1.0, aoMap);
     color += base.rgb * exitGreen * lerp(0.58, 1.0, aoMap);
+    color += float3(1.0, 0.025, 0.012) * monsterEyeLight * lerp(0.72, 1.22, aoMap);
     float3 toLight = normalize(gShadow0.xyz - input.worldPos);
     float specFacing = saturate(dot(reflect(-toLight, worldN), V));
     float gloss = 1.0 - roughness;
-    float surfaceSpec = pow(specFacing, lerp(18.0, 95.0, gloss)) * gloss * 0.18 * (flashlight + sparkLight * 0.5 + exitGlow * 0.45);
+    float surfaceSpec = pow(specFacing, lerp(18.0, 95.0, gloss)) * gloss * 0.18 * (flashlight + sparkLight * 0.5 + exitGlow * 0.45 + monsterEyeLight * 0.42);
     if (materialId > 25.5 && materialId < 26.5)
     {
         float fresnel = pow(1.0 - saturate(dot(worldN, V)), 2.0);
-        surfaceSpec += (pow(specFacing, 120.0) * 0.34 + fresnel * 0.11) * (flashlight + sparkLight * 0.45);
-        color += base.rgb * flashlight * 0.22;
+        surfaceSpec += (pow(specFacing, 120.0) * 0.34 + fresnel * 0.11) * (flashlight + sparkLight * 0.45 + monsterEyeLight * 0.62);
+        color += base.rgb * (flashlight * 0.22 + monsterEyeLight * 0.075);
     }
     color += float3(1.0, 0.92, 0.78) * surfaceSpec;
     if (materialId > 1.5 && materialId < 2.5)
@@ -2772,6 +2898,8 @@ cbuffer SceneConstants : register(b0)
 {
     row_major float4x4 gViewProj;
     row_major float4x4 gLightViewProj;
+    row_major float4x4 gMonsterEyeViewProj0;
+    row_major float4x4 gMonsterEyeViewProj1;
     float4 gCameraPosTime;
     float4 gCameraDirAspect;
     float4 gLighting0;

@@ -2,11 +2,62 @@
 // Included from main.cpp before the main window procedure.
 
 constexpr int kLoadingOverlayTimerId = 6101;
+constexpr UINT kLoadingOverlayCloseMessage = WM_APP + 6102;
+constexpr UINT kLoadingOverlayProgressMessage = WM_APP + 6103;
+constexpr UINT kLoadingOverlayStatusMessage = WM_APP + 6104;
 const wchar_t* kLoadingOverlayClass = L"BackroomsMazeLoadingOverlay";
 
+struct LoadingOverlayThreadInfo {
+    HANDLE handle = nullptr;
+    DWORD threadId = 0;
+    bool brandedSplash = false;
+    ULONGLONG createdTick = 0;
+};
+std::unordered_map<HWND, LoadingOverlayThreadInfo> gLoadingOverlayThreads;
+
 struct LoadingOverlayState {
+    CRITICAL_SECTION lock{};
     std::wstring phase = L"Starting renderer";
     std::wstring detail = L"";
+    bool brandedSplash = false;
+    bool threadedPopup = false;
+    int current = 0;
+    int total = 1;
+    int shaderDone = 0;
+    int shaderTotal = 0;
+    int shaderCompiled = 0;
+    int shaderCached = 0;
+    int frame = 0;
+    ULONGLONG createdTick = 0;
+    ULONGLONG completeTick = 0;
+    bool complete = false;
+};
+
+struct LoadingOverlayThreadStart {
+    HWND owner = nullptr;
+    HINSTANCE hInstance = nullptr;
+    HANDLE ready = nullptr;
+    HWND overlay = nullptr;
+    DWORD threadId = 0;
+    ULONGLONG createdTick = 0;
+    bool brandedSplash = false;
+};
+
+struct LoadingOverlayPostedUpdate {
+    std::wstring phase;
+    std::wstring detail;
+    bool complete = false;
+    int current = 0;
+    int total = 1;
+    int shaderDone = 0;
+    int shaderTotal = 0;
+    int shaderCompiled = 0;
+    int shaderCached = 0;
+};
+
+struct LoadingOverlaySnapshot {
+    std::wstring phase;
+    std::wstring detail;
     bool brandedSplash = false;
     int current = 0;
     int total = 1;
@@ -15,14 +66,58 @@ struct LoadingOverlayState {
     int shaderCompiled = 0;
     int shaderCached = 0;
     int frame = 0;
+    ULONGLONG createdTick = 0;
+    ULONGLONG completeTick = 0;
+    bool complete = false;
 };
 
 constexpr uint8_t kLoadingBgR = 6;
 constexpr uint8_t kLoadingBgG = 8;
 constexpr uint8_t kLoadingBgB = 5;
 
+uint8_t LoadingLerpChannel(uint8_t a, uint8_t b, float t) {
+    return static_cast<uint8_t>(std::clamp(Lerp(static_cast<float>(a), static_cast<float>(b), Clamp01(t)), 0.0f, 255.0f));
+}
+
+COLORREF LoadingFadeColor(uint8_t r, uint8_t g, uint8_t b, float alpha) {
+    return RGB(
+        LoadingLerpChannel(kLoadingBgR, r, alpha),
+        LoadingLerpChannel(kLoadingBgG, g, alpha),
+        LoadingLerpChannel(kLoadingBgB, b, alpha));
+}
+
 LoadingOverlayState* LoadingState(HWND hwnd) {
     return reinterpret_cast<LoadingOverlayState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+}
+
+void LockLoadingState(LoadingOverlayState* state) {
+    if (state) EnterCriticalSection(&state->lock);
+}
+
+void UnlockLoadingState(LoadingOverlayState* state) {
+    if (state) LeaveCriticalSection(&state->lock);
+}
+
+LoadingOverlaySnapshot CaptureLoadingOverlaySnapshot(HWND hwnd) {
+    LoadingOverlaySnapshot snap{};
+    if (LoadingOverlayState* state = LoadingState(hwnd)) {
+        LockLoadingState(state);
+        snap.phase = state->phase;
+        snap.detail = state->detail;
+        snap.brandedSplash = state->brandedSplash;
+        snap.current = state->current;
+        snap.total = state->total;
+        snap.shaderDone = state->shaderDone;
+        snap.shaderTotal = state->shaderTotal;
+        snap.shaderCompiled = state->shaderCompiled;
+        snap.shaderCached = state->shaderCached;
+        snap.frame = state->frame;
+        snap.createdTick = state->createdTick;
+        snap.completeTick = state->completeTick;
+        snap.complete = state->complete;
+        UnlockLoadingState(state);
+    }
+    return snap;
 }
 
 void DrawLoadingSpinner(HDC hdc, int cx, int cy, int radius, int frame) {
@@ -66,21 +161,37 @@ const ImageRGBA& LoadingOverlayLogo() {
     return logo;
 }
 
-void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* state) {
+void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlaySnapshot* state) {
     const ImageRGBA& logo = LoadingOverlayLogo();
     int width = std::max<LONG>(1, rc.right - rc.left);
     int height = std::max<LONG>(1, rc.bottom - rc.top);
     int logoSize = std::clamp(static_cast<int>(std::min(width, height) * 0.46f), 240, 430);
     int x = rc.left + (width - logoSize) / 2;
-    int y = rc.top + height / 2 - logoSize / 2 - std::clamp(height / 30, 10, 26);
+    int y = rc.top + height / 2 - logoSize / 2 - std::clamp(height / 24, 18, 42);
+    float age = 0.0f;
+    float doneAge = -1.0f;
+    if (state && state->createdTick != 0) {
+        age = static_cast<float>(GetTickCount64() - state->createdTick) * 0.001f;
+        if (state->complete && state->completeTick != 0) {
+            doneAge = static_cast<float>(GetTickCount64() - state->completeTick) * 0.001f;
+        }
+    }
+    float logoAlpha = SmoothStep(0.10f, 1.00f, age) * (1.0f - SmoothStep(3.00f, 4.00f, age));
+    float titleAlpha = SmoothStep(3.55f, 5.35f, age);
+    if (doneAge >= 0.0f) {
+        titleAlpha *= 1.0f - SmoothStep(0.10f, 0.95f, doneAge);
+    }
 
-    if (logo.Valid()) {
+    if (logo.Valid() && logoAlpha > 0.002f) {
         static std::vector<uint8_t> tinted;
         static int tintedW = 0;
         static int tintedH = 0;
-        if (tintedW != logo.width || tintedH != logo.height || tinted.empty()) {
+        static int fadeBucket = -1;
+        int newFadeBucket = static_cast<int>(std::round(logoAlpha * 255.0f));
+        if (tintedW != logo.width || tintedH != logo.height || tinted.empty() || fadeBucket != newFadeBucket) {
             tintedW = logo.width;
             tintedH = logo.height;
+            fadeBucket = newFadeBucket;
             tinted.assign(static_cast<size_t>(tintedW) * static_cast<size_t>(tintedH) * 4, 0);
             bool hasTransparency = false;
             for (int py = 0; py < tintedH && !hasTransparency; ++py) {
@@ -102,11 +213,11 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
                     uint8_t rgbCoverage = std::max(r, std::max(g, b));
                     uint8_t darkCoverage = static_cast<uint8_t>(255 - std::min(r, std::min(g, b)));
                     uint8_t a = hasTransparency ? srcA : std::max(rgbCoverage, darkCoverage);
-                    float alpha = static_cast<float>(a) / 255.0f;
+                    float alpha = (static_cast<float>(a) / 255.0f) * logoAlpha;
                     size_t dst = src;
-                    tinted[dst + 0] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgB), 91.0f, alpha));
-                    tinted[dst + 1] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgG), 119.0f, alpha));
-                    tinted[dst + 2] = static_cast<uint8_t>(Lerp(static_cast<float>(kLoadingBgR), 126.0f, alpha));
+                    tinted[dst + 0] = LoadingLerpChannel(kLoadingBgB, 255, alpha);
+                    tinted[dst + 1] = LoadingLerpChannel(kLoadingBgG, 255, alpha);
+                    tinted[dst + 2] = LoadingLerpChannel(kLoadingBgR, 255, alpha);
                     tinted[dst + 3] = 255;
                 }
             }
@@ -125,6 +236,32 @@ void DrawTintedLoadingLogo(HDC hdc, const RECT& rc, const LoadingOverlayState* s
     }
 
     SetBkMode(hdc, TRANSPARENT);
+    if (titleAlpha > 0.002f) {
+        int titleSize = std::clamp(height / 9, 62, 138);
+        HFONT titleFont = CreateFontW(-titleSize, 0, 0, 0, FW_HEAVY, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            DEFAULT_PITCH | FF_SWISS, L"Arial");
+        HGDIOBJ oldFont = SelectObject(hdc, titleFont);
+        SetTextColor(hdc, LoadingFadeColor(246, 235, 190, titleAlpha));
+        RECT titleRect{rc.left + 24, rc.top + height / 2 - titleSize, rc.right - 24, rc.top + height / 2 + titleSize};
+        DrawTextW(hdc, L"BACKROOMS", -1, &titleRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+        SelectObject(hdc, oldFont);
+        DeleteObject(titleFont);
+    }
+    if (titleAlpha > 0.18f && state && !state->detail.empty()) {
+        float detailAlpha = Clamp01((titleAlpha - 0.18f) / 0.82f) * (doneAge >= 0.0f ? (1.0f - SmoothStep(0.05f, 0.72f, doneAge)) : 1.0f);
+        HFONT detailFont = CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+        HGDIOBJ oldFont = SelectObject(hdc, detailFont);
+        SetTextColor(hdc, LoadingFadeColor(145, 132, 96, detailAlpha * 0.72f));
+        RECT detailRect{rc.left + 24, rc.top + height / 2 + std::clamp(height / 12, 46, 92), rc.right - 24, rc.top + height / 2 + std::clamp(height / 12, 46, 92) + 28};
+        DrawTextW(hdc, state->detail.c_str(), -1, &detailRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+        SelectObject(hdc, oldFont);
+        DeleteObject(detailFont);
+    }
+    if (state && state->brandedSplash) return;
+
     HFONT detailFont = CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
@@ -142,7 +279,8 @@ void DrawLoadingOverlay(HWND hwnd, HDC hdc) {
     GetClientRect(hwnd, &rc);
     int width = std::max(1, static_cast<int>(rc.right - rc.left));
     int height = std::max(1, static_cast<int>(rc.bottom - rc.top));
-    LoadingOverlayState* state = LoadingState(hwnd);
+    LoadingOverlaySnapshot snap = CaptureLoadingOverlaySnapshot(hwnd);
+    const LoadingOverlaySnapshot* state = &snap;
 
     HBRUSH bg = CreateSolidBrush(RGB(kLoadingBgR, kLoadingBgG, kLoadingBgB));
     FillRect(hdc, &rc, bg);
@@ -216,6 +354,27 @@ void DrawLoadingOverlay(HWND hwnd, HDC hdc) {
     DeleteObject(detailFont);
 }
 
+void PaintLoadingOverlayBuffered(HWND hwnd, HDC targetDc) {
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    int width = std::max(1, static_cast<int>(rc.right - rc.left));
+    int height = std::max(1, static_cast<int>(rc.bottom - rc.top));
+    HDC memDc = CreateCompatibleDC(targetDc);
+    HBITMAP memBmp = CreateCompatibleBitmap(targetDc, width, height);
+    if (!memDc || !memBmp) {
+        if (memBmp) DeleteObject(memBmp);
+        if (memDc) DeleteDC(memDc);
+        DrawLoadingOverlay(hwnd, targetDc);
+        return;
+    }
+    HGDIOBJ oldBmp = SelectObject(memDc, memBmp);
+    DrawLoadingOverlay(hwnd, memDc);
+    BitBlt(targetDc, 0, 0, width, height, memDc, 0, 0, SRCCOPY);
+    SelectObject(memDc, oldBmp);
+    DeleteObject(memBmp);
+    DeleteDC(memDc);
+}
+
 LRESULT CALLBACK LoadingOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_NCCREATE: {
@@ -224,14 +383,55 @@ LRESULT CALLBACK LoadingOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
         return TRUE;
     }
     case WM_CREATE:
-        SetTimer(hwnd, kLoadingOverlayTimerId, 120, nullptr);
+        SetTimer(hwnd, kLoadingOverlayTimerId, 16, nullptr);
         return 0;
     case WM_TIMER:
         if (wParam == kLoadingOverlayTimerId) {
             if (LoadingOverlayState* state = LoadingState(hwnd)) {
+                LockLoadingState(state);
                 state->frame = (state->frame + 1) % 12;
+                UnlockLoadingState(state);
             }
             InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        break;
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+    default:
+        if (msg == kLoadingOverlayCloseMessage) {
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        if (msg == kLoadingOverlayProgressMessage || msg == kLoadingOverlayStatusMessage) {
+            std::unique_ptr<LoadingOverlayPostedUpdate> update(reinterpret_cast<LoadingOverlayPostedUpdate*>(lParam));
+            if (update) {
+                if (LoadingOverlayState* state = LoadingState(hwnd)) {
+                    LockLoadingState(state);
+                    state->phase = update->phase.empty() ? L"Loading" : update->phase;
+                    state->detail = update->detail;
+                    if (msg == kLoadingOverlayProgressMessage) {
+                        state->current = std::clamp(update->current, 0, std::max(1, update->total));
+                        state->total = std::max(1, update->total);
+                        state->shaderDone = std::clamp(update->shaderDone, 0, std::max(0, update->shaderTotal));
+                        state->shaderTotal = std::max(0, update->shaderTotal);
+                        state->shaderCompiled = std::max(0, update->shaderCompiled);
+                        state->shaderCached = std::max(0, update->shaderCached);
+                    } else {
+                        int total = std::max(state->total + 1, state->current + 1);
+                        if (update->complete && !state->complete) {
+                            state->complete = true;
+                            state->completeTick = GetTickCount64();
+                        }
+                        state->total = std::max(1, total);
+                        state->current = update->complete ? state->total : std::max(0, state->total - 1);
+                    }
+                    state->frame = (state->frame + 1) % 12;
+                    UnlockLoadingState(state);
+                }
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
             return 0;
         }
         break;
@@ -240,13 +440,18 @@ LRESULT CALLBACK LoadingOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     case WM_PAINT: {
         PAINTSTRUCT ps{};
         HDC hdc = BeginPaint(hwnd, &ps);
-        DrawLoadingOverlay(hwnd, hdc);
+        PaintLoadingOverlayBuffered(hwnd, hdc);
         EndPaint(hwnd, &ps);
         return 0;
     }
     case WM_NCDESTROY:
         KillTimer(hwnd, kLoadingOverlayTimerId);
-        delete LoadingState(hwnd);
+        if (LoadingOverlayState* state = LoadingState(hwnd)) {
+            bool shouldQuit = state->threadedPopup;
+            DeleteCriticalSection(&state->lock);
+            delete state;
+            if (shouldQuit) PostQuitMessage(0);
+        }
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         return 0;
     }
@@ -269,15 +474,90 @@ void ResizeLoadingOverlay(HWND parent, HWND overlay) {
     if (!parent || !overlay) return;
     RECT rc{};
     GetClientRect(parent, &rc);
-    MoveWindow(overlay, 0, 0,
-        std::max(1, static_cast<int>(rc.right - rc.left)),
-        std::max(1, static_cast<int>(rc.bottom - rc.top)), TRUE);
+    LoadingOverlayState* state = LoadingState(overlay);
+    bool popup = false;
+    if (state) {
+        LockLoadingState(state);
+        popup = state->threadedPopup;
+        UnlockLoadingState(state);
+    }
+    if (popup) {
+        POINT tl{rc.left, rc.top};
+        ClientToScreen(parent, &tl);
+        SetWindowPos(overlay, HWND_TOP, tl.x, tl.y,
+            std::max(1, static_cast<int>(rc.right - rc.left)),
+            std::max(1, static_cast<int>(rc.bottom - rc.top)),
+            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    } else {
+        MoveWindow(overlay, 0, 0,
+            std::max(1, static_cast<int>(rc.right - rc.left)),
+            std::max(1, static_cast<int>(rc.bottom - rc.top)), TRUE);
+    }
+}
+
+void PumpLoadingOverlayMessages() {
+    MSG msg{};
+    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+}
+
+DWORD WINAPI LoadingOverlayThreadProc(LPVOID param) {
+    auto* start = static_cast<LoadingOverlayThreadStart*>(param);
+    start->threadId = GetCurrentThreadId();
+    RegisterLoadingOverlayClass(start->hInstance);
+    auto* state = new LoadingOverlayState();
+    InitializeCriticalSection(&state->lock);
+    state->brandedSplash = start->brandedSplash;
+    state->threadedPopup = true;
+    state->createdTick = start->createdTick != 0 ? start->createdTick : GetTickCount64();
+    RECT rc{};
+    GetClientRect(start->owner, &rc);
+    POINT tl{rc.left, rc.top};
+    ClientToScreen(start->owner, &tl);
+    int width = std::max(1, static_cast<int>(rc.right - rc.left));
+    int height = std::max(1, static_cast<int>(rc.bottom - rc.top));
+    HWND overlay = CreateWindowExW(
+        WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+        kLoadingOverlayClass,
+        nullptr,
+        WS_POPUP | WS_VISIBLE,
+        tl.x,
+        tl.y,
+        width,
+        height,
+        start->owner,
+        nullptr,
+        start->hInstance,
+        state);
+    if (!overlay) {
+        DeleteCriticalSection(&state->lock);
+        delete state;
+        start->overlay = nullptr;
+        SetEvent(start->ready);
+        return 0;
+    }
+    start->overlay = overlay;
+    SetWindowPos(overlay, HWND_TOP, tl.x, tl.y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    UpdateWindow(overlay);
+    SetEvent(start->ready);
+
+    MSG msg{};
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    return 0;
 }
 
 HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance, bool brandedSplash) {
     RegisterLoadingOverlayClass(hInstance);
     auto* state = new LoadingOverlayState();
+    InitializeCriticalSection(&state->lock);
     state->brandedSplash = brandedSplash;
+    state->threadedPopup = false;
+    state->createdTick = GetTickCount64();
     RECT rc{};
     GetClientRect(parent, &rc);
     HWND overlay = CreateWindowExW(0, kLoadingOverlayClass, nullptr, WS_CHILD | WS_VISIBLE,
@@ -285,6 +565,7 @@ HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance, bool brandedSplash) 
         std::max(1, static_cast<int>(rc.bottom - rc.top)),
         parent, nullptr, hInstance, state);
     if (!overlay) {
+        DeleteCriticalSection(&state->lock);
         delete state;
         return nullptr;
     }
@@ -296,30 +577,133 @@ HWND CreateLoadingOverlay(HWND parent, HINSTANCE hInstance, bool brandedSplash) 
 void SetLoadingOverlayProgress(HWND overlay, const StartupProgressUpdate& update) {
     if (!overlay) return;
     LoadingOverlayState* state = LoadingState(overlay);
-    if (!state) return;
-    state->phase = update.phase ? update.phase : L"Loading";
-    state->detail = update.detail ? update.detail : L"";
-    state->current = std::clamp(update.current, 0, std::max(1, update.total));
-    state->total = std::max(1, update.total);
-    state->shaderDone = std::clamp(update.shaderDone, 0, std::max(0, update.shaderTotal));
-    state->shaderTotal = std::max(0, update.shaderTotal);
-    state->shaderCompiled = std::max(0, update.shaderCompiled);
-    state->shaderCached = std::max(0, update.shaderCached);
-    state->frame = (state->frame + 1) % 12;
-    RedrawWindow(overlay, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    if (state && !state->threadedPopup) {
+        LockLoadingState(state);
+        state->phase = update.phase ? update.phase : L"Loading";
+        state->detail = update.detail ? update.detail : L"";
+        state->current = std::clamp(update.current, 0, std::max(1, update.total));
+        state->total = std::max(1, update.total);
+        state->shaderDone = std::clamp(update.shaderDone, 0, std::max(0, update.shaderTotal));
+        state->shaderTotal = std::max(0, update.shaderTotal);
+        state->shaderCompiled = std::max(0, update.shaderCompiled);
+        state->shaderCached = std::max(0, update.shaderCached);
+        state->frame = (state->frame + 1) % 12;
+        UnlockLoadingState(state);
+        RedrawWindow(overlay, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        PumpLoadingOverlayMessages();
+    } else {
+        auto* posted = new LoadingOverlayPostedUpdate();
+        posted->phase = update.phase ? update.phase : L"Loading";
+        posted->detail = update.detail ? update.detail : L"";
+        posted->current = update.current;
+        posted->total = update.total;
+        posted->shaderDone = update.shaderDone;
+        posted->shaderTotal = update.shaderTotal;
+        posted->shaderCompiled = update.shaderCompiled;
+        posted->shaderCached = update.shaderCached;
+        if (!PostMessageW(overlay, kLoadingOverlayProgressMessage, 0, reinterpret_cast<LPARAM>(posted))) {
+            delete posted;
+        }
+    }
 }
 
 void SetLoadingOverlayStatus(HWND overlay, const wchar_t* phase, const wchar_t* detail, bool complete) {
     if (!overlay) return;
     LoadingOverlayState* state = LoadingState(overlay);
-    if (!state) return;
-    int total = std::max(state->total + 1, state->current + 1);
-    state->phase = phase ? phase : L"Loading";
-    state->detail = detail ? detail : L"";
-    state->total = std::max(1, total);
-    state->current = complete ? state->total : std::max(0, state->total - 1);
-    state->frame = (state->frame + 1) % 12;
-    RedrawWindow(overlay, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    if (state && !state->threadedPopup) {
+        LockLoadingState(state);
+        int total = std::max(state->total + 1, state->current + 1);
+        state->phase = phase ? phase : L"Loading";
+        state->detail = detail ? detail : L"";
+        if (complete && !state->complete) {
+            state->complete = true;
+            state->completeTick = GetTickCount64();
+        }
+        state->total = std::max(1, total);
+        state->current = complete ? state->total : std::max(0, state->total - 1);
+        state->frame = (state->frame + 1) % 12;
+        UnlockLoadingState(state);
+        RedrawWindow(overlay, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        PumpLoadingOverlayMessages();
+    } else {
+        auto* posted = new LoadingOverlayPostedUpdate();
+        posted->phase = phase ? phase : L"Loading";
+        posted->detail = detail ? detail : L"";
+        posted->complete = complete;
+        if (!PostMessageW(overlay, kLoadingOverlayStatusMessage, 0, reinterpret_cast<LPARAM>(posted))) {
+            delete posted;
+        }
+    }
+}
+
+void CloseLoadingOverlayWindow(HWND overlay) {
+    if (!overlay) return;
+    LoadingOverlayState* state = LoadingState(overlay);
+    if (state && !state->threadedPopup) {
+        DestroyWindow(overlay);
+        PumpLoadingOverlayMessages();
+        return;
+    }
+    LoadingOverlayThreadInfo threadInfo{};
+    auto it = gLoadingOverlayThreads.find(overlay);
+    if (it != gLoadingOverlayThreads.end()) {
+        threadInfo = it->second;
+        gLoadingOverlayThreads.erase(it);
+    }
+    ShowWindowAsync(overlay, SW_HIDE);
+    SetWindowPos(overlay, nullptr, 0, 0, 0, 0,
+        SWP_HIDEWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    DWORD_PTR closeResult = 0;
+    SendMessageTimeoutW(overlay, kLoadingOverlayCloseMessage, 0, 0,
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 700, &closeResult);
+    ULONGLONG start = GetTickCount64();
+    if (threadInfo.handle) {
+        bool quitPosted = false;
+        while (WaitForSingleObject(threadInfo.handle, 10) == WAIT_TIMEOUT && GetTickCount64() - start < 1200) {
+            if (!quitPosted && GetTickCount64() - start > 140 && threadInfo.threadId != 0) {
+                PostThreadMessageW(threadInfo.threadId, WM_QUIT, 0, 0);
+                quitPosted = true;
+            }
+            PumpLoadingOverlayMessages();
+        }
+        CloseHandle(threadInfo.handle);
+    } else {
+        while (IsWindow(overlay) && GetTickCount64() - start < 1200) {
+            PumpLoadingOverlayMessages();
+            Sleep(10);
+        }
+    }
+    PumpLoadingOverlayMessages();
+}
+
+void FinishLoadingOverlay(HWND overlay) {
+    if (!overlay) return;
+    bool branded = false;
+    ULONGLONG createdTick = GetTickCount64();
+    auto it = gLoadingOverlayThreads.find(overlay);
+    if (it != gLoadingOverlayThreads.end()) {
+        branded = it->second.brandedSplash;
+        createdTick = it->second.createdTick;
+    } else if (LoadingOverlayState* state = LoadingState(overlay)) {
+        LockLoadingState(state);
+        branded = state->brandedSplash;
+        createdTick = state->createdTick;
+        UnlockLoadingState(state);
+    }
+    if (!branded) {
+        CloseLoadingOverlayWindow(overlay);
+        return;
+    }
+
+    ULONGLONG completeTick = GetTickCount64();
+    ULONGLONG minVisibleUntil = createdTick + 6200;
+    ULONGLONG fadeUntil = completeTick + 1050;
+    ULONGLONG until = std::max(minVisibleUntil, fadeUntil);
+    while (GetTickCount64() < until && IsWindow(overlay)) {
+        InvalidateRect(overlay, nullptr, FALSE);
+        Sleep(16);
+    }
+    CloseLoadingOverlayWindow(overlay);
 }
 
 void LoadingProgressCallback(void* context, const StartupProgressUpdate& update) {

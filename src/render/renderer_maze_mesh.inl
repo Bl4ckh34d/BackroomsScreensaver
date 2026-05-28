@@ -247,6 +247,10 @@
         sparkEmitters_.clear();
         runtimeLamps_.clear();
         lampDamagePixels_.assign(static_cast<size_t>(std::max(0, maze_.w * maze_.h)), 0);
+        wetFootstepTiles_.assign(static_cast<size_t>(std::max(0, maze_.w * maze_.h)), 0);
+        wetCeilingTiles_.assign(static_cast<size_t>(std::max(0, maze_.w * maze_.h)), 0);
+        wetDripEmitters_.clear();
+        wetFloorFootprints_.clear();
         lampDamageDirty_ = true;
         steamEmitters_.clear();
         bloodScarePoints_.clear();
@@ -1620,6 +1624,11 @@
             WaterTileSurface& surface = (ceiling ? ceilingWaterTiles : floorWaterTiles)[waterTileIndex(t)];
             side = std::clamp(side, 0, 3);
             mode = std::clamp(mode, 0, 3);
+            if (ceiling) {
+                MarkWetCeilingTile(t);
+            } else {
+                MarkWetFootstepTile(t);
+            }
             if (!surface.active) {
                 surface.active = true;
                 surface.suppressCard = suppressCard;
@@ -1658,6 +1667,7 @@
                         {0, uvModeBase}, {1, uvModeBase}, {1, uvModeBase + 1.0f}, {0, uvModeBase + 1.0f},
                         waterMaterial(seed, 0.0f, 0.014f));
                     markWaterTile(owner, false, side, 0, seed, score, true);
+                    MarkWetFootstepArea(cx, cz, w, d, yaw);
                     return true;
                 }
                 w *= 0.86f;
@@ -1779,10 +1789,12 @@
                 if (surface.side == 0 || surface.side == 1) halfD = std::max(halfD, tileD * (ceiling ? 0.43f : 0.36f));
                 else halfW = std::max(halfW, tileW * (ceiling ? 0.43f : 0.36f));
             }
-            if (neighborMask & 1) z0 = z0 + tileD * 0.015f; else z0 = std::max(z0 + tileD * 0.055f, cz - halfD);
-            if (neighborMask & 2) z1 = z1 - tileD * 0.015f; else z1 = std::min(z1 - tileD * 0.055f, cz + halfD);
-            if (neighborMask & 4) l = l + tileW * 0.015f; else l = std::max(l + tileW * 0.055f, cx - halfW);
-            if (neighborMask & 8) r = r - tileW * 0.015f; else r = std::min(r - tileW * 0.055f, cx + halfW);
+            float wetOverlapZ = tileD * (ceiling ? 0.010f : 0.030f);
+            float wetOverlapX = tileW * (ceiling ? 0.010f : 0.030f);
+            if (neighborMask & 1) z0 -= wetOverlapZ; else z0 = std::max(z0 + tileD * 0.055f, cz - halfD);
+            if (neighborMask & 2) z1 += wetOverlapZ; else z1 = std::min(z1 - tileD * 0.055f, cz + halfD);
+            if (neighborMask & 4) l -= wetOverlapX; else l = std::max(l + tileW * 0.055f, cx - halfW);
+            if (neighborMask & 8) r += wetOverlapX; else r = std::min(r - tileW * 0.055f, cx + halfW);
             if (r - l < tileW * 0.12f || z1 - z0 < tileD * 0.12f) return;
             if (ceiling) {
                 AddQuadUV(vertices, waterIndices,
@@ -1794,6 +1806,7 @@
                     {l, y, z1}, {r, y, z1}, {r, y, z0}, {l, y, z0},
                     {0, 1, 0}, {1, 0, 0},
                     {u, vMode}, {u + 1.0f, vMode}, {u + 1.0f, vMode + 1.0f}, {u, vMode + 1.0f}, material);
+                MarkWetFootstepArea((l + r) * 0.5f, (z0 + z1) * 0.5f, r - l, z1 - z0, 0.0f);
             }
         };
         auto neighborForSideWater = [](Tile t, int side) {
@@ -1984,11 +1997,11 @@
 
             if (side == 1) {
                 float seamZ = z1;
-                float depth = std::min(tileD * (0.12f + h0 * 0.11f), 0.30f);
-                float span = tileW * (0.28f + h1 * 0.34f);
+                float depth = std::min(tileD * (0.18f + h0 * 0.08f), 0.38f);
+                float span = tileW * (0.92f + h1 * 0.08f);
                 float cx = (l + r) * 0.5f + (h2 - 0.5f) * std::max(0.0f, tileW - span) * 0.72f;
-                float x0 = std::max(l + tileW * 0.050f, cx - span * 0.5f);
-                float x1 = std::min(r - tileW * 0.050f, cx + span * 0.5f);
+                float x0 = std::max(l + tileW * 0.006f, cx - span * 0.5f);
+                float x1 = std::min(r - tileW * 0.006f, cx + span * 0.5f);
                 AddQuadUV(vertices, waterIndices,
                     {x0, y, seamZ + depth * 0.5f},
                     {x1, y, seamZ + depth * 0.5f},
@@ -1998,11 +2011,11 @@
                     {0, 4}, {1, 4}, {1, 5}, {0, 5}, material);
             } else if (side == 3) {
                 float seamX = r;
-                float width = std::min(tileW * (0.12f + h0 * 0.11f), 0.30f);
-                float span = tileD * (0.28f + h1 * 0.34f);
+                float width = std::min(tileW * (0.18f + h0 * 0.08f), 0.38f);
+                float span = tileD * (0.92f + h1 * 0.08f);
                 float cz = (z0 + z1) * 0.5f + (h2 - 0.5f) * std::max(0.0f, tileD - span) * 0.72f;
-                float zz0 = std::max(z0 + tileD * 0.050f, cz - span * 0.5f);
-                float zz1 = std::min(z1 - tileD * 0.050f, cz + span * 0.5f);
+                float zz0 = std::max(z0 + tileD * 0.006f, cz - span * 0.5f);
+                float zz1 = std::min(z1 - tileD * 0.006f, cz + span * 0.5f);
                 AddQuadUV(vertices, waterIndices,
                     {seamX - width * 0.5f, y, zz1},
                     {seamX + width * 0.5f, y, zz1},
@@ -2301,6 +2314,7 @@
                 if (!reserveFloorFootprint(px, pz, w, d, yaw, kLiquidFloorReservationPad)) return false;
                 AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
                     kBloodFloorDecalLift + layerLift, liquidMaterial(0.02f + std::fmod(seed, 0.93f)));
+                MarkWetFootstepArea(px, pz, w, d, yaw);
                 addBloodScare({px, 0.10f, pz}, std::max(w, d));
                 return true;
             };
@@ -2318,10 +2332,30 @@
                 return true;
             };
 
+            auto addLiquidCeilingOverlay = [&](float px, float pz, float w, float d, float yaw, float seed, float rawSeed) {
+                if (!footprintFitsMaze(px, pz, w, d, yaw, 0.010f)) return false;
+                bloodCeilingReservations.push_back(makeFootprint(px, pz, w, d, yaw, 0.002f));
+                AddCeilingCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
+                    nextBloodCeilingY(px, pz, seed + 0.61f), liquidMaterial(rawSeed));
+                addBloodScare({px, wallH - 0.08f, pz}, std::max(w, d));
+                return true;
+            };
+
+            auto addLiquidFloorOverlay = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift, float rawSeed) {
+                if (!footprintFitsMaze(px, pz, w, d, yaw, kLiquidFloorReservationPad)) return false;
+                floorReservations.push_back(makeFootprint(px, pz, w, d, yaw, 0.002f));
+                AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
+                    kBloodFloorDecalLift + layerLift, liquidMaterial(rawSeed));
+                MarkWetFootstepArea(px, pz, w, d, yaw);
+                addBloodScare({px, 0.10f, pz}, std::max(w, d));
+                return true;
+            };
+
             auto addCenterSeepFloor = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift) {
                 if (!reserveFloorFootprint(px, pz, w, d, yaw, kLiquidFloorReservationPad)) return false;
                 AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
                     kBloodFloorDecalLift + layerLift, liquidMaterial(0.43f + std::fmod(seed, 0.50f)));
+                MarkWetFootstepArea(px, pz, w, d, yaw);
                 addBloodScare({px, 0.10f, pz}, std::max(w, d));
                 return true;
             };
@@ -2344,6 +2378,8 @@
                 float material = liquidMaterial(0.43f + std::fmod(seed, 0.50f));
                 AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, floorW, floorD, yaw,
                     kBloodFloorDecalLift, material);
+                MarkWetFootstepArea(px, pz, floorW, floorD, yaw);
+                MarkWetCeilingDripEmitter({px, 0.10f, pz}, seed);
                 AddCeilingCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
                     nextBloodCeilingY(px, pz, seed + 0.29f), material);
                 addBloodScare({px, 0.10f, pz}, std::max(floorW, floorD));
@@ -2591,6 +2627,12 @@
                     farLeft, farRight, nearRight, nearLeft,
                     {0.0f, 1.0f, 0.0f}, right,
                     {0.0f, uvFar}, {1.0f, uvFar}, {1.0f, 0.0f}, {0.0f, 0.0f}, material);
+                MarkWetFootstepArea((nearCenter.x + farCenter.x) * 0.5f,
+                    (nearCenter.z + farCenter.z) * 0.5f,
+                    continuationWidth,
+                    continuationDepth,
+                    sideForwardYaw(side),
+                    0.14f);
                 return true;
             };
 
@@ -2886,7 +2928,7 @@
                 AddQuadUV(vertices, transparentIndices, a, b, c0, d0, normal, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, wallMat);
 
                 float bloodQuality = std::clamp(settings_.bloodShaderQuality, 0.25f, 1.0f);
-                bool addSeamCards = !wallOnly || gBloodDebugEveryWall || bloodQuality >= 0.52f ||
+                bool addSeamCards = emitWaterLiquid || !wallOnly || gBloodDebugEveryWall || bloodQuality >= 0.52f ||
                     Rand01(leakIndex, 741, scatterSeed) < bloodQuality * 0.75f;
                 auto addCeilingSeamCard = [&](float depth, float material) {
                     float seamY = nextBloodCeilingY(wallCenter.x, wallCenter.z, seed + 0.37f);
@@ -2941,6 +2983,8 @@
                 XMFLOAT3 floorCenter = Add3({wallCenter.x, 0.0f, wallCenter.z}, Scale3(inward, poolD * 0.5f + 0.006f));
                 if (addSeamCards) {
                     addFloorSeamCard(poolD, sourceMat);
+                    MarkWetFootstepArea(floorCenter.x, floorCenter.z, poolW, poolD, sideForwardYaw(side));
+                    MarkWetCeilingDripEmitter({floorCenter.x, 0.10f, floorCenter.z}, seed);
                     if (emitWaterLiquid && canSpreadForward) {
                         addWaterFloorBorderContinuation(t, side, wallCenter, right, inward, poolW, poolD,
                             sourceMat, seed, leakIndex * 17 + side);
@@ -3006,6 +3050,30 @@
                         int side = sides[std::min(sideCount - 1,
                             static_cast<int>(Rand01(waterIndex, 2507, scatterSeed) * static_cast<float>(sideCount)))];
                         addBloodLeak(t, side, 25000 + waterIndex);
+                        if (sideCount >= 2) {
+                            int secondSide = -1;
+                            int opposite = oppositeSide(side);
+                            for (int i = 0; i < sideCount; ++i) {
+                                if (sides[i] == opposite) {
+                                    secondSide = opposite;
+                                    break;
+                                }
+                            }
+                            if (secondSide < 0) {
+                                int pick = std::min(sideCount - 1,
+                                    static_cast<int>(Rand01(waterIndex, 2511, scatterSeed) * static_cast<float>(sideCount)));
+                                for (int step = 0; step < sideCount; ++step) {
+                                    int candidate = sides[(pick + step) % sideCount];
+                                    if (candidate != side) {
+                                        secondSide = candidate;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (secondSide >= 0) {
+                                addBloodLeak(t, secondSide, 26000 + waterIndex);
+                            }
+                        }
                     }
                     ++waterIndex;
                 }
@@ -3019,17 +3087,11 @@
             };
 
             auto addWaterLikeFloor = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift, float rawSeed) {
-                if (!footprintFitsMaze(px, pz, w, d, yaw, 0.010f)) return false;
-                AddFloorCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
-                    kBloodFloorDecalLift + 0.010f + layerLift, waterLikeMaterial(seed, rawSeed));
-                return true;
+                return addLiquidFloorOverlay(px, pz, w, d, yaw, seed, 0.010f + layerLift, rawSeed);
             };
 
             auto addWaterLikeCeiling = [&](float px, float pz, float w, float d, float yaw, float seed, float rawSeed) {
-                if (!reserveBloodCeilingFootprint(px, pz, w, d, yaw, 0.010f)) return false;
-                AddCeilingCard(vertices, transparentIndices, {px, 0.0f, pz}, w, d, yaw,
-                    nextBloodCeilingY(px, pz, seed + 0.61f), waterLikeMaterial(seed, rawSeed));
-                return true;
+                return addLiquidCeilingOverlay(px, pz, w, d, yaw, seed, rawSeed);
             };
 
             auto addWaterLikeCenterTile = [&](Tile t, int dripIndex) {
@@ -3057,6 +3119,7 @@
                 bool floorPlaced = addWaterLikeFloor(px, pz, w, d, 0.0f, seed, 0.0f, 0.43f + std::fmod(seed, 0.50f));
                 bool placed = ceilingPlaced && floorPlaced;
                 if (placed) {
+                    MarkWetCeilingDripEmitter({px, 0.10f, pz}, seed);
                     auto markCovered = [&](Tile covered) {
                         if (maze_.IsOpen(covered.x, covered.y)) bloodCenterSeepCovered.insert(bloodTileKey(covered));
                     };
@@ -3136,11 +3199,15 @@
                 XMFLOAT3 ceilingEdge = Add3({wallCenter.x, wallH - kBloodCeilingDecalInset, wallCenter.z},
                     Scale3(inward, -kWaterLikeWallDecalInset));
                 XMFLOAT3 ceilingCenter = Add3(ceilingEdge, Scale3(inward, sourceD * 0.5f + kWaterLikeSeamInset));
-                addWaterLikeCeiling(ceilingCenter.x, ceilingCenter.z, leakW, sourceD, seamYaw, seed, 0.965f + seed * 0.025f);
+                bool ceilingPlaced = addWaterLikeCeiling(ceilingCenter.x, ceilingCenter.z, leakW, sourceD, seamYaw, seed, 0.965f + seed * 0.025f);
                 float poolD = axisLength * (0.86f + Rand01(leakIndex, 2427, scatterSeed) * 0.12f);
                 if (canSpreadForward) poolD += axisLength * (0.18f + Rand01(leakIndex, 2429, scatterSeed) * 0.24f);
                 XMFLOAT3 floorCenter = Add3({wallCenter.x, 0.0f, wallCenter.z}, Scale3(inward, poolD * 0.5f + 0.006f));
-                addWaterLikeFloor(floorCenter.x, floorCenter.z, leakW, poolD, seamYaw, seed, 0.0f, 0.965f + seed * 0.025f);
+                bool floorPlaced = addWaterLikeFloor(floorCenter.x, floorCenter.z, leakW, poolD, seamYaw, seed, 0.0f, 0.965f + seed * 0.025f);
+                if (floorPlaced) MarkWetFootstepArea(floorCenter.x, floorCenter.z, leakW, poolD, seamYaw);
+                if (ceilingPlaced && floorPlaced) {
+                    MarkWetCeilingDripEmitter({floorCenter.x, 0.10f, floorCenter.z}, seed);
+                }
 
                 if (!wallOnly && !gEffectDebugViewer) {
                     BloodScarePoint scare{};
@@ -3197,6 +3264,10 @@
                         int side = sides[std::min(sideCount - 1,
                             static_cast<int>(Rand01(waterIndex, 2507, scatterSeed) * static_cast<float>(sideCount)))];
                         addWaterLikeLeak(t, side, 25000 + waterIndex);
+                        for (int i = 0; i < sideCount; ++i) {
+                            if (sides[i] == side) continue;
+                            addWaterLikeLeak(t, sides[i], 26000 + waterIndex * 4 + i);
+                        }
                     }
                     ++waterIndex;
                 }
@@ -3284,8 +3355,13 @@
                         }
                         continue;
                     }
-                    int side = sides[std::min(sideCount - 1, static_cast<int>(Rand01(b, 579, scatterSeed) * static_cast<float>(sideCount)))];
-                    if (addBloodLeak(t, side, b)) {
+                    bool placedAnySide = false;
+                    int firstIndex = std::min(sideCount - 1, static_cast<int>(Rand01(b, 579, scatterSeed) * static_cast<float>(sideCount)));
+                    for (int step = 0; step < sideCount; ++step) {
+                        int side = sides[(firstIndex + step) % sideCount];
+                        placedAnySide = addBloodLeak(t, side, b * 4 + step) || placedAnySide;
+                    }
+                    if (placedAnySide) {
                         ++placedBloodLeaks;
                     }
                 }
@@ -3370,9 +3446,13 @@
                 bool lampOn = !brokenZone && seed >= 1.0f - settings_.lampOnRatio;
                 bool brokenPanel = brokenZone &&
                     LampHash(static_cast<float>(cellX) - 19.7f, static_cast<float>(cellZ) + 88.4f) < settings_.sparkEmitterRatio;
+                bool wetLampTile = IsWetCeilingTile(lampTile) || IsWetFootstepTile(lampTile);
+                bool jumpscareLamp = wetLampTile && lampOn && runtimeMode_ == RendererRuntimeMode::PlayableGame &&
+                    LampHash(static_cast<float>(cellX) + 151.3f, static_cast<float>(cellZ) - 207.9f) < settings_.sparkEmitterRatio;
                 if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
                     lampOn = lampTile == maze_.start;
                     brokenPanel = false;
+                    jumpscareLamp = false;
                 }
                 float panelW = tileW * (1.01f / 3.0f);
                 float panelD = tileD * (1.01f / 3.0f);
@@ -3386,10 +3466,23 @@
                         {lampCenter.x, wallH - 0.08f, lampCenter.z},
                         0.0f,
                         RandRange(0.08f, 0.72f),
-                        false
+                        false,
+                        [&]() {
+                            float humRoll = LampHash(static_cast<float>(cellX) + 14.7f, static_cast<float>(cellZ) - 42.3f);
+                            if (humRoll < 0.05f) return 2;
+                            if (humRoll < 0.15f) return 1;
+                            return 0;
+                        }()
                     });
-                } else if (brokenPanel && settings_.sparkParticles) {
+                    if (jumpscareLamp && settings_.sparkParticles) {
+                        sparkEmitters_.push_back({{lampCenter.x, wallH - 0.085f, lampCenter.z}});
+                    }
+                } else if (wetLampTile && brokenPanel && settings_.sparkParticles) {
                     sparkEmitters_.push_back({{lampCenter.x, wallH - 0.085f, lampCenter.z}});
+                }
+                if (brokenZone && !lampDamagePixels_.empty()) {
+                    lampDamagePixels_[static_cast<size_t>(tileY * maze_.w + tileX)] = 255;
+                    lampDamageDirty_ = true;
                 }
             }
         }
@@ -3424,6 +3517,21 @@
         staticPropShadowStartIndex_ = static_cast<UINT>(indices.size());
         indices.insert(indices.end(), propShadowIndices.begin(), propShadowIndices.end());
         staticPropShadowIndexCount_ = static_cast<UINT>(indices.size()) - staticPropShadowStartIndex_;
+
+        {
+            std::wstringstream counts;
+            counts << L"Static scene geometry: vertices=" << vertices.size()
+                << L", indices=" << indices.size()
+                << L", opaqueIndices=" << std::min(floorCeilingStartIndex_, static_cast<UINT>(indices.size()))
+                << L", floorCeilingIndices=" << floorCeilingIndexCount_
+                << L", waterIndices=" << staticWaterIndexCount_
+                << L", transparentIndices=" << staticTransparentIndexCount_
+                << L", propShadowIndices=" << staticPropShadowIndexCount_
+                << L", runtimeLamps=" << runtimeLamps_.size()
+                << L", sparkEmitters=" << sparkEmitters_.size()
+                << L", steamEmitters=" << steamEmitters_.size();
+            StartupProfileLine(counts.str());
+        }
 
         D3D11_BUFFER_DESC vb{};
         vb.ByteWidth = static_cast<UINT>(vertices.size() * sizeof(Vertex));

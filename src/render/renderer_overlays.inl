@@ -200,27 +200,33 @@
             }
         }
 
-        bool drawAiDebug = settings_.debugAiMapOverlay ||
-            (runtimeMode_ == RendererRuntimeMode::ScreensaverAutopilot && settings_.mapOverlay);
-        if (drawAiDebug) {
-            float hearingRadius = std::max(0.0f, playerNoiseRadiusMeters_);
-            if (hearingRadius > 0.05f) {
-                float radiusSq = hearingRadius * hearingRadius;
-                XMFLOAT4 hearingColor = monsterHeardPlayerNow_
-                    ? XMFLOAT4{1.0f, 0.02f, 0.02f, 0.30f}
-                    : XMFLOAT4{1.0f, 0.03f, 0.02f, 0.16f};
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame || settings_.debugAiMapOverlay) {
+            for (const PlayerAudibleSoundPulse& pulse : playerAudibleSoundPulses_) {
+                if (pulse.radius <= 0.05f || pulse.life <= 0.0f || pulse.age >= pulse.life) continue;
+                float radiusSq = pulse.radius * pulse.radius;
+                float fade = 1.0f - Clamp01(pulse.age / pulse.life);
+                XMFLOAT4 hearingColor = pulse.heardByMonster
+                    ? XMFLOAT4{1.0f, 0.02f, 0.02f, 0.18f + 0.30f * fade}
+                    : XMFLOAT4{1.0f, 0.03f, 0.02f, 0.10f + 0.22f * fade};
                 for (int y = 0; y < maze_.h; ++y) {
                     for (int x = 0; x < maze_.w; ++x) {
-                        XMFLOAT3 center = maze_.WorldCenter({x, y}, 0.0f);
-                        float dx = center.x - camera_.x;
-                        float dz = center.z - camera_.z;
+                        if (!maze_.IsOpen(x, y)) continue;
+                        Tile t{x, y};
+                        if (playerExplorationMap && VisitCount(t) == 0 && !(t == cameraTile)) continue;
+                        XMFLOAT3 center = maze_.WorldCenter(t, 0.0f);
+                        float dx = center.x - pulse.pos.x;
+                        float dz = center.z - pulse.pos.z;
                         if (dx * dx + dz * dz <= radiusSq) {
-                            pushTile({x, y}, hearingColor, 0.02f);
+                            pushTile(t, hearingColor, 0.02f);
                         }
                     }
                 }
             }
+        }
 
+        bool drawAiDebug = settings_.debugAiMapOverlay ||
+            (runtimeMode_ == RendererRuntimeMode::ScreensaverAutopilot && settings_.mapOverlay);
+        if (drawAiDebug) {
             bool alertPath = monsterHasSound_ || monsterHasLastKnown_ || monsterChasingVisible_;
             XMFLOAT4 pathColor = alertPath ? XMFLOAT4{1.0f, 0.12f, 0.04f, 0.72f} : XMFLOAT4{1.0f, 0.56f, 0.10f, 0.52f};
             for (size_t i = monsterPathIndex_; i < monsterPath_.size(); ++i) {

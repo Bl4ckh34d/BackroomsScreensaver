@@ -23,6 +23,7 @@
         if (gEffectDebugViewer) {
             ApplyDebugSliceCamera();
             UpdateDebugSliceLoop(dt);
+            UpdateDebugMonsterWalk(dt);
             if (gDebugSliceEffect == DebugSliceEffect::AirVents) {
                 UpdateSteamAndDrops(dt);
             } else if (gDebugSliceEffect == DebugSliceEffect::BrokenLamps) {

@@ -1,5 +1,9 @@
     void Render() {
         lastPresentCompleted_ = false;
+        if (!presentEnabled_) {
+            lastPresentCompleted_ = true;
+            return;
+        }
         if (!rtv_ || !dsv_) {
             lastPresentCompleted_ = true;
             return;
@@ -102,6 +106,8 @@
         SceneConstants cb{};
         XMStoreFloat4x4(&cb.viewProj, view * proj);
         XMStoreFloat4x4(&cb.lightViewProj, lightViewProj);
+        XMStoreFloat4x4(&cb.monsterEyeViewProj0, XMMatrixIdentity());
+        XMStoreFloat4x4(&cb.monsterEyeViewProj1, XMMatrixIdentity());
         XMFLOAT3 eyePos{};
         XMStoreFloat3(&eyePos, eye);
         float flashlightIntensity = settings_.flashlightIntensity * DreadFlashlightMultiplier();
@@ -231,8 +237,9 @@
         float fleshAmount = 0.0f;
         if (fleshFlickerTimer_ > 0.0f && fleshFlickerDuration_ > 0.001f) {
             float elapsed = fleshFlickerDuration_ - fleshFlickerTimer_;
-            float envelope = SmoothStep(0.0f, 0.08f, elapsed) * (1.0f - SmoothStep(fleshFlickerDuration_ - 0.20f, fleshFlickerDuration_, elapsed));
-            float strobe = ((std::sin(elapsed * 34.0f) + std::sin(elapsed * 71.0f) * 0.55f + std::sin(elapsed * 113.0f) * 0.28f) > 0.16f) ? 1.0f : 0.0f;
+            float phase = Clamp01(elapsed / fleshFlickerDuration_);
+            float envelope = SmoothStep(0.0f, 0.045f, elapsed) * (1.0f - SmoothStep(fleshFlickerDuration_ - 0.10f, fleshFlickerDuration_, elapsed));
+            float strobe = (std::sin(phase * kPi * 4.0f) > 0.0f) ? 1.0f : 0.0f;
             fleshAmount = envelope * strobe * settings_.fleshFlickerIntensity;
         }
         if (settings_.fleshAlwaysOn) fleshAmount = std::max(fleshAmount, settings_.fleshFlickerIntensity);
@@ -289,22 +296,43 @@
             cb.blood0 = {bloodCenter.x, bloodCenter.z, bloodWorldActivationTime_, Clamp01(bloodWorldAmount)};
             cb.blood1 = {bloodStreamCount, revealRadius, bloodStreamThickness, bloodShaderQuality};
         } else if (!bloodRevealRegions_.empty()) {
-            std::vector<const BloodRevealRegion*> regions;
-            regions.reserve(bloodRevealRegions_.size());
+            std::array<const BloodRevealRegion*, 8> nearestRegions{};
+            std::array<float, 8> nearestDistSq{};
+            nearestDistSq.fill(std::numeric_limits<float>::infinity());
+            size_t nearestCount = 0;
             for (const BloodRevealRegion& region : bloodRevealRegions_) {
-                if (region.radius > 0.001f && region.activationTime > -999000.0f) {
-                    regions.push_back(&region);
+                if (region.radius <= 0.001f || region.activationTime <= -999000.0f) continue;
+                float dx = region.center.x - camera_.x;
+                float dz = region.center.z - camera_.z;
+                float distSq = dx * dx + dz * dz;
+                if (nearestCount < nearestRegions.size()) {
+                    nearestRegions[nearestCount] = &region;
+                    nearestDistSq[nearestCount] = distSq;
+                    ++nearestCount;
+                } else {
+                    size_t slot = nearestRegions.size() - 1;
+                    for (size_t i = 0; i < nearestRegions.size(); ++i) {
+                        if (nearestDistSq[i] > nearestDistSq[slot]) slot = i;
+                    }
+                    if (distSq >= nearestDistSq[slot]) continue;
+                    nearestRegions[slot] = &region;
+                    nearestDistSq[slot] = distSq;
                 }
             }
-            std::sort(regions.begin(), regions.end(), [this](const BloodRevealRegion* a, const BloodRevealRegion* b) {
-                float adx = a->center.x - camera_.x;
-                float adz = a->center.z - camera_.z;
-                float bdx = b->center.x - camera_.x;
-                float bdz = b->center.z - camera_.z;
-                return adx * adx + adz * adz < bdx * bdx + bdz * bdz;
-            });
-            if (!regions.empty()) {
-                const BloodRevealRegion& primary = *regions.front();
+            for (size_t i = 1; i < nearestCount; ++i) {
+                const BloodRevealRegion* region = nearestRegions[i];
+                float distSq = nearestDistSq[i];
+                size_t j = i;
+                while (j > 0 && distSq < nearestDistSq[j - 1]) {
+                    nearestRegions[j] = nearestRegions[j - 1];
+                    nearestDistSq[j] = nearestDistSq[j - 1];
+                    --j;
+                }
+                nearestRegions[j] = region;
+                nearestDistSq[j] = distSq;
+            }
+            if (nearestCount > 0 && nearestRegions[0]) {
+                const BloodRevealRegion& primary = *nearestRegions[0];
                 cb.blood0 = {primary.center.x, primary.center.z, primary.activationTime, 1.0f};
                 cb.blood1 = {bloodStreamCount, std::max(1.0f, primary.radius), bloodStreamThickness, bloodShaderQuality};
                 auto assignRegion = [&](size_t slot, const BloodRevealRegion& region) {
@@ -326,8 +354,8 @@
                     }
                 };
                 size_t slot = 2;
-                for (size_t i = 1; i < regions.size() && slot <= 8; ++i, ++slot) {
-                    assignRegion(slot, *regions[i]);
+                for (size_t i = 1; i < nearestCount && slot <= 8; ++i, ++slot) {
+                    if (nearestRegions[i]) assignRegion(slot, *nearestRegions[i]);
                 }
             }
         }
@@ -346,11 +374,14 @@
         XMFLOAT3 doorwayPortalPos{0.0f, 0.0f, 0.0f};
         float doorwayPortalHalfWidth = 0.0f;
         if (runtimeMode_ == RendererRuntimeMode::MainMenu && exitDoorAngle_ > 0.001f) {
-            exitDoorOpen = SmoothStep(0.03f, 0.95f, exitDoorAngle_ / 1.38f);
+            float rawDoorOpen = exitDoorAngle_ / 1.38f;
+            exitDoorOpen = SmoothStep(0.14f, 1.0f, rawDoorOpen);
+            float doorwayLightOpen = SmoothStep(0.24f, 1.0f, rawDoorOpen);
+            doorwayLightOpen *= doorwayLightOpen;
             XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -4.85f);
             doorwayLightPos = Add3(exitDoorCenter_, throughDoor);
             doorwayLightPos.y = exitDoorCenter_.y + 1.02f;
-            doorwayLightStrength = exitDoorOpen * 10.4f;
+            doorwayLightStrength = doorwayLightOpen * 10.4f;
             exitLightDir = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
             doorwayPortalPos = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.04f));
             doorwayPortalHalfWidth = 0.50f;
@@ -389,6 +420,10 @@
             monsterFogRadius,
             monsterFogStrength
         };
+        cb.monsterEye0 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.monsterEye1 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.monsterEye2 = {0.0f, 0.0f, 1.0f, 0.0f};
+        cb.monsterEye3 = {1.0f / static_cast<float>(std::max<UINT>(1, monsterEyeShadowMapSize_)), 10.0f, 0.0f, 0.0f};
         bool fleshLightingSuppressed =
             (settings_.fleshAlwaysOn && settings_.fleshFlickerIntensity > 0.001f) ||
             (fleshFlickerTimer_ > 0.0f && fleshFlickerDuration_ > 0.001f);
@@ -416,23 +451,93 @@
 
         UpdateDynamicGeometry();
         renderProfile.Mark(L"UpdateDynamicGeometry");
+        if (StartupProfileEnabled()) {
+            std::wstringstream counts;
+            counts << L"Dynamic scene geometry: opaqueVertices=" << dynamicOpaqueVertexCount_
+                << L", transparentVertices=" << dynamicTransparentVertexCount_
+                << L", airParticles=" << airParticles_.size()
+                << L", sparks=" << sparks_.size()
+                << L", steam=" << steam_.size()
+                << L", ventDrops=" << ventDrops_.size();
+            StartupProfileLine(counts.str());
+        }
 
-        if (shadowDsv_ && settings_.flashlightShadows && settings_.flashlightShadowStrength > 0.001f) {
-            renderProfile.Mark(L"BeginShadowPass");
-            ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-            context_->PSSetShaderResources(0, 7, nullSrvs);
-            context_->ClearDepthStencilView(shadowDsv_.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
-            context_->OMSetRenderTargets(0, nullptr, shadowDsv_.Get());
+        std::array<XMMATRIX, 2> monsterEyeViewProj{
+            XMMatrixIdentity(),
+            XMMatrixIdentity()
+        };
+        float monsterEyeStrength = 0.0f;
+        float monsterEyeRange = 0.0f;
+        float monsterEyeAlert = 0.0f;
+        XMFLOAT3 monsterEyeDir = Normalize3(monsterEyeForward_, {std::sin(monsterYaw_), 0.0f, std::cos(monsterYaw_)});
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu && !monsterPreview_ && !gEffectDebugViewer && monsterEyeWorldCount_ >= 2) {
+            XMFLOAT3 midpoint = Scale3(Add3(monsterEyeWorld_[0], monsterEyeWorld_[1]), 0.5f);
+            float dx = midpoint.x - camera_.x;
+            float dz = midpoint.z - camera_.z;
+            float distanceToPlayer = std::sqrt(dx * dx + dz * dz);
+            float activeDistance = std::clamp(std::max(MonsterSightDistance(), settings_.fogEndMeters) + 4.0f, 9.0f, 22.0f);
+            bool closeEnough = distanceToPlayer <= activeDistance;
+            bool visualFocus = closeEnough && (monsterCanSeePlayerNow_ || MonsterVisualEncounterPlayer());
+            monsterEyeAlert = std::max(monsterHeadChaseBlend_,
+                visualFocus ? 1.0f : (monsterHasLastKnown_ ? 0.68f : (monsterHeardPlayerNow_ ? 0.48f : 0.0f)));
+            if (visualFocus) {
+                XMFLOAT3 cameraFocus{camera_.x, camera_.y + 0.02f, camera_.z};
+                monsterEyeDir = Normalize3(Sub3(cameraFocus, midpoint), monsterEyeDir);
+            } else if (monsterHasLastKnown_ && maze_.IsOpen(monsterLastKnownTile_.x, monsterLastKnownTile_.y)) {
+                XMFLOAT3 known = maze_.WorldCenter(monsterLastKnownTile_, midpoint.y);
+                monsterEyeDir = Normalize3(Sub3(known, midpoint), monsterEyeDir);
+            }
+            if (closeEnough) {
+                monsterEyeRange = Lerp(8.0f, 14.0f, Clamp01(monsterEyeAlert));
+                monsterEyeStrength = Lerp(0.16f, 0.88f, Clamp01(monsterEyeAlert));
+            }
+            XMVECTOR dirVec = XMVector3Normalize(XMLoadFloat3(&monsterEyeDir));
+            XMFLOAT3 eyeUpFloat = Normalize3(monsterEyeUp_, {0.0f, 1.0f, 0.0f});
+            XMVECTOR upVec = XMVector3Normalize(XMLoadFloat3(&eyeUpFloat));
+            float upDot = std::abs(XMVectorGetX(XMVector3Dot(dirVec, upVec)));
+            if (upDot > 0.93f) {
+                upVec = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+                if (std::abs(XMVectorGetX(XMVector3Dot(dirVec, upVec))) > 0.93f) {
+                    upVec = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
+                }
+            }
+            float eyeFov = Lerp(54.0f, 38.0f, Clamp01(monsterEyeAlert)) * kPi / 180.0f;
+            for (int i = 0; i < 2; ++i) {
+                XMVECTOR eyeLightPos = XMLoadFloat3(&monsterEyeWorld_[static_cast<size_t>(i)]);
+                monsterEyeViewProj[static_cast<size_t>(i)] =
+                    XMMatrixLookAtLH(eyeLightPos, eyeLightPos + dirVec, upVec) *
+                    XMMatrixPerspectiveFovLH(eyeFov, 1.0f, 0.035f, std::max(0.5f, monsterEyeRange));
+            }
+            XMStoreFloat4x4(&cb.monsterEyeViewProj0, monsterEyeViewProj[0]);
+            XMStoreFloat4x4(&cb.monsterEyeViewProj1, monsterEyeViewProj[1]);
+            cb.monsterEye0 = {monsterEyeWorld_[0].x, monsterEyeWorld_[0].y, monsterEyeWorld_[0].z, monsterEyeStrength};
+            cb.monsterEye1 = {monsterEyeWorld_[1].x, monsterEyeWorld_[1].y, monsterEyeWorld_[1].z, monsterEyeStrength};
+            cb.monsterEye2 = {monsterEyeDir.x, monsterEyeDir.y, monsterEyeDir.z, Clamp01(monsterEyeAlert)};
+            cb.monsterEye3 = {
+                1.0f / static_cast<float>(std::max<UINT>(1, monsterEyeShadowMapSize_)),
+                std::max(0.5f, monsterEyeRange),
+                0.0f,
+                0.0f
+            };
+        }
+
+        auto renderDepthShadow = [&](ID3D11DepthStencilView* shadowDsv, UINT shadowSize, const XMMATRIX& shadowViewProj) {
+            if (!shadowDsv) return;
+            ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+            context_->PSSetShaderResources(0, 9, nullSrvs);
+            context_->DSSetShaderResources(0, 9, nullSrvs);
+            context_->ClearDepthStencilView(shadowDsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+            context_->OMSetRenderTargets(0, nullptr, shadowDsv);
 
             D3D11_VIEWPORT shadowVp{};
-            shadowVp.Width = static_cast<float>(shadowMapSize_);
-            shadowVp.Height = static_cast<float>(shadowMapSize_);
+            shadowVp.Width = static_cast<float>(shadowSize);
+            shadowVp.Height = static_cast<float>(shadowSize);
             shadowVp.MinDepth = 0.0f;
             shadowVp.MaxDepth = 1.0f;
             context_->RSSetViewports(1, &shadowVp);
 
             SceneConstants shadowCb = cb;
-            XMStoreFloat4x4(&shadowCb.viewProj, lightViewProj);
+            XMStoreFloat4x4(&shadowCb.viewProj, shadowViewProj);
             UploadSceneConstants(shadowCb);
 
             context_->IASetInputLayout(inputLayout_.Get());
@@ -482,6 +587,23 @@
                 context_->Draw(dynamicOpaqueVertexCount_, 0);
                 renderProfile.Mark(L"ShadowDynamic");
             }
+        };
+
+        if (shadowDsv_ && settings_.flashlightShadows && settings_.flashlightShadowStrength > 0.001f &&
+            flashlightIntensity > 0.001f && transitionFade < 0.995f) {
+            renderProfile.Mark(L"BeginShadowPass");
+            renderDepthShadow(shadowDsv_.Get(), shadowMapSize_, lightViewProj);
+        }
+        if (monsterEyeStrength > 0.001f) {
+            for (int eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
+                if (monsterEyeShadowDsv_[static_cast<size_t>(eyeIndex)]) {
+                    renderProfile.Mark(eyeIndex == 0 ? L"BeginMonsterEyeShadow0" : L"BeginMonsterEyeShadow1");
+                    renderDepthShadow(
+                        monsterEyeShadowDsv_[static_cast<size_t>(eyeIndex)].Get(),
+                        monsterEyeShadowMapSize_,
+                        monsterEyeViewProj[static_cast<size_t>(eyeIndex)]);
+                }
+            }
         }
 
         UploadSceneConstants(cb);
@@ -489,7 +611,17 @@
         UploadLampDamageTexture();
         renderProfile.Mark(L"UploadLampDamageTexture");
 
-        ID3D11ShaderResourceView* srvs[] = {albedoSrv_.Get(), normalSrv_.Get(), shadowSrv_.Get(), mazeSrv_.Get(), materialPropsSrv_.Get(), flashlightPatternSrv_.Get(), lampDamageSrv_.Get()};
+        ID3D11ShaderResourceView* srvs[] = {
+            albedoSrv_.Get(),
+            normalSrv_.Get(),
+            shadowSrv_.Get(),
+            mazeSrv_.Get(),
+            materialPropsSrv_.Get(),
+            flashlightPatternSrv_.Get(),
+            lampDamageSrv_.Get(),
+            monsterEyeShadowSrv_[0].Get(),
+            monsterEyeShadowSrv_[1].Get()
+        };
         ID3D11SamplerState* samplers[] = {sampler_.Get(), shadowSampler_.Get()};
         context_->OMSetRenderTargets(1, &sceneTarget, dsv_.Get());
         context_->RSSetViewports(1, &vp);
@@ -505,9 +637,9 @@
         context_->HSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
         context_->DSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
         context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
-        context_->PSSetShaderResources(0, 7, srvs);
+        context_->PSSetShaderResources(0, 9, srvs);
         if (useFleshTessellation) {
-            context_->DSSetShaderResources(0, 7, srvs);
+            context_->DSSetShaderResources(0, 9, srvs);
             context_->DSSetSamplers(0, 1, sampler_.GetAddressOf());
         }
         context_->PSSetSamplers(0, 2, samplers);
@@ -569,9 +701,9 @@
             renderProfile.Mark(L"DynamicTransparent");
         }
 
-        ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-        context_->PSSetShaderResources(0, 7, nullSrvs);
-        context_->DSSetShaderResources(0, 7, nullSrvs);
+        ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+        context_->PSSetShaderResources(0, 9, nullSrvs);
+        context_->DSSetShaderResources(0, 9, nullSrvs);
         context_->HSSetShader(nullptr, nullptr, 0);
         context_->DSSetShader(nullptr, nullptr, 0);
         if (postAvailable) {
@@ -592,18 +724,12 @@
             renderProfile.Mark(L"GameHudOverlay");
         }
 
-        context_->PSSetShaderResources(0, 7, nullSrvs);
-        context_->DSSetShaderResources(0, 7, nullSrvs);
+        context_->PSSetShaderResources(0, 9, nullSrvs);
+        context_->DSSetShaderResources(0, 9, nullSrvs);
         context_->HSSetShader(nullptr, nullptr, 0);
         context_->DSSetShader(nullptr, nullptr, 0);
-        if (presentEnabled_) {
-            StartupProfileLine(L"Render before Present");
-            HRESULT presentHr = swapChain_->Present(presentSyncInterval_, presentFlags_);
-            lastPresentCompleted_ = presentHr != DXGI_ERROR_WAS_STILL_DRAWING;
-            renderProfile.Mark(L"Present");
-        } else {
-            StartupProfileLine(L"Render skipping Present");
-            lastPresentCompleted_ = true;
-            renderProfile.Mark(L"NoPresent");
-        }
+        StartupProfileLine(L"Render before Present");
+        HRESULT presentHr = swapChain_->Present(presentSyncInterval_, presentFlags_);
+        lastPresentCompleted_ = presentHr != DXGI_ERROR_WAS_STILL_DRAWING;
+        renderProfile.Mark(L"Present");
     }
