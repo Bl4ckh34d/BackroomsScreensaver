@@ -36,7 +36,7 @@
 
     uint64_t MonsterMeshCacheHash(const std::filesystem::path& path) const {
         uint64_t hash = 1469598103934665603ull;
-        const char* version = "BackroomsMazeMonsterMeshCacheV12";
+        const char* version = "BackroomsMazeMonsterMeshCacheV13";
         hash = Fnv1aAppend(hash, version, std::strlen(version));
         hash = Fnv1aAppend(hash, &settings_.monsterSkullMaxTriangles, sizeof(settings_.monsterSkullMaxTriangles));
         bool nativeMaskAxes = IsNativeMaskMeshPath(path);
@@ -266,13 +266,13 @@
         auto localPos = [&](int idx) {
             const XMFLOAT3& p = positions[static_cast<size_t>(idx)];
             if (nativeMaskAxes) {
-                return XMFLOAT3{(p.x - center.x) * scale, (p.y - center.y) * scale, (p.z - center.z) * scale};
+                return XMFLOAT3{(p.x - center.x) * scale, (p.z - center.z) * scale, -(p.y - center.y) * scale};
             }
             return XMFLOAT3{(p.x - center.x) * scale, (p.z - center.z) * scale, (p.y - center.y) * scale};
         };
         auto localNormal = [&](int idx) {
             const XMFLOAT3& n = normals[static_cast<size_t>(idx)];
-            if (nativeMaskAxes) return Normalize3(n, {0.0f, 0.0f, 1.0f});
+            if (nativeMaskAxes) return Normalize3({n.x, n.z, -n.y}, {0.0f, 0.0f, 1.0f});
             return Normalize3({n.x, n.z, n.y}, {0.0f, 0.0f, 1.0f});
         };
 
