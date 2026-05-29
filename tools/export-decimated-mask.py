@@ -37,27 +37,59 @@ for obj in mesh_objects:
     obj.select_set(False)
 
 os.makedirs(os.path.dirname(dest), exist_ok=True)
-bpy.ops.object.select_all(action="DESELECT")
-for obj in mesh_objects:
-    obj.select_set(True)
-bpy.context.view_layer.objects.active = mesh_objects[0]
+mtl_name = os.path.splitext(os.path.basename(dest))[0] + ".mtl"
+with open(os.path.join(os.path.dirname(dest), mtl_name), "w", encoding="utf-8", newline="\n") as mtl:
+    mtl.write("newmtl horror_mask\n")
+    mtl.write("Kd 0.800000 0.800000 0.800000\n")
+    mtl.write("Ks 0.200000 0.200000 0.200000\n")
+    mtl.write("Ns 120.000000\n")
+    mtl.write("d 1.000000\n")
+    mtl.write("illum 2\n")
 
-if hasattr(bpy.ops.wm, "obj_export"):
-    bpy.ops.wm.obj_export(
-        filepath=dest,
-        export_selected_objects=True,
-        export_materials=True,
-        export_uv=True,
-        export_normals=True,
-    )
-else:
-    bpy.ops.export_scene.obj(
-        filepath=dest,
-        use_selection=True,
-        use_materials=True,
-        use_uvs=True,
-        use_normals=True,
-    )
+with open(dest, "w", encoding="utf-8", newline="\n") as obj_file:
+    obj_file.write("# Decimated from horror_mask.glb by export-decimated-mask.py\n")
+    obj_file.write(f"mtllib {mtl_name}\n")
+    vertex_offset = 1
+    uv_offset = 1
+    normal_offset = 1
+    for obj in mesh_objects:
+        mesh = obj.data
+        obj_file.write(f"o {obj.name}\n")
+        for vertex in mesh.vertices:
+            world_pos = obj.matrix_world @ vertex.co
+            obj_file.write(f"v {world_pos.x:.7f} {world_pos.y:.7f} {world_pos.z:.7f}\n")
+        uv_layer = mesh.uv_layers.active.data if mesh.uv_layers.active else None
+        for poly in mesh.polygons:
+            for loop_index in poly.loop_indices:
+                if uv_layer:
+                    uv = uv_layer[loop_index].uv
+                    obj_file.write(f"vt {uv.x:.7f} {uv.y:.7f}\n")
+                else:
+                    loop = mesh.loops[loop_index]
+                    co = mesh.vertices[loop.vertex_index].co
+                    obj_file.write(f"vt {co.x + 0.5:.7f} {co.y + 0.5:.7f}\n")
+        normal_matrix = obj.matrix_world.to_3x3().inverted().transposed()
+        for poly in mesh.polygons:
+            for loop_index in poly.loop_indices:
+                normal = (normal_matrix @ mesh.loops[loop_index].normal).normalized()
+                obj_file.write(f"vn {normal.x:.7f} {normal.y:.7f} {normal.z:.7f}\n")
+        obj_file.write("usemtl horror_mask\n")
+        for poly in mesh.polygons:
+            if len(poly.loop_indices) != 3:
+                continue
+            refs = []
+            for loop_index in poly.loop_indices:
+                loop = mesh.loops[loop_index]
+                vertex_id = vertex_offset + loop.vertex_index
+                loop_local = loop_index - mesh.polygons[0].loop_start
+                # Blender loop indices are contiguous for the exported mesh; use the absolute loop offset.
+                loop_id = uv_offset + loop_index
+                refs.append(f"{vertex_id}/{loop_id}/{loop_id}")
+            obj_file.write("f " + " ".join(refs) + "\n")
+        vertex_offset += len(mesh.vertices)
+        loop_count = len(mesh.loops)
+        uv_offset += loop_count
+        normal_offset += loop_count
 
 tri_count = 0
 for obj in mesh_objects:

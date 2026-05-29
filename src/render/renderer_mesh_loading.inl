@@ -36,7 +36,7 @@
 
     uint64_t MonsterMeshCacheHash(const std::filesystem::path& path) const {
         uint64_t hash = 1469598103934665603ull;
-        const char* version = "BackroomsMazeMonsterMeshCacheV11";
+        const char* version = "BackroomsMazeMonsterMeshCacheV12";
         hash = Fnv1aAppend(hash, version, std::strlen(version));
         hash = Fnv1aAppend(hash, &settings_.monsterSkullMaxTriangles, sizeof(settings_.monsterSkullMaxTriangles));
         bool nativeMaskAxes = IsNativeMaskMeshPath(path);
@@ -276,7 +276,7 @@
             return Normalize3({n.x, n.z, n.y}, {0.0f, 0.0f, 1.0f});
         };
 
-        if (nativeMaskAxes && !texcoords.empty()) {
+        if (nativeMaskAxes) {
             struct FaceV {
                 int p;
                 int t;
@@ -560,7 +560,13 @@
             configuredPath = settings_.monsterAltSkullMesh;
             monsterUsingAltSkull_ = true;
         }
+        const std::wstring defaultMaskPath = L"assets\\models\\monster_face_mask\\horror_mask.obj";
         std::filesystem::path path = ResolveConfiguredAssetPath(configuredPath);
+        if (path.empty() && configuredPath != defaultMaskPath) {
+            configuredPath = defaultMaskPath;
+            monsterUsingAltSkull_ = false;
+            path = ResolveConfiguredAssetPath(configuredPath);
+        }
         if (path.empty()) {
             StartupProfileLine(L"Monster skull mesh not found: " + configuredPath);
             return false;
@@ -581,6 +587,28 @@
         } else if (ext == L".obj") {
             ok = LoadMonsterSkullObj(path, skullMesh_);
         }
+        if (!ok && configuredPath != defaultMaskPath) {
+            configuredPath = defaultMaskPath;
+            monsterUsingAltSkull_ = false;
+            path = ResolveConfiguredAssetPath(configuredPath);
+            if (!path.empty()) {
+                monsterSkullNativeMaskAxes_ = IsNativeMaskMeshPath(path);
+                hash = MonsterMeshCacheHash(path);
+                if (LoadMonsterMeshCache(hash, skullMesh_)) {
+                    StartupProfileLine(L"Loaded cached default monster mask mesh: " + std::to_wstring(skullMesh_.size() / 3) + L" tris");
+                    monsterMeshLoaded_ = true;
+                    return true;
+                }
+                ext = path.extension().wstring();
+                std::transform(ext.begin(), ext.end(), ext.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+                if (ext == L".bin") {
+                    ok = LoadMonsterMeshFile(path, skullMesh_);
+                } else if (ext == L".obj") {
+                    ok = LoadMonsterSkullObj(path, skullMesh_);
+                }
+            }
+        }
+
         if (ok) {
             monsterMeshLoaded_ = true;
             if (ext != L".bin") {

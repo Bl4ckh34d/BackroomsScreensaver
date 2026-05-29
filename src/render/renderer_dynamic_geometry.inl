@@ -1296,7 +1296,11 @@
             }
         }
         keepHeadOnSurface();
+        if (skullMesh_.empty() && !monsterMeshLoaded_) {
+            LoadMonsterSkullMesh();
+        }
         bool externalSkull = !skullMesh_.empty();
+        bool nativeMaskMesh = externalSkull && monsterSkullNativeMaskAxes_;
         XMFLOAT3 externalMaskCenter = skull;
         if (externalSkull) {
             XMFLOAT3 maskCenter = Add3(headRoot, Scale3(hForward, bodyRadii[0] * 0.96f + 0.320f * modelXZ));
@@ -1313,33 +1317,6 @@
             XMFLOAT3 headMeat = Add3(headRoot, Scale3(hForward, bodyRadii[0] * 0.34f + 0.030f * modelXZ));
             AppendDynamicEllipsoid(solidVerts, headMeat, hRight, hUp, hForward,
                 {0.390f * modelXZ, 0.440f * modelY, 0.150f * modelXZ}, 20, 10, gutMat + 0.04f);
-            XMFLOAT3 maskCenter = Add3(headMeat, Scale3(hForward, 0.118f * modelXZ));
-            AppendDynamicEllipsoid(solidVerts, maskCenter, hRight, hUp, hForward,
-                {0.340f * modelXZ, 0.465f * modelY, 0.052f * modelXZ}, 24, 14, boneMat);
-            AppendDynamicEllipsoid(solidVerts, Add3(maskCenter, Add3(Scale3(hForward, 0.076f * modelXZ), Scale3(hUp, 0.168f * modelY))), hRight, hUp, hForward,
-                {0.300f * modelXZ, 0.038f * modelY, 0.020f * modelXZ}, 16, 5, darkMat);
-            AppendDynamicEllipsoid(solidVerts, Add3(maskCenter, Add3(Scale3(hForward, 0.079f * modelXZ), Scale3(hUp, -0.095f * modelY))), hRight, hUp, hForward,
-                {0.280f * modelXZ, 0.040f * modelY, 0.024f * modelXZ}, 18, 5, darkMat);
-            AppendDynamicEllipsoid(solidVerts, Add3(maskCenter, Add3(Scale3(hForward, 0.045f * modelXZ), Scale3(hUp, -0.260f * modelY))), hRight, hUp, hForward,
-                {0.105f * modelXZ, 0.132f * modelY, 0.026f * modelXZ}, 12, 7, darkMat);
-            for (int t = -5; t <= 5; ++t) {
-                float tx = static_cast<float>(t) * 0.064f;
-                XMFLOAT3 tooth = Add3(maskCenter, OrientedOffset(hRight, hUp, hForward,
-                    tx * 0.76f * modelXZ, (-0.116f + std::abs(static_cast<float>(t)) * 0.007f) * modelY, 0.090f * modelXZ));
-                AppendDynamicEllipsoid(solidVerts, tooth, hRight, hUp, hForward,
-                    {0.008f * modelXZ, (0.038f + std::abs(static_cast<float>(t)) * 0.003f) * modelY, 0.008f * modelXZ}, 8, 5, 9.98f);
-            }
-            for (int side = -1; side <= 1; side += 2) {
-                XMFLOAT3 cheekA = Add3(maskCenter, OrientedOffset(hRight, hUp, hForward, 0.145f * side * modelXZ, -0.050f * modelY, 0.070f * modelXZ));
-                XMFLOAT3 cheekB = Add3(maskCenter, OrientedOffset(hRight, hUp, hForward, 0.280f * side * modelXZ, -0.158f * modelY, 0.078f * modelXZ));
-                organicSegment(cheekA, cheekB, 0.018f * modelXZ, 0.012f * modelXZ, darkMat, 8);
-                XMFLOAT3 browA = Add3(maskCenter, OrientedOffset(hRight, hUp, hForward, 0.052f * side * modelXZ, 0.196f * modelY, 0.082f * modelXZ));
-                XMFLOAT3 browB = Add3(maskCenter, OrientedOffset(hRight, hUp, hForward, 0.235f * side * modelXZ, 0.132f * modelY, 0.090f * modelXZ));
-                organicSegment(browA, browB, 0.024f * modelXZ, 0.013f * modelXZ, darkMat, 8);
-                XMFLOAT3 tearA = Add3(maskCenter, OrientedOffset(hRight, hUp, hForward, 0.172f * side * modelXZ, 0.062f * modelY, 0.092f * modelXZ));
-                XMFLOAT3 tearB = Add3(maskCenter, OrientedOffset(hRight, hUp, hForward, (0.138f + 0.020f * side) * side * modelXZ, -0.235f * modelY, 0.100f * modelXZ));
-                organicSegment(tearA, tearB, 0.010f * modelXZ, 0.006f * modelXZ, darkMat, 7);
-            }
         }
 
         if (false && !externalSkull) {
@@ -1381,7 +1358,7 @@
                 AppendDynamicEllipsoid(solidVerts, center, eyeRight, eyeUpAxis, eyeNormal,
                     {eyeHalfW * 0.92f * modelXZ, eyeHalfH * 0.92f * modelY, 0.028f * modelXZ}, 12, 7, darkMat);
             }
-            if (externalSkull) {
+            if (externalSkull && !nativeMaskMesh) {
                 eyeNormal = hForward;
                 eyeRight = hRight;
                 eyeUpAxis = hUp;
@@ -1411,7 +1388,7 @@
                 Add3(lensCenter, Add3(Scale3(ew, -1.0f), eh)),
                 eyeNormal, eyeRight, eyeMaterial);
         };
-        if (externalSkull) {
+        if (externalSkull && !nativeMaskMesh) {
             if (monsterUsingAltSkull_) {
                 appendEye(settings_.monsterAltRightEyeX, settings_.monsterAltRightEyeY, settings_.monsterAltRightEyeZ, 0.22f);
                 appendEye(settings_.monsterAltLeftEyeX, settings_.monsterAltLeftEyeY, settings_.monsterAltLeftEyeZ, 0.38f);
