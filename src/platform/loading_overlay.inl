@@ -463,6 +463,9 @@ LRESULT CALLBACK LoadingOverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
+    case WM_SETCURSOR:
+        SetCursor(nullptr);
+        return TRUE;
     default:
         if (msg == kLoadingOverlayCloseMessage) {
             DestroyWindow(hwnd);
@@ -535,6 +538,7 @@ void RegisterLoadingOverlayClass(HINSTANCE hInstance) {
     wc.hInstance = hInstance;
     wc.lpszClassName = kLoadingOverlayClass;
     wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    wc.hCursor = nullptr;
     RegisterClassW(&wc);
     registered = true;
 }

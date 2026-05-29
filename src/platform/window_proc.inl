@@ -76,7 +76,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 #endif
     case WM_SETCURSOR:
 #if defined(BACKROOMS_GAME_EXE)
-        if (gApp && gApp->gameShell && gApp->gameState == GameState::PlayGame) {
+        if (gApp && gApp->gameShell &&
+            (gApp->gameState == GameState::PlayGame || gApp->gameState == GameState::MainMenu)) {
             SetCursor(nullptr);
             return TRUE;
         }
@@ -242,6 +243,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (gApp && gApp->gameShell) {
             if (wParam == FALSE) ReleaseGameMouse();
             else if (gApp->gameState == GameState::PlayGame) CaptureGameMouse(gApp->hwnd);
+            else if (gApp->gameState == GameState::MainMenu) SetGameCursorVisible(false);
             return 0;
         }
 #endif

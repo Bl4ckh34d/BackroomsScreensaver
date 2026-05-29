@@ -15,9 +15,9 @@
         settings_.lampFlickerRatio = 0.0f;
         settings_.brokenZoneRatio = 0.0f;
         settings_.ambientLight = 0.0f;
-        settings_.flashlightIntensity = std::max(settings_.flashlightIntensity, 1.85f);
-        settings_.flashlightAttenuation = std::min(settings_.flashlightAttenuation, 0.070f);
-        settings_.flashlightConeDegrees = std::max(settings_.flashlightConeDegrees, 92.0f);
+        settings_.flashlightIntensity = std::max(settings_.flashlightIntensity, 2.78f);
+        settings_.flashlightAttenuation = std::min(settings_.flashlightAttenuation, 0.058f);
+        settings_.flashlightConeDegrees = std::clamp(settings_.flashlightConeDegrees, 68.0f, 78.0f);
         settings_.airParticles = true;
         settings_.airParticleDensity = std::max(0.32f, settings_.airParticleDensity * 0.55f);
         settings_.sparkParticles = true;

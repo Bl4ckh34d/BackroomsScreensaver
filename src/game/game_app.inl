@@ -83,6 +83,7 @@ int RunGame(HINSTANCE hInstance) {
     LayoutGameControls(hwnd);
     SetGameMenuVisible(true);
     UpdateGameMenuLabels();
+    SetGameCursorVisible(false);
     app.gameMenuFadeStart = GetTickCount64();
     SetDebugControlsVisible(false);
     ShowWindow(hwnd, SW_SHOW);

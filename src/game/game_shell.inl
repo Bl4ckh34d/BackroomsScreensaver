@@ -418,6 +418,7 @@ void EnterGameMainMenu(HWND hwnd) {
     }
     SetGameMenuVisible(true);
     UpdateGameMenuLabels();
+    SetGameCursorVisible(false);
     SetDebugControlsVisible(false);
     if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
     SetWindowTextW(hwnd, L"Backrooms Maze");
