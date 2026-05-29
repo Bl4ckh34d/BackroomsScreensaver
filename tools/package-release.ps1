@@ -142,6 +142,10 @@ function New-PackagedSkullMesh {
     $destination = Join-Path $StagePath $OutputRelativePath
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
     Copy-Item -LiteralPath $meshCache.FullName -Destination $destination -Force
+
+    $meshCacheDestination = Join-Path (Join-Path $StagePath "MeshCache") $meshCache.Name
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $meshCacheDestination) | Out-Null
+    Copy-Item -LiteralPath $meshCache.FullName -Destination $meshCacheDestination -Force
 }
 
 if (-not $SkipBuild) {
@@ -224,6 +228,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $runtimeFiles = @(
+    "assets\branding\NeuralForge_Solutions.png",
+    "assets\branding\NeuralForge_Solutions.svg",
     "assets\PBRs\backrooms_wall_color_4k.jpg",
     "assets\PBRs\backrooms_wall_height_4k.png",
     "assets\PBRs\backrooms_wall_normal_directx_4k.png",
@@ -463,7 +469,7 @@ finally {
     [System.IO.File]::WriteAllText($stageIni, $originalStageIni, $ascii)
 }
 
-Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMesh" -Value "assets\models\runtime\monster_mask_mesh.bin"
+Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMesh" -Value "assets\models\monster_face_mask\horror_mask.obj"
 Set-IniValue -Path $stageIni -Section "Monster" -Key "AlternateSkullMesh" -Value ""
 Set-IniValue -Path $stageIni -Section "Monster" -Key "AlternateSkullChance" -Value "0"
 Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMaxTriangles" -Value "16000"
@@ -471,8 +477,7 @@ Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMaxTriangles" -Value 
 foreach ($rawMesh in @(
     "assets\White-Tailed Deer Skull.obj",
     "assets\models\Ram_Skull\Ram_Skull_Scan.OBJ",
-    "assets\models\monster_face_mask\horror_mask.obj",
-    "assets\models\monster_face_mask\horror_mask.mtl"
+    "assets\models\runtime\monster_mask_mesh.bin"
 )) {
     $rawMeshPath = Join-Path $stageDir $rawMesh
     if (Test-Path -LiteralPath $rawMeshPath -PathType Leaf) {
