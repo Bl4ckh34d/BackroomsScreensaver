@@ -112,6 +112,7 @@ enum class GameInputAction {
     Sprint,
     Crouch,
     Interact,
+    Flashlight,
     Pause,
     Count
 };
@@ -134,6 +135,7 @@ const GameInputBindingDef kGameInputBindings[] = {
     {GameInputAction::Sprint, L"Sprint", L"KeySprint", VK_SHIFT},
     {GameInputAction::Crouch, L"Crouch", L"KeyCrouch", VK_CONTROL},
     {GameInputAction::Interact, L"Interact", L"KeyInteract", 'E'},
+    {GameInputAction::Flashlight, L"Flashlight", L"KeyFlashlight", 'F'},
     {GameInputAction::Pause, L"Pause / menu", L"KeyPause", VK_ESCAPE}
 };
 
@@ -195,16 +197,16 @@ struct Settings {
     float flashlightShadowStrength = 0.72f;
     float flashlightShadowDistanceMeters = 18.0f;
     float flashlightShadowBias = 0.00075f;
-    int flashlightShadowMapSize = 4096;
+    int flashlightShadowMapSize = 2048;
     float ambientLight = 0.0f;
     float lampIntensity = 1.45f;
     float lampSpacing = 3.2f;
-    float lampOnRatio = 1.0f;
-    float lampFlickerRatio = 0.075f;
+    float lampOnRatio = 0.95f;
+    float lampFlickerRatio = 0.10f;
     float brokenZoneRatio = 0.05f;
     float darkLampVisibleRatio = 1.0f;
     float fogStartMeters = 0.0f;
-    float fogEndMeters = 12.0f;
+    float fogEndMeters = 28.0f;
     float fogDarkness = 1.0f;
     float cornerAOIntensity = 0.45f;
     float cornerAORadius = 0.5f;
@@ -251,11 +253,12 @@ struct Settings {
     float paperDensity = 1.0f;
     float hallwayPaperRunDensity = 1.0f;
     float chairDensity = 1.0f;
+    bool waterDamageEnabled = true;
     float waterDamageDensity = 1.0f;
     float metalCabinetDensity = 0.85f;
-    float jumpscareFrequency = 0.3f;
+    float jumpscareFrequency = 0.15f;
     bool sparkParticles = true;
-    float sparkEmitterRatio = 0.11f;
+    float sparkEmitterRatio = 0.15f;
     float sparkBurstMinSeconds = 2.8f;
     float sparkBurstMaxSeconds = 8.8f;
     int sparkMaxParticles = 160;
@@ -265,17 +268,17 @@ struct Settings {
     float airParticleSize = 1.0f;
     float airParticleBlur = 1.0f;
     float bloodSplatterDensity = 0.05f;
-    int bloodBurstCount = 20;
+    int bloodBurstCount = 25;
     float bloodWetness = 0.995f;
     int bloodStreamCount = static_cast<int>(kEffectBloodStreamCount);
     float bloodStreamThickness = kEffectBloodStreamThickness;
     float bloodShaderQuality = kEffectBloodShaderQuality;
-    bool bloodWorldFlicker = false;
+    bool bloodWorldFlicker = true;
     bool bloodWorldAlwaysOn = false;
     float bloodWorldCoverage = 1.0f;
     float bloodWorldFlickerMinSeconds = 42.0f;
     float bloodWorldFlickerMaxSeconds = 110.0f;
-    float bloodWorldFlickerDuration = 1.15f;
+    float bloodWorldFlickerDuration = 0.35f;
     float bloodWorldFlickerIntensity = 1.0f;
     bool bloodStudyView = false;
     bool fleshFlicker = true;
@@ -284,7 +287,7 @@ struct Settings {
     float fleshParallaxScale = 0.14f;
     float fleshFlickerMinSeconds = 34.0f;
     float fleshFlickerMaxSeconds = 92.0f;
-    float fleshFlickerDuration = 0.75f;
+    float fleshFlickerDuration = 0.35f;
     float fleshFlickerIntensity = 1.0f;
 
     float effectBloodLoopSeconds = kEffectBloodLoopSeconds;
@@ -301,7 +304,7 @@ struct Settings {
     float effectAirVentSteamIntensityMin = kEffectAirVentSteamIntensity.min;
     float effectAirVentSteamIntensityMax = kEffectAirVentSteamIntensity.max;
     int effectAirVentPanelDropEvery = kEffectAirVentPanelDropEvery;
-    float effectAirVentPanelDropChance = kEffectAirVentPanelDropChance;
+    float effectAirVentPanelDropChance = 0.10f;
 
     bool dreadEnabled = true;
     bool dreadDebugMeter = false;
@@ -538,16 +541,16 @@ std::wstring DefaultConfigText() {
       << L"FlashlightShadowStrength=0.72\r\n"
       << L"FlashlightShadowDistanceMeters=18\r\n"
       << L"FlashlightShadowBias=0.00075\r\n"
-      << L"FlashlightShadowMapSize=4096\r\n"
+      << L"FlashlightShadowMapSize=2048\r\n"
       << L"AmbientLight=0\r\n"
       << L"LampIntensity=1.45\r\n"
       << L"LampSpacing=3.2\r\n"
-      << L"LampOnRatio=1\r\n"
-      << L"LampFlickerRatio=0.075\r\n"
+      << L"LampOnRatio=0.95\r\n"
+      << L"LampFlickerRatio=0.1\r\n"
       << L"BrokenZoneRatio=0.05\r\n"
       << L"DarkLampVisibleRatio=1.0\r\n"
       << L"FogStartMeters=0\r\n"
-      << L"FogEndMeters=12\r\n"
+      << L"FogEndMeters=28\r\n"
       << L"FogDarkness=1\r\n"
       << L"CornerAOIntensity=0.45\r\n"
       << L"CornerAORadius=0.5\r\n"
@@ -599,11 +602,12 @@ std::wstring DefaultConfigText() {
       << L"PaperDensity=1\r\n"
       << L"HallwayPaperRunDensity=1\r\n"
       << L"ChairDensity=1\r\n"
+      << L"WaterDamageEnabled=1\r\n"
       << L"WaterDamageDensity=1\r\n"
       << L"MetalCabinetDensity=0.85\r\n"
-      << L"JumpscareFrequency=0.3\r\n"
+      << L"JumpscareFrequency=0.15\r\n"
       << L"SparkParticles=1\r\n"
-      << L"SparkEmitterRatio=0.11\r\n"
+      << L"SparkEmitterRatio=0.15\r\n"
       << L"SparkBurstMinSeconds=2.8\r\n"
       << L"SparkBurstMaxSeconds=8.8\r\n"
       << L"SparkMaxParticles=160\r\n"
@@ -613,17 +617,17 @@ std::wstring DefaultConfigText() {
       << L"AirParticleSize=1\r\n"
       << L"AirParticleBlur=1\r\n"
         << L"BloodSplatterDensity=0.05\r\n"
-      << L"BloodBurstCount=20\r\n"
+      << L"BloodBurstCount=25\r\n"
       << L"BloodWetness=0.995\r\n"
       << L"BloodStreamCount=30\r\n"
       << L"BloodStreamThickness=0.88\r\n"
       << L"BloodShaderQuality=1\r\n"
-      << L"BloodWorldFlicker=0\r\n"
+      << L"BloodWorldFlicker=1\r\n"
       << L"BloodWorldAlwaysOn=0\r\n"
       << L"BloodWorldCoverage=1\r\n"
       << L"BloodWorldFlickerMinSeconds=42\r\n"
       << L"BloodWorldFlickerMaxSeconds=110\r\n"
-      << L"BloodWorldFlickerDuration=1.15\r\n"
+      << L"BloodWorldFlickerDuration=0.35\r\n"
       << L"BloodWorldFlickerIntensity=1\r\n"
       << L"BloodStudyView=0\r\n"
       << L"FleshFlicker=1\r\n"
@@ -632,7 +636,7 @@ std::wstring DefaultConfigText() {
       << L"FleshParallaxScale=0.14\r\n"
       << L"FleshFlickerMinSeconds=34\r\n"
       << L"FleshFlickerMaxSeconds=92\r\n"
-      << L"FleshFlickerDuration=0.75\r\n"
+      << L"FleshFlickerDuration=0.35\r\n"
       << L"FleshFlickerIntensity=1\r\n\r\n"
       << L"[EffectTuning]\r\n"
       << L"; Shared source of truth for debug viewer and screensaver effect playback.\r\n"
@@ -650,7 +654,7 @@ std::wstring DefaultConfigText() {
       << L"AirVentSteamIntensityMin=1.9\r\n"
       << L"AirVentSteamIntensityMax=3.2\r\n"
       << L"AirVentPanelDropEvery=3\r\n"
-      << L"AirVentPanelDropChance=0.333333\r\n\r\n"
+      << L"AirVentPanelDropChance=0.1\r\n\r\n"
       << L"[Dread]\r\n"
       << L"Enabled=1\r\n"
       << L"DebugMeter=0\r\n"
@@ -869,6 +873,7 @@ Settings LoadSettings() {
     s.paperDensity = std::clamp(IniFloat(L"Atmosphere", L"PaperDensity", s.paperDensity), 0.0f, 4.0f);
     s.hallwayPaperRunDensity = std::clamp(IniFloat(L"Atmosphere", L"HallwayPaperRunDensity", s.hallwayPaperRunDensity), 0.0f, 4.0f);
     s.chairDensity = std::clamp(IniFloat(L"Atmosphere", L"ChairDensity", s.chairDensity), 0.0f, 4.0f);
+    s.waterDamageEnabled = IniInt(L"Atmosphere", L"WaterDamageEnabled", s.waterDamageEnabled ? 1 : 0) != 0;
     s.waterDamageDensity = std::clamp(IniFloat(L"Atmosphere", L"WaterDamageDensity", s.waterDamageDensity), 0.0f, 4.0f);
     s.metalCabinetDensity = std::clamp(IniFloat(L"Atmosphere", L"MetalCabinetDensity", s.metalCabinetDensity), 0.0f, 4.0f);
     s.jumpscareFrequency = std::clamp(IniFloat(L"Atmosphere", L"JumpscareFrequency", s.jumpscareFrequency), 0.0f, 1.0f);

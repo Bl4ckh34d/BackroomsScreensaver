@@ -47,7 +47,7 @@ int RunScreensaver(HINSTANCE hInstance, RunMode mode, HWND previewParent) {
     bool bloodDebugMode = mode == RunMode::BloodDebug;
     gEffectDebugViewer = bloodDebugMode;
     if (bloodDebugMode) {
-        gDebugSliceEffect = DebugSliceEffect::Blood;
+        gDebugSliceEffect = gStartupDebugSliceEffect;
         gDebugSliceTiles = std::clamp(gDebugSliceTiles, 1, 5);
     }
     gBloodDebugEveryWall = gEffectDebugViewer &&

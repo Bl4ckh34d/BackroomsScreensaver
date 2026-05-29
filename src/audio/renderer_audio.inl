@@ -8,7 +8,7 @@
         if (index < wetFootstepTiles_.size()) wetFootstepTiles_[index] = 1;
     }
 
-    void MarkWetFootstepArea(float px, float pz, float width, float depth, float yaw, float extra = 0.06f) {
+    void MarkWetFootstepArea(float px, float pz, float width, float depth, float yaw, float extra = 0.06f, float wetDelaySeconds = 0.0f) {
         WetFloorFootprint fp{};
         fp.center = {px, pz};
         float c = std::cos(yaw);
@@ -17,6 +17,7 @@
         fp.forward = {s, c};
         fp.halfW = std::max(0.01f, width * 0.5f + extra);
         fp.halfD = std::max(0.01f, depth * 0.5f + extra);
+        fp.wetDelaySeconds = std::max(0.0f, wetDelaySeconds);
         wetFloorFootprints_.push_back(fp);
         if (wetFloorFootprints_.size() > 4096) {
             wetFloorFootprints_.erase(wetFloorFootprints_.begin(), wetFloorFootprints_.begin() + 512);
@@ -50,8 +51,37 @@
         return false;
     }
 
-    bool IsWetFootstepPoint(float x, float z, float radius = 0.06f) const {
+    bool MatureWaterRevealContains(float x, float z, float radius = 0.0f) const {
+        for (const BloodRevealRegion& region : bloodRevealRegions_) {
+            if (!region.waterLiquid || region.radius <= 0.01f || region.activationTime <= -999000.0f) continue;
+            float age = time_ - region.activationTime;
+            if (age < 5.8f) continue;
+            float grow = SmoothStep(5.8f, 24.0f, age);
+            float activeRadius = Lerp(std::min(region.radius, 0.42f), region.radius * 0.86f, grow);
+            float dx = x - region.center.x;
+            float dz = z - region.center.z;
+            float effectiveRadius = activeRadius + radius;
+            if (dx * dx + dz * dz <= effectiveRadius * effectiveRadius) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool IsWetFootstepPoint(float x, float z, float radius = 0.08f) const {
+        if (!MatureWaterRevealContains(x, z, radius)) return false;
         for (const WetFloorFootprint& fp : wetFloorFootprints_) {
+            if (fp.wetDelaySeconds > 0.0f) {
+                bool delayedEnough = false;
+                for (const BloodRevealRegion& region : bloodRevealRegions_) {
+                    if (!region.waterLiquid || region.activationTime <= -999000.0f) continue;
+                    if (time_ - region.activationTime >= fp.wetDelaySeconds) {
+                        delayedEnough = true;
+                        break;
+                    }
+                }
+                if (!delayedEnough) continue;
+            }
             float dx = x - fp.center.x;
             float dz = z - fp.center.y;
             float localX = dx * fp.right.x + dz * fp.right.y;
@@ -60,16 +90,7 @@
                 return true;
             }
         }
-        for (const BloodRevealRegion& region : bloodRevealRegions_) {
-            if (region.radius <= 0.01f) continue;
-            float dx = x - region.center.x;
-            float dz = z - region.center.z;
-            float effectiveRadius = region.radius + radius;
-            if (dx * dx + dz * dz <= effectiveRadius * effectiveRadius) {
-                return true;
-            }
-        }
-        return IsNearWetFootstepTile(x, z);
+        return false;
     }
 
     bool BloodWorldWetFootstepsActive() const {
@@ -90,7 +111,7 @@
     bool IsWetFootstepAtPlayer() const {
         if (BloodWorldWetFootstepsActive()) return true;
 
-        float radius = std::max(0.18f, maze_.TileMinimum() * 0.16f);
+        float radius = std::max(0.28f, maze_.TileMinimum() * 0.22f);
         XMFLOAT3 forward{std::sin(yaw_), 0.0f, std::cos(yaw_)};
         XMFLOAT3 right{forward.z, 0.0f, -forward.x};
         const XMFLOAT2 samples[] = {
@@ -143,7 +164,7 @@
 
     void UpdateWetDripAudio(float dt) {
         if (monsterPreview_ || runtimeMode_ == RendererRuntimeMode::MainMenu) return;
-        float audibleRange = std::max(4.5f, maze_.TileAverage() * 4.5f);
+        float audibleRange = std::max(18.0f, maze_.TileAverage() * 12.0f);
         for (WetDripEmitter& emitter : wetDripEmitters_) {
             emitter.age += std::max(0.0f, dt);
             if (emitter.age < emitter.audibleDelay) continue;
@@ -152,7 +173,7 @@
             if (emitter.timer > 0.0f) continue;
             if (DistanceToPoint(emitter.pos) <= audibleRange) {
                 audio_.PlayRandom(GameSound::WetCarpetCeilingDrip, AudioBus::Effects, emitter.pos,
-                    emitter.volume * RandRange(0.90f, 1.10f));
+                    emitter.volume * RandRange(0.90f, 1.10f), true, AudioOcclusionFor(emitter.pos));
             }
             emitter.timer += std::max(1.0f / 3.0f, emitter.interval);
             if (emitter.timer <= 0.0f) emitter.timer = emitter.interval;
@@ -228,12 +249,12 @@
             GameSound hum = GameSound::NeonHumQuiet;
             if (lamp.humVariant == 1) hum = GameSound::NeonHumLoud;
             if (lamp.humVariant == 2) hum = GameSound::NeonHumLoud2;
-            float baseVolume = 0.045f * 1.15f;
+            float baseVolume = 0.045f * 1.15f * 0.80f;
             float lampVariation = Lerp(0.84f, 1.18f,
                 Rand01(lamp.tile.x * 19 + 17, lamp.tile.y * 29 + 31, runtimeSeed_ ^ 0xA04D10u));
             float damageLift = Lerp(0.94f, 1.10f, Clamp01(lamp.damage));
             float volume = baseVolume * lampVariation * damageLift;
-            audio_.StartLoopTagged(hum, AudioBus::Ambience, lamp.pos, volume, true, tag);
+            audio_.StartLoopTagged(hum, AudioBus::Ambience, lamp.pos, volume, true, tag, AudioOcclusionFor(lamp.pos));
         }
     }
 
@@ -317,16 +338,16 @@
     float FootstepHearingRadius(float walkT, float runT, bool crouching, bool wetFootstep) const {
         float radius = 0.0f;
         if (crouching) {
-            radius = TileHearingRadius(0.50f);
+            radius = TileHearingRadius(0.35f);
         } else {
             float runBlend = std::max(runT, runEffort_ * 0.72f);
             if (runBlend > 0.01f) {
-                radius = TileHearingRadius(Lerp(5.0f, 6.0f, runBlend));
+                radius = TileHearingRadius(Lerp(3.6f, 4.6f, runBlend));
             } else {
-                radius = TileHearingRadius(Lerp(3.0f, 4.0f, walkT));
+                radius = TileHearingRadius(Lerp(2.1f, 2.9f, walkT));
             }
         }
-        return radius * (wetFootstep ? 1.50f : 1.0f);
+        return radius * (wetFootstep ? 1.25f : 1.0f);
     }
 
     float JumpscareHearingRadius(float scale = 1.0f) const {
@@ -352,7 +373,8 @@
 
     void PlayFootstepSound() {
         if (monsterPreview_ || runtimeMode_ == RendererRuntimeMode::MainMenu) return;
-        constexpr float kFootstepVolumeScale = 1.20f;
+        constexpr float kFootstepVolumeScale = 1.80f;
+        constexpr float kWetFootstepVolumeScale = 0.25125f;
         XMFLOAT3 pos{camera_.x, 0.08f, camera_.z};
         bool wetFootstep = IsWetFootstepAtPlayer();
         GameSound sound = wetFootstep ? GameSound::SoakedCarpetStep : GameSound::CarpetStep;
@@ -363,39 +385,43 @@
         if (runtimeMode_ == RendererRuntimeMode::PlayableGame && gameInput_.crouch) {
             float volume = Lerp(0.32f, 0.68f, walkT);
             volume *= 0.90f * RandRange(0.88f, 1.06f);
-            if (wetFootstep) volume *= 1.18f;
+            if (wetFootstep) volume *= kWetFootstepVolumeScale;
             volume *= kFootstepVolumeScale;
-            audio_.PlayRandom(sound, AudioBus::Effects, pos, volume);
+            audio_.PlayRandom(sound, AudioBus::Effects, pos, volume, false);
             EmitPlayerAudibleSound(pos, FootstepHearingRadius(walkT, runT, true, wetFootstep), 0.72f);
             return;
         }
         float volume = Lerp(0.74f, 1.14f, walkT);
         volume = Lerp(volume, 2.08f, std::max(runT, runEffort_ * 0.72f));
         volume *= 0.90f * RandRange(0.92f, 1.08f);
-        if (wetFootstep) volume *= 1.18f;
+        if (wetFootstep) volume *= kWetFootstepVolumeScale;
         volume *= kFootstepVolumeScale;
-        audio_.PlayRandom(sound, AudioBus::Effects, pos, volume);
+        audio_.PlayRandom(sound, AudioBus::Effects, pos, volume, false);
         EmitPlayerAudibleSound(pos, FootstepHearingRadius(walkT, runT, false, wetFootstep), 0.86f);
     }
 
     void PlaySparkSoundAt(XMFLOAT3 pos, float intensity = 1.0f) {
-        audio_.PlayRandom(GameSound::ElectricCrackle, AudioBus::Effects, pos, std::clamp(0.30f + intensity * 0.18f, 0.25f, 1.0f));
+        audio_.PlayRandom(GameSound::ElectricCrackle, AudioBus::Effects, pos,
+            std::clamp(0.30f + intensity * 0.18f, 0.25f, 1.0f), true, AudioOcclusionFor(pos));
     }
 
     void PlayNeonFlickerStarterClickAt(XMFLOAT3 pos) {
-        audio_.PlayRandom(GameSound::NeonFlickerStarterClick, AudioBus::Effects, pos, 0.35f);
+        audio_.PlayRandom(GameSound::NeonFlickerStarterClick, AudioBus::Effects, pos, 0.35f, true, AudioOcclusionFor(pos));
     }
 
-    void PlayLightBulbBreakSoundAt(XMFLOAT3 pos, float intensity = 1.0f) {
+    void PlayLightBulbBreakSoundAt(XMFLOAT3 pos, float intensity = 1.0f, bool emitPlayerNoise = true) {
         audio_.PlayRandom(GameSound::LightBulbBreak, AudioBus::Effects, pos,
-            std::clamp(0.92f + intensity * 0.20f, 0.80f, 1.35f),
-            runtimeMode_ != RendererRuntimeMode::MainMenu);
-        EmitPlayerAudibleSound(pos, LightBulbBreakHearingRadius(), 1.35f);
+            std::clamp(1.55f + intensity * 0.55f, 1.10f, 2.75f),
+            runtimeMode_ != RendererRuntimeMode::MainMenu,
+            runtimeMode_ != RendererRuntimeMode::MainMenu ? std::min(AudioOcclusionFor(pos), 1.15f) : 0.0f);
+        if (emitPlayerNoise) {
+            EmitPlayerAudibleSound(pos, LightBulbBreakHearingRadius(), 1.35f);
+        }
     }
 
     void PlayAirVentDustPuffAt(XMFLOAT3 pos, float intensity = 1.0f) {
         audio_.PlayRandom(GameSound::AirVentDustPuff, AudioBus::Effects, pos,
-            std::clamp(0.48f + intensity * 0.20f, 0.42f, 0.86f));
+            std::clamp(0.48f + intensity * 0.20f, 0.42f, 0.86f), true, AudioOcclusionFor(pos));
     }
 
     void UpdateMenuDoorAudio() {
@@ -431,7 +457,8 @@
             menuDoorCloseCreakPlayed_ = false;
             menuDoorCloseLockPlayed_ = false;
             if (!menuDoorAudioOpen_ && menuDoorOpen_ >= kStartThreshold) {
-                audio_.PlayRandom(GameSound::DoorOpenCreak, AudioBus::Effects, exitDoorCenter_, 0.72f);
+                audio_.PlayRandom(GameSound::DoorOpenCreak, AudioBus::Effects, exitDoorCenter_, 0.72f, true,
+                    AudioOcclusionFor(exitDoorCenter_));
                 menuDoorAudioOpen_ = true;
             }
         }
@@ -441,7 +468,8 @@
         }
 
         if (closing && menuDoorAudioPeakOpen_ >= kCloseCreakMinOpen && !menuDoorCloseCreakPlayed_) {
-            audio_.PlayRandom(GameSound::DoorCloseCreak, AudioBus::Effects, exitDoorCenter_, 0.66f);
+            audio_.PlayRandom(GameSound::DoorCloseCreak, AudioBus::Effects, exitDoorCenter_, 0.66f, true,
+                AudioOcclusionFor(exitDoorCenter_));
             menuDoorCloseCreakPlayed_ = true;
             menuDoorAudioOpen_ = false;
         }
@@ -457,15 +485,19 @@
         previousMenuDoorAudioOpen_ = menuDoorOpen_;
     }
 
-    void ScheduleDelayedAudio(size_t sampleIndex, AudioBus bus, XMFLOAT3 pos, float volume, float delay, float frequencyRatio = 1.0f, bool spatial = true) {
+    void ScheduleDelayedAudio(size_t sampleIndex, GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume, float delay,
+                              float frequencyRatio = 1.0f, bool spatial = true,
+                              AudioToneProfile toneProfile = AudioToneProfile::Normal) {
         if (delayedAudioEvents_.size() >= 24) delayedAudioEvents_.erase(delayedAudioEvents_.begin());
         DelayedAudioEvent e{};
         e.sampleIndex = sampleIndex;
+        e.sound = sound;
         e.bus = bus;
         e.pos = pos;
         e.volume = volume;
         e.delay = std::max(0.0f, delay);
         e.frequencyRatio = frequencyRatio;
+        e.toneProfile = toneProfile;
         e.spatial = spatial;
         delayedAudioEvents_.push_back(e);
     }
@@ -475,7 +507,8 @@
             DelayedAudioEvent& e = delayedAudioEvents_[i];
             e.delay -= dt;
             if (e.delay <= 0.0f) {
-                audio_.PlaySample(e.sampleIndex, e.bus, e.pos, e.volume, e.spatial, e.frequencyRatio);
+                audio_.PlaySample(e.sampleIndex, e.bus, e.pos, e.volume, e.spatial, e.frequencyRatio, e.sound,
+                    e.spatial ? AudioOcclusionFor(e.pos) : 0.0f, e.toneProfile);
                 delayedAudioEvents_.erase(delayedAudioEvents_.begin() + static_cast<std::ptrdiff_t>(i));
                 continue;
             }
@@ -517,16 +550,22 @@
         if (sampleIndex == static_cast<size_t>(-1)) return;
 
         XMFLOAT3 pos = PickVentGroanEmitter();
-        float baseVolume = RandRange(0.034f, 0.060f);
-        float pitch = RandRange(0.86f, 0.96f);
-        audio_.PlaySample(sampleIndex, AudioBus::Monster, pos, baseVolume, true, pitch);
+        float tile = std::max(0.1f, maze_.TileAverage());
+        float monsterTiles = MonsterDistance() / tile;
+        float monsterDistanceGain = Lerp(0.16f, 1.0f, 1.0f - SmoothStep(2.5f, 6.6f, monsterTiles));
+        float baseVolume = RandRange(0.010f, 0.020f) * monsterDistanceGain;
+        float pitch = RandRange(1.08f, 1.22f);
+        float ductOcclusion = std::min(8.0f, AudioOcclusionFor(pos) + 1.65f + SmoothStep(3.0f, 6.6f, monsterTiles) * 1.25f);
+        audio_.PlaySample(sampleIndex, AudioBus::Monster, pos, baseVolume, true, pitch, GameSound::MonsterGrowl,
+            ductOcclusion, AudioToneProfile::MetallicVent);
 
         XMFLOAT3 ductDir = Normalize3({monster_.x - camera_.x, 0.0f, monster_.z - camera_.z}, {std::sin(yaw_), 0.0f, std::cos(yaw_)});
-        float tile = std::max(0.1f, maze_.TileAverage());
         XMFLOAT3 echoA{pos.x + ductDir.z * tile * RandRange(-0.52f, 0.52f), pos.y, pos.z - ductDir.x * tile * RandRange(-0.52f, 0.52f)};
         XMFLOAT3 echoB{pos.x + ductDir.x * tile * RandRange(0.45f, 1.35f), pos.y, pos.z + ductDir.z * tile * RandRange(0.45f, 1.35f)};
-        ScheduleDelayedAudio(sampleIndex, AudioBus::Monster, echoA, baseVolume * 0.42f, RandRange(0.085f, 0.15f), pitch * RandRange(1.035f, 1.075f));
-        ScheduleDelayedAudio(sampleIndex, AudioBus::Monster, echoB, baseVolume * 0.24f, RandRange(0.19f, 0.34f), pitch * RandRange(0.93f, 0.98f));
+        ScheduleDelayedAudio(sampleIndex, GameSound::MonsterGrowl, AudioBus::Monster, echoA, baseVolume * 0.28f,
+            RandRange(0.085f, 0.15f), pitch * RandRange(1.035f, 1.075f), true, AudioToneProfile::MetallicVent);
+        ScheduleDelayedAudio(sampleIndex, GameSound::MonsterGrowl, AudioBus::Monster, echoB, baseVolume * 0.14f,
+            RandRange(0.19f, 0.34f), pitch * RandRange(0.93f, 0.98f), true, AudioToneProfile::MetallicVent);
     }
 
     bool MonsterAlertAudioActive() const {
@@ -539,10 +578,12 @@
         if (first == static_cast<size_t>(-1)) return;
         size_t second = audio_.PickRandomSampleExcept(sound, first);
         float firstPitch = RandRange(pitchMin, pitchMax);
-        audio_.PlaySample(first, AudioBus::Monster, pos, volume * RandRange(0.84f, 1.08f), true, firstPitch);
+        float initialOcclusion = AudioOcclusionFor(pos);
+        audio_.PlaySample(first, AudioBus::Monster, pos, volume * RandRange(0.84f, 1.08f), true, firstPitch, sound,
+            initialOcclusion);
         if (second != static_cast<size_t>(-1)) {
             audio_.PlaySample(second, AudioBus::Monster, pos, volume * RandRange(0.52f, 0.78f), true,
-                std::clamp(firstPitch * RandRange(0.82f, 1.18f), 0.50f, 2.0f));
+                std::clamp(firstPitch * RandRange(0.82f, 1.18f), 0.50f, 2.0f), sound, initialOcclusion);
         }
     }
 
@@ -551,9 +592,9 @@
         if (first == static_cast<size_t>(-1)) return;
         size_t second = audio_.PickRandomSampleExcept(sound, first);
         float firstPitch = RandRange(pitchMin, pitchMax);
-        ScheduleDelayedAudio(first, AudioBus::Monster, pos, volume * RandRange(0.84f, 1.08f), delay, firstPitch);
+        ScheduleDelayedAudio(first, sound, AudioBus::Monster, pos, volume * RandRange(0.84f, 1.08f), delay, firstPitch);
         if (second != static_cast<size_t>(-1)) {
-            ScheduleDelayedAudio(second, AudioBus::Monster, pos, volume * RandRange(0.52f, 0.78f),
+            ScheduleDelayedAudio(second, sound, AudioBus::Monster, pos, volume * RandRange(0.52f, 0.78f),
                 delay + RandRange(0.015f, 0.055f), std::clamp(firstPitch * RandRange(0.82f, 1.18f), 0.50f, 2.0f));
         }
     }
@@ -571,7 +612,7 @@
 
     void UpdateMonsterVocalAudio(float dt) {
         monsterSpottedScreamCooldown_ = std::max(0.0f, monsterSpottedScreamCooldown_ - dt);
-        if (monsterPreview_ || runtimeMode_ != RendererRuntimeMode::PlayableGame) {
+        if (monsterPreview_ || !IsPlayableSimulationMode(runtimeMode_)) {
             monsterAlertAudioActive_ = false;
             monsterAlertVocalTimer_ = 0.0f;
             return;
@@ -620,7 +661,7 @@
     }
 
     void UpdateVentMonsterGroans(float dt) {
-        if (monsterPreview_ || runtimeMode_ != RendererRuntimeMode::PlayableGame || deathActive_ || exitTransitionActive_) {
+        if (monsterPreview_ || !IsPlayableSimulationMode(runtimeMode_) || deathActive_ || exitTransitionActive_) {
             ventMonsterGroanTimer_ = std::min(ventMonsterGroanTimer_, 2.0f);
             ventMonsterGroanCooldown_ = std::max(0.0f, ventMonsterGroanCooldown_ - dt);
             return;
@@ -649,26 +690,41 @@
     }
 
     bool AudioRayClear(XMFLOAT3 from, XMFLOAT3 to) const {
+        return AudioWallBlocksBetween(from, to) == 0;
+    }
+
+    int AudioWallBlocksBetween(XMFLOAT3 from, XMFLOAT3 to) const {
         Tile fromTile = maze_.TileFromWorld(from.x, from.z);
         Tile toTile = maze_.TileFromWorld(to.x, to.z);
-        if (!maze_.IsOpen(fromTile.x, fromTile.y) || !maze_.IsOpen(toTile.x, toTile.y)) return false;
-        if (fromTile == toTile) return true;
+        if (!maze_.InBounds(fromTile.x, fromTile.y) || !maze_.InBounds(toTile.x, toTile.y)) return 4;
+        if (fromTile == toTile) return maze_.IsOpen(fromTile.x, fromTile.y) ? 0 : 1;
         float dx = to.x - from.x;
         float dz = to.z - from.z;
         float dist = std::sqrt(dx * dx + dz * dz);
-        int steps = std::clamp(static_cast<int>(dist / std::max(0.08f, maze_.TileMinimum() * 0.18f)), 4, 80);
+        int steps = std::clamp(static_cast<int>(dist / std::max(0.05f, maze_.TileMinimum() * 0.12f)), 6, 160);
+        int blocks = 0;
+        Tile previous{-100000, -100000};
         for (int i = 1; i <= steps; ++i) {
             float t = static_cast<float>(i) / static_cast<float>(steps);
             Tile sample = maze_.TileFromWorld(from.x + dx * t, from.z + dz * t);
-            if (!maze_.IsOpen(sample.x, sample.y)) return false;
+            if (!maze_.InBounds(sample.x, sample.y)) {
+                ++blocks;
+                if (blocks >= 8) return blocks;
+                continue;
+            }
+            if (!maze_.IsOpen(sample.x, sample.y) && !(sample == previous)) {
+                ++blocks;
+                if (blocks >= 8) return blocks;
+            }
+            previous = sample;
         }
-        return true;
+        return blocks;
     }
 
     float AudioOcclusionFor(XMFLOAT3 source) const {
         if (monsterPreview_ || runtimeMode_ == RendererRuntimeMode::MainMenu) return 0.0f;
         float dist = DistanceToPoint(source);
-        if (dist > std::max(15.0f, maze_.TileAverage() * 7.0f)) return 0.0f;
+        if (dist > std::max(72.0f, maze_.TileAverage() * 32.0f)) return 0.0f;
         XMFLOAT3 listener{camera_.x, 1.30f, camera_.z};
         source.y = std::clamp(source.y, 0.15f, settings_.wallHeightMeters - 0.08f);
         Tile listenerTile = maze_.TileFromWorld(listener.x, listener.z);
@@ -679,16 +735,13 @@
         XMFLOAT3 right = Normalize3(Cross3({0.0f, 1.0f, 0.0f}, forward), {1.0f, 0.0f, 0.0f});
         float radius = std::clamp(maze_.TileMinimum() * 0.16f, 0.12f, 0.30f);
         std::array<float, 5> offsets{{0.0f, -1.0f, 1.0f, -0.45f, 0.45f}};
-        int clearRays = 0;
+        int minBlocks = 8;
         for (float offset : offsets) {
             XMFLOAT3 l = Add3(listener, Scale3(right, offset * radius));
             XMFLOAT3 s = Add3(source, Scale3(right, -offset * radius * 0.60f));
-            if (AudioRayClear(l, s)) ++clearRays;
+            minBlocks = std::min(minBlocks, AudioWallBlocksBetween(l, s));
         }
-
-        float blocked = 1.0f - static_cast<float>(clearRays) / static_cast<float>(offsets.size());
-        float distanceWeight = SmoothStep(maze_.TileMinimum() * 0.65f, maze_.TileAverage() * 3.5f, dist);
-        return std::clamp(blocked * Lerp(0.72f, 1.0f, distanceWeight), 0.0f, 1.0f);
+        return static_cast<float>(minBlocks);
     }
 
     void SetupPersistentAudioEmitters() {
@@ -729,7 +782,7 @@
 
         UpdateMonsterVocalAudio(dt);
 
-        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && smoothedMoveSpeed_ > 0.05f) {
+        if (IsPlayableSimulationMode(runtimeMode_) && smoothedMoveSpeed_ > 0.05f) {
             float oldPhase = previousStepAudioPhase_;
             float newPhase = stepPhase_;
             if (newPhase < oldPhase) newPhase += kPi * 2.0f;
@@ -743,15 +796,18 @@
 
         if (exitTransitionActive_) {
             if (!exitDoorOpenSoundPlayed_ && exitDoorAngle_ > 0.02f) {
-                audio_.PlayRandom(GameSound::DoorOpenCreak, AudioBus::Effects, exitDoorCenter_, 0.90f);
+                audio_.PlayRandom(GameSound::DoorOpenCreak, AudioBus::Effects, exitDoorCenter_, 0.90f, true,
+                    AudioOcclusionFor(exitDoorCenter_));
                 exitDoorOpenSoundPlayed_ = true;
             }
             if (!exitDoorCloseCreakSoundPlayed_ && exitTransitionTimer_ > settings_.exitDoorOpenSeconds + settings_.exitStepSeconds * 0.15f) {
-                audio_.PlayRandom(GameSound::DoorCloseCreak, AudioBus::Effects, exitDoorCenter_, 0.76f);
+                audio_.PlayRandom(GameSound::DoorCloseCreak, AudioBus::Effects, exitDoorCenter_, 0.76f, true,
+                    AudioOcclusionFor(exitDoorCenter_));
                 exitDoorCloseCreakSoundPlayed_ = true;
             }
             if (!exitDoorCloseSoundPlayed_ && exitTransitionTimer_ > settings_.exitDoorOpenSeconds + settings_.exitStepSeconds * 0.55f) {
-                audio_.PlayRandom(GameSound::DoorCloseLock, AudioBus::Effects, exitDoorCenter_, 0.78f);
+                audio_.PlayRandom(GameSound::DoorCloseLock, AudioBus::Effects, exitDoorCenter_, 0.78f, true,
+                    AudioOcclusionFor(exitDoorCenter_));
                 exitDoorCloseSoundPlayed_ = true;
             }
         }

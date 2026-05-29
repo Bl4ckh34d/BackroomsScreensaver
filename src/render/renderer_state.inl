@@ -1,10 +1,12 @@
     struct DelayedAudioEvent {
         size_t sampleIndex = static_cast<size_t>(-1);
+        GameSound sound = GameSound::MonsterGrowl;
         AudioBus bus = AudioBus::Effects;
         XMFLOAT3 pos{};
         float volume = 1.0f;
         float delay = 0.0f;
         float frequencyRatio = 1.0f;
+        AudioToneProfile toneProfile = AudioToneProfile::Normal;
         bool spatial = true;
     };
 
@@ -19,6 +21,8 @@
     const StartupProgressSink* startupProgress_ = nullptr;
     int startupProgressStep_ = 0;
     int startupProgressTotal_ = 1;
+    int startupProgressFineCurrent_ = 0;
+    int startupProgressFineTotal_ = 1;
     int startupShaderDone_ = 0;
     int startupShaderTotal_ = 0;
     int startupShaderCompiled_ = 0;
@@ -62,7 +66,9 @@
     ComPtr<ID3D11DepthStencilState> depthLessState_;
     ComPtr<ID3D11DepthStencilState> depthReadOnlyState_;
     ComPtr<ID3D11DepthStencilState> depthDisabledState_;
+    ComPtr<ID3D11DepthStencilState> liquidDepthStencilState_;
     ComPtr<ID3D11BlendState> alphaBlend_;
+    ComPtr<ID3D11PixelShader> liquidPixelShader_;
     ComPtr<ID3D11PixelShader> shadowPixelShader_;
     ComPtr<ID3D11Texture2D> shadowDepth_;
     ComPtr<ID3D11DepthStencilView> shadowDsv_;
@@ -89,6 +95,9 @@
     UINT staticTransparentIndexCount_ = 0;
     UINT staticPropShadowStartIndex_ = 0;
     UINT staticPropShadowIndexCount_ = 0;
+    std::vector<StaticIndexChunk> staticOpaqueChunks_;
+    std::vector<StaticIndexChunk> staticFloorCeilingChunks_;
+    std::vector<StaticIndexChunk> staticWaterChunks_;
     UINT dynamicOpaqueVertexCount_ = 0;
     UINT dynamicTransparentVertexCount_ = 0;
     UINT dynamicVertexCount_ = 0;
@@ -123,7 +132,16 @@
     bool menuExitHover_ = false;
     bool menuSinglePlayerHover_ = false;
     bool menuLampBurstPending_ = false;
+    bool menuLampBurstPlayed_ = false;
     int menuHoverButtonIndex_ = -1;
+    bool menuResumeLabel_ = false;
+    bool menuStartTransitionActive_ = false;
+    bool menuStartTransitionComplete_ = false;
+    float menuStartTransitionTimer_ = 0.0f;
+    float menuStartTransitionFade_ = 0.0f;
+    XMFLOAT3 menuStartCamera_{};
+    float menuStartYaw_ = 0.0f;
+    float menuStartPitch_ = 0.0f;
     float playerHealth_ = 100.0f;
     float playerStamina_ = 100.0f;
     float playerVerticalOffset_ = 0.0f;
@@ -141,6 +159,7 @@
     Settings settings_;
     AudioEngine audio_;
     bool audioReady_ = false;
+    bool audioSamplesLoaded_ = false;
     float nextMonsterGrowlSeconds_ = 0.0f;
     float monsterSpottedScreamCooldown_ = 0.0f;
     float monsterAlertVocalTimer_ = 0.0f;
@@ -215,6 +234,7 @@
     std::vector<Vertex> dynamicTransparentVerts_;
     float airParticleBudgetScale_ = 1.0f;
     float airParticleFrameDt_ = 0.0f;
+    int airParticleValidationCursor_ = 0;
     std::vector<SparkEmitter> sparkEmitters_;
     std::vector<RuntimeLampState> runtimeLamps_;
     std::vector<uint8_t> lampDamagePixels_;
@@ -244,6 +264,8 @@
     float fleshFlickerCooldown_ = 18.0f;
     float fleshFlickerTimer_ = 0.0f;
     float fleshFlickerDuration_ = 1.0f;
+    float visionFlashTimer_ = 0.0f;
+    float visionFlashDuration_ = 0.16f;
     bool lampDamageDirty_ = false;
     Tile scareEventTile_{-1000, -1000};
     XMFLOAT3 propLookTarget_{};
@@ -301,6 +323,8 @@
     bool flashlightSnapSharp_ = false;
     float flashlightHoldYaw_ = 0.0f;
     float flashlightHoldPitch_ = 0.0f;
+    bool flashlightEnabled_ = true;
+    bool previousFlashlightInput_ = false;
     float airFocusDistance_ = 3.5f;
     float ventReactionTimer_ = 0.0f;
     float ventReactionDuration_ = 0.0f;

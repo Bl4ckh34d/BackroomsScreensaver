@@ -19,7 +19,14 @@ enum class GameSound {
     DoorOpenCreak,
     DoorCloseCreak,
     DoorCloseLock,
-    LightBulbBreak
+    LightBulbBreak,
+    VisionFlash,
+    FlashlightStutter
+};
+
+enum class AudioToneProfile {
+    Normal,
+    MetallicVent
 };
 
 struct AudioSample {
@@ -32,11 +39,13 @@ struct AudioVoiceInstance {
     IXAudio2SourceVoice* voice = nullptr;
     size_t sampleIndex = 0;
     AudioBus bus = AudioBus::Effects;
+    GameSound sound = GameSound::CarpetStep;
     XMFLOAT3 pos{};
     float baseVolume = 1.0f;
     float frequencyRatio = 1.0f;
     float occlusion = 0.0f;
     float occlusionRefresh = 0.0f;
+    AudioToneProfile toneProfile = AudioToneProfile::Normal;
     int tag = -1;
     bool loop = false;
     bool spatial = true;
@@ -49,10 +58,18 @@ public:
             ApplySettings(settings);
             return true;
         }
+        if (!comInitialized_) {
+            comHr_ = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            comInitialized_ = SUCCEEDED(comHr_);
+        }
         HRESULT hr = XAudio2Create(&xaudio_, 0, XAUDIO2_DEFAULT_PROCESSOR);
-        if (FAILED(hr) || !xaudio_) return false;
+        if (FAILED(hr) || !xaudio_) {
+            OutputDebugStringW(L"Backrooms audio: XAudio2Create failed.\n");
+            return false;
+        }
         hr = xaudio_->CreateMasteringVoice(&masterVoice_);
         if (FAILED(hr)) {
+            OutputDebugStringW(L"Backrooms audio: CreateMasteringVoice failed.\n");
             xaudio_.Reset();
             return false;
         }
@@ -79,6 +96,11 @@ public:
         }
         xaudio_.Reset();
         initialized_ = false;
+        if (comInitialized_) {
+            CoUninitialize();
+            comInitialized_ = false;
+            comHr_ = E_FAIL;
+        }
     }
 
     void ApplySettings(const Settings& settings) {
@@ -93,9 +115,9 @@ public:
         if (!initialized_) return;
         samples_.clear();
         groups_.clear();
-        groups_.resize(static_cast<size_t>(GameSound::LightBulbBreak) + 1);
-        AddFolder(settings, GameSound::CarpetStep, L"assets\\sounds\\carpet_steps");
-        AddFolder(settings, GameSound::SoakedCarpetStep, L"assets\\sounds\\soaked_carpet_steps");
+        groups_.resize(static_cast<size_t>(GameSound::FlashlightStutter) + 1);
+        AddFolder(settings, GameSound::CarpetStep, L"assets\\sounds\\carpet_steps", L"carpet_step_*.wav");
+        AddFolder(settings, GameSound::SoakedCarpetStep, L"assets\\sounds\\soaked_carpet_steps", L"soaked_step_*.wav");
         AddFolder(settings, GameSound::NeonHumQuiet, L"assets\\sounds\\neon_light_hum", L"*quiet*.wav");
         AddFolder(settings, GameSound::NeonHumLoud, L"assets\\sounds\\neon_light_hum", L"neon_light_hum_loud.wav");
         AddFolder(settings, GameSound::NeonHumLoud2, L"assets\\sounds\\neon_light_hum", L"neon_light_hum_loud_2.wav");
@@ -104,11 +126,16 @@ public:
         AddFolder(settings, GameSound::ElectricCrackle, L"assets\\sounds\\electric_crackling");
         AddFolder(settings, GameSound::NeonFlickerStarterClick, L"assets\\sounds\\Still_In_Works\\neon_light_flicker_start");
         AddFolder(settings, GameSound::AirVentDustPuff, L"assets\\sounds\\air_vent_dust_air_puff");
-        AddFolder(settings, GameSound::WetCarpetCeilingDrip, L"assets\\sounds\\wet_carpet_ceiling_drips");
+        AddFolder(settings, GameSound::WetCarpetCeilingDrip, L"assets\\sounds\\wet_carpet_ceiling_drips", L"muted_cardboard_drip_tap_*.wav");
         AddFolder(settings, GameSound::DoorOpenCreak, L"assets\\sounds\\door_open_creak");
         AddFolder(settings, GameSound::DoorCloseCreak, L"assets\\sounds\\door_close_creak");
         AddFolder(settings, GameSound::DoorCloseLock, L"assets\\sounds\\door_close_lock");
-        AddFolder(settings, GameSound::LightBulbBreak, L"assets\\sounds\\light_bulb_break");
+        AddFolder(settings, GameSound::LightBulbBreak, L"assets\\sounds\\light_bulb_break", L"light_bulb_break_1.wav");
+        AddFolder(settings, GameSound::VisionFlash, L"assets\\sounds\\vision_flash", L"vision_flash_*.wav");
+        AddFolder(settings, GameSound::FlashlightStutter, L"assets\\sounds\\flashlight_contact_click", L"flashlight_stutter.wav");
+        if (samples_.empty()) {
+            OutputDebugStringW(L"Backrooms audio: no WAV samples were loaded.\n");
+        }
     }
 
     void SetListener(XMFLOAT3 pos, XMFLOAT3 forward) {
@@ -143,7 +170,7 @@ public:
             }
             instance.occlusionRefresh -= dt;
             if (instance.occlusionRefresh <= 0.0f) {
-                instance.occlusion = std::clamp(occlusionForPosition(instance.pos), 0.0f, 1.0f);
+                instance.occlusion = std::clamp(occlusionForPosition(instance.pos), 0.0f, 8.0f);
                 instance.occlusionRefresh = instance.bus == AudioBus::Ambience ? 0.32f : 0.14f;
             }
             Apply3D(instance);
@@ -167,23 +194,26 @@ public:
         voices_.clear();
     }
 
-    void PlayRandom(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume = 1.0f, bool spatial = true) {
+    void PlayRandom(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume = 1.0f, bool spatial = true,
+                    float initialOcclusion = 0.0f) {
         size_t sampleIndex = PickRandomSample(sound);
         if (sampleIndex == kInvalidSample) return;
-        StartVoice(sampleIndex, bus, pos, volume, false, spatial);
+        StartVoice(sound, sampleIndex, bus, pos, volume, false, spatial, 1.0f, -1, initialOcclusion);
     }
 
-    void StartLoop(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume = 1.0f, bool spatial = true) {
+    void StartLoop(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume = 1.0f, bool spatial = true,
+                   float initialOcclusion = 0.0f) {
         size_t sampleIndex = PickRandomSample(sound);
         if (sampleIndex == kInvalidSample) return;
-        StartVoice(sampleIndex, bus, pos, volume, true, spatial);
+        StartVoice(sound, sampleIndex, bus, pos, volume, true, spatial, 1.0f, -1, initialOcclusion);
     }
 
-    void StartLoopTagged(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume, bool spatial, int tag) {
+    void StartLoopTagged(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume, bool spatial, int tag,
+                         float initialOcclusion = 0.0f) {
         if (tag >= 0 && HasTaggedVoice(tag)) return;
         size_t sampleIndex = PickRandomSample(sound);
         if (sampleIndex == kInvalidSample) return;
-        StartVoice(sampleIndex, bus, pos, volume, true, spatial, 1.0f, tag);
+        StartVoice(sound, sampleIndex, bus, pos, volume, true, spatial, 1.0f, tag, initialOcclusion);
     }
 
     bool HasTaggedVoice(int tag) const {
@@ -224,9 +254,11 @@ public:
         return kInvalidSample;
     }
 
-    void PlaySample(size_t sampleIndex, AudioBus bus, XMFLOAT3 pos, float volume = 1.0f, bool spatial = true, float frequencyRatio = 1.0f) {
+    void PlaySample(size_t sampleIndex, AudioBus bus, XMFLOAT3 pos, float volume = 1.0f, bool spatial = true,
+                    float frequencyRatio = 1.0f, GameSound sound = GameSound::MonsterGrowl,
+                    float initialOcclusion = 0.0f, AudioToneProfile toneProfile = AudioToneProfile::Normal) {
         if (sampleIndex == kInvalidSample) return;
-        StartVoice(sampleIndex, bus, pos, volume, false, spatial, frequencyRatio);
+        StartVoice(sound, sampleIndex, bus, pos, volume, false, spatial, frequencyRatio, -1, initialOcclusion, toneProfile);
     }
 
 private:
@@ -355,7 +387,9 @@ private:
         return masterVolume_ * busVolume;
     }
 
-    void StartVoice(size_t sampleIndex, AudioBus bus, XMFLOAT3 pos, float volume, bool loop, bool spatial, float frequencyRatio = 1.0f, int tag = -1) {
+    void StartVoice(GameSound sound, size_t sampleIndex, AudioBus bus, XMFLOAT3 pos, float volume, bool loop, bool spatial,
+                    float frequencyRatio = 1.0f, int tag = -1, float initialOcclusion = 0.0f,
+                    AudioToneProfile toneProfile = AudioToneProfile::Normal) {
         if (!initialized_ || sampleIndex >= samples_.size()) return;
         AudioSample& sample = samples_[sampleIndex];
         WAVEFORMATEX format = sample.format;
@@ -387,9 +421,13 @@ private:
         instance.voice = voice;
         instance.sampleIndex = sampleIndex;
         instance.bus = bus;
+        instance.sound = sound;
         instance.pos = pos;
         instance.baseVolume = std::clamp(volume, 0.0f, 6.0f);
         instance.frequencyRatio = std::clamp(frequencyRatio, 0.50f, 2.0f);
+        instance.occlusion = spatial ? std::clamp(initialOcclusion, 0.0f, 8.0f) : 0.0f;
+        instance.occlusionRefresh = spatial ? (bus == AudioBus::Ambience ? 0.32f : 0.14f) : 0.0f;
+        instance.toneProfile = toneProfile;
         instance.tag = tag;
         instance.loop = loop;
         instance.spatial = spatial;
@@ -405,22 +443,30 @@ private:
     void Apply3D(AudioVoiceInstance& instance) {
         if (!instance.voice || instance.sampleIndex >= samples_.size()) return;
         AudioSample& sample = samples_[instance.sampleIndex];
-        float occlusion = std::clamp(instance.occlusion, 0.0f, 1.0f);
+        float occlusion = std::clamp(instance.occlusion, 0.0f, 8.0f);
         float occlusionGain = OcclusionGain(instance.bus, occlusion);
         float distanceGain = SpatialDistanceGain(instance);
-        float volume = instance.baseVolume * BusVolume(instance.bus) * occlusionGain * distanceGain;
+        float toneGain = instance.toneProfile == AudioToneProfile::MetallicVent ? 0.42f : 1.0f;
+        float volume = instance.baseVolume * BusVolume(instance.bus) * occlusionGain * distanceGain * toneGain;
         instance.voice->SetVolume(volume);
         if (instance.spatial && distanceGain <= 0.0001f) return;
         XAUDIO2_FILTER_PARAMETERS filter{};
-        filter.Type = LowPassFilter;
-        float occludedCutoff = instance.bus == AudioBus::Monster ? 420.0f :
-            (instance.bus == AudioBus::Ambience ? 560.0f : 690.0f);
-        float cutoffHz = Lerp(18000.0f, occludedCutoff, SmoothStep(0.0f, 1.0f, occlusion));
+        float cutoffHz = 18000.0f;
+        if (instance.toneProfile == AudioToneProfile::MetallicVent) {
+            filter.Type = BandPassFilter;
+            cutoffHz = Lerp(1450.0f, 780.0f, SmoothStep(0.0f, 4.0f, occlusion));
+            filter.OneOverQ = 0.22f;
+        } else {
+            filter.Type = LowPassFilter;
+            float occludedCutoff = instance.bus == AudioBus::Monster ? 220.0f :
+                (instance.bus == AudioBus::Ambience ? 420.0f : 520.0f);
+            cutoffHz = Lerp(18000.0f, occludedCutoff, SmoothStep(0.0f, 4.0f, occlusion));
+            filter.OneOverQ = 1.0f;
+        }
         float nyquistSafe = std::max(10.0f, static_cast<float>(sample.format.nSamplesPerSec) * 0.45f);
         cutoffHz = std::clamp(cutoffHz, 10.0f, nyquistSafe);
         filter.Frequency = std::clamp(2.0f * std::sin(3.14159265358979323846f * cutoffHz / static_cast<float>(sample.format.nSamplesPerSec)),
             0.001f, 1.0f);
-        filter.OneOverQ = 1.0f;
         instance.voice->SetFilterParameters(&filter);
         if (!instance.spatial || sample.format.nChannels != 1 || outputChannels_ == 0) {
             instance.voice->SetFrequencyRatio(std::clamp(instance.frequencyRatio, XAUDIO2_MIN_FREQ_RATIO, XAUDIO2_MAX_FREQ_RATIO));
@@ -455,34 +501,48 @@ private:
         float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
 
         float inner = 0.65f;
-        float maxDist = 12.0f;
-        float power = 1.65f;
-        float floor = 0.0f;
+        float maxDist = 18.0f;
+        float power = 1.18f;
+        if (instance.bus == AudioBus::Effects && instance.sampleIndex < samples_.size()) {
+            const AudioSample& sample = samples_[instance.sampleIndex];
+            if (!sample.data.empty() && sample.data.size() < 65536 && sample.format.nSamplesPerSec >= 22050) {
+                inner = 1.15f;
+                maxDist = 24.0f;
+                power = 1.08f;
+            }
+            if (instance.sound == GameSound::LightBulbBreak) {
+                inner = 1.35f;
+                maxDist = 30.0f;
+                power = 1.02f;
+            }
+        }
         if (instance.bus == AudioBus::Ambience) {
             inner = 0.85f;
-            maxDist = 8.0f;
-            power = 1.85f;
+            maxDist = 16.0f;
+            power = 1.25f;
         } else if (instance.bus == AudioBus::Monster) {
             inner = 1.15f;
-            maxDist = 14.5f;
-            power = 2.10f;
+            maxDist = 22.0f;
+            power = 1.35f;
         }
 
         if (dist <= inner) return 1.0f;
         float t = Clamp01((dist - inner) / std::max(0.1f, maxDist - inner));
         float shaped = std::pow(1.0f - t, power);
-        return Lerp(floor, 1.0f, shaped);
+        float tail = 1.0f - SmoothStep(0.88f, 1.0f, t);
+        return shaped * tail;
     }
 
     float OcclusionGain(AudioBus bus, float occlusion) const {
-        float minGain = 0.08f;
-        if (bus == AudioBus::Ambience) minGain = 0.055f;
-        if (bus == AudioBus::Monster) minGain = 0.035f;
-        float shaped = SmoothStep(0.0f, 1.0f, std::clamp(occlusion, 0.0f, 1.0f));
-        return Lerp(1.0f, minGain, shaped);
+        occlusion = std::clamp(occlusion, 0.0f, 8.0f);
+        float wallGain = std::pow(0.25f, occlusion);
+        float floor = bus == AudioBus::Monster ? 0.0010f : (bus == AudioBus::Ambience ? 0.006f : 0.008f);
+        return std::max(floor, wallGain);
     }
 
     bool initialized_ = false;
+    bool comInitialized_ = false;
+    HRESULT comHr_ = E_FAIL;
     Microsoft::WRL::ComPtr<IXAudio2> xaudio_;
     IXAudio2MasteringVoice* masterVoice_ = nullptr;
     UINT32 outputChannels_ = 2;

@@ -14,6 +14,8 @@
         startupProgress_ = startupProgress;
         startupProgressStep_ = 0;
         startupProgressTotal_ = kStartupProgressPreShaderSteps + 9 + kStartupProgressPostShaderSteps;
+        startupProgressFineCurrent_ = 0;
+        startupProgressFineTotal_ = startupProgressTotal_ * kStartupProgressUnitsPerStep;
         startupShaderDone_ = 0;
         startupShaderTotal_ = 0;
         startupShaderCompiled_ = 0;
@@ -22,8 +24,7 @@
 
         StartupProfile profile(L"Initialize");
         settings_ = settingsOverride ? *settingsOverride : LoadSettings();
-        audioReady_ = audio_.Initialize(settings_);
-        if (audioReady_) audio_.LoadAll(settings_);
+        PrepareAudio(settings_);
         monsterPreview_ = monsterPreview;
         monsterPreviewView_ = monsterPreviewView;
         runtimeMode_ = monsterPreview_ ? RendererRuntimeMode::Preview :
@@ -71,6 +72,7 @@
         profile.Mark(L"CreateDeviceAndSwapChain");
         startupShaderTotal_ = featureLevel_ >= D3D_FEATURE_LEVEL_11_0 ? 9 : 7;
         startupProgressTotal_ = kStartupProgressPreShaderSteps + startupShaderTotal_ + kStartupProgressPostShaderSteps;
+        startupProgressFineTotal_ = startupProgressTotal_ * kStartupProgressUnitsPerStep;
         ReportStartupStep(L"Direct3D device ready", L"Creating render targets.");
 
         if (!CreateBackBuffer()) return false;
@@ -148,6 +150,15 @@
         return true;
     }
 
+    bool PrepareAudio(const Settings& settings) {
+        audioReady_ = audio_.Initialize(settings);
+        if (audioReady_ && !audioSamplesLoaded_) {
+            audio_.LoadAll(settings);
+            audioSamplesLoaded_ = true;
+        }
+        return audioReady_;
+    }
+
     void Resize(int w, int h) {
         if (!device_ || w <= 0 || h <= 0) return;
         width_ = w;
@@ -177,9 +188,9 @@
 
     void TickFrame(float dt) {
         time_ += dt;
-        UpdateAudio(dt);
         UpdateAirParticlePerformanceBudget(dt);
         UpdateSimulation(dt);
+        UpdateAudio(dt);
         Render();
     }
 
@@ -241,6 +252,7 @@
     }
 
     void SetMenuInteraction(float pointerX, float pointerY, bool buttonHover, bool exitHover, bool singlePlayerHover) {
+        if (menuStartTransitionActive_ || menuStartTransitionComplete_) return;
         menuPointerTargetX_ = Clamp01(pointerX);
         menuPointerTargetY_ = Clamp01(pointerY);
         menuButtonHover_ = buttonHover;
@@ -253,10 +265,31 @@
     }
 
     void TriggerMainMenuLampBurst() {
+        if (menuLampBurstPlayed_) return;
         menuLampBurstPending_ = true;
     }
 
+    void BeginMainMenuStartTransition() {
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
+        menuStartTransitionActive_ = true;
+        menuStartTransitionComplete_ = false;
+        menuStartTransitionTimer_ = 0.0f;
+        menuStartTransitionFade_ = 0.0f;
+        menuStartCamera_ = camera_;
+        menuStartYaw_ = yaw_;
+        menuStartPitch_ = lookPitch_;
+        menuSinglePlayerHover_ = true;
+        menuButtonHover_ = false;
+        menuHoverButtonIndex_ = -1;
+        if (!menuLampBurstPlayed_) menuLampBurstPending_ = true;
+    }
+
+    bool MainMenuStartTransitionComplete() const {
+        return menuStartTransitionComplete_;
+    }
+
     bool MenuButtonScreenRect(int index, RECT& out) const {
+        if (menuStartTransitionActive_ || menuStartTransitionComplete_) return false;
         if (runtimeMode_ != RendererRuntimeMode::MainMenu || index < 0 || index >= 3) return false;
         MenuPlaquePlacement plaque = MenuButtonPlacement(index);
         return ProjectMenuQuadToScreen(plaque.center, plaque.right, {0.0f, 1.0f, 0.0f}, plaque.halfW, plaque.halfH, out);
@@ -272,6 +305,10 @@
         menuHoverButtonIndex_ = index;
         menuButtonHover_ = index >= 0;
         menuSinglePlayerHover_ = index == 0;
+    }
+
+    void SetMenuResumeLabel(bool resume) {
+        menuResumeLabel_ = resume;
     }
 
     void SetGameInput(const GameInputSnapshot& input) {
@@ -314,7 +351,7 @@
     }
 
     bool MonsterIgnoresPlayer() const {
-        return settings_.monsterIgnorePlayer && runtimeMode_ == RendererRuntimeMode::PlayableGame;
+        return settings_.monsterIgnorePlayer && IsPlayableSimulationMode(runtimeMode_);
     }
 
     void RestartGameRun() {
@@ -323,6 +360,12 @@
         runtimeMode_ = RendererRuntimeMode::PlayableGame;
         EnsureFullSceneAssets();
         settings_ = gameplaySettings_;
+        menuStartTransitionActive_ = false;
+        menuStartTransitionComplete_ = false;
+        menuStartTransitionTimer_ = 0.0f;
+        menuStartTransitionFade_ = 0.0f;
+        flashlightEnabled_ = true;
+        previousFlashlightInput_ = false;
         auto randomOdd = [&](int minValue, int maxValue) {
             minValue |= 1;
             maxValue |= 1;

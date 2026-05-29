@@ -32,6 +32,7 @@ target_link_libraries(BackroomsMaze PRIVATE
     comctl32
     user32
     gdi32
+    msimg32
     shell32
 )
 
@@ -61,6 +62,7 @@ target_link_libraries(BackroomsMazeGame PRIVATE
     comctl32
     user32
     gdi32
+    msimg32
     shell32
 )
 

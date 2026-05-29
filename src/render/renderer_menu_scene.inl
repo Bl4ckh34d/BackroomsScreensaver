@@ -4,9 +4,9 @@
         settings_.wallHeightMeters = std::max(settings_.wallHeightMeters, 2.85f);
         settings_.mapOverlay = false;
         settings_.debugAiMapOverlay = false;
-        settings_.chairDensity = 0.0f;
-        settings_.paperDensity = 0.0f;
-        settings_.hallwayPaperRunDensity = 0.0f;
+        settings_.chairDensity = 0.35f;
+        settings_.paperDensity = 0.55f;
+        settings_.hallwayPaperRunDensity = 0.40f;
         settings_.metalCabinetDensity = 0.0f;
         settings_.waterDamageDensity = 0.0f;
         settings_.lampOnRatio = 1.0f;
@@ -21,21 +21,21 @@
         settings_.airParticles = true;
         settings_.airParticleDensity = std::max(0.32f, settings_.airParticleDensity * 0.55f);
         settings_.sparkParticles = true;
-        settings_.fadeInSeconds = 0.0f;
+        settings_.fadeInSeconds = std::max(settings_.fadeInSeconds, 1.85f);
         settings_.bloodWorldCoverage = std::max(settings_.bloodWorldCoverage, 0.45f);
         settings_.bloodWorldAlwaysOn = false;
         settings_.bloodWorldFlickerIntensity = 0.0f;
-        settings_.fogStartMeters = std::max(settings_.fogStartMeters, 4.2f);
-        settings_.fogEndMeters = std::max(settings_.fogEndMeters, 9.5f);
+        settings_.fogStartMeters = 2.6f;
+        settings_.fogEndMeters = 6.4f;
     }
 
     MenuPlaquePlacement MenuButtonPlacement(int index) const {
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
         const float northWallZ = c.z + maze_.tileD * 0.5f - 0.034f;
         MenuPlaquePlacement plaque{};
-        plaque.halfW = std::min(maze_.tileW * 0.86f, 1.42f);
-        plaque.halfH = 0.168f;
-        plaque.center = {c.x + maze_.tileW * 0.58f, 1.73f - static_cast<float>(index) * 0.39f, northWallZ};
+        plaque.halfW = std::min(maze_.tileW * 0.68f, 1.10f);
+        plaque.halfH = 0.150f;
+        plaque.center = {c.x + maze_.tileW * 0.50f, 1.72f - static_cast<float>(index) * 0.36f, northWallZ};
         plaque.right = {1.0f, 0.0f, 0.0f};
         plaque.inward = {0.0f, 0.0f, -1.0f};
         return plaque;

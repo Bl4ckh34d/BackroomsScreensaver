@@ -89,7 +89,7 @@
     }
 
     void DrawGameHudOverlay() {
-        if (runtimeMode_ != RendererRuntimeMode::PlayableGame || !overlayBuffer_ ||
+        if (!IsPlayableSimulationMode(runtimeMode_) || !overlayBuffer_ ||
             !overlayVertexShader_ || !overlayPixelShader_ || width_ <= 0 || height_ <= 0) {
             return;
         }
@@ -200,7 +200,7 @@
             }
         }
 
-        if (runtimeMode_ == RendererRuntimeMode::PlayableGame || settings_.debugAiMapOverlay) {
+        if (IsPlayableSimulationMode(runtimeMode_) || settings_.debugAiMapOverlay) {
             for (const PlayerAudibleSoundPulse& pulse : playerAudibleSoundPulses_) {
                 if (pulse.radius <= 0.05f || pulse.life <= 0.0f || pulse.age >= pulse.life) continue;
                 float radiusSq = pulse.radius * pulse.radius;

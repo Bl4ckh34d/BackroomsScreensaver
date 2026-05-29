@@ -44,6 +44,7 @@
         airParticles_.reserve(22000);
         airParticleBudgetScale_ = 1.0f;
         airParticleFrameDt_ = 0.0f;
+        airParticleValidationCursor_ = 0;
         propLookTimer_ = 0.0f;
         propLookDuration_ = 0.0f;
         propLookCooldown_ = RandRange(0.7f, 2.0f);
@@ -87,6 +88,8 @@
         scareEventTile_ = CameraTile();
         fleshFlickerTimer_ = 0.0f;
         fleshFlickerDuration_ = settings_.fleshFlickerDuration;
+        visionFlashTimer_ = 0.0f;
+        visionFlashDuration_ = 0.16f;
         fleshFlickerCooldown_ = settings_.fleshFlicker
             ? RandRange(settings_.fleshFlickerMinSeconds * 0.90f, settings_.fleshFlickerMaxSeconds) * scareScale
             : 1000000.0f;
@@ -292,9 +295,10 @@
     }
 
     void SetupMainMenuScene() {
+        constexpr float kMenuEyeHeight = 1.45f;
         XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
-        camera_ = {c.x + maze_.tileW * 0.84f, 1.08f, c.z - maze_.tileD * 1.42f};
-        XMFLOAT3 target{c.x - maze_.tileW * 0.08f, 1.02f, c.z + maze_.tileD * 0.22f};
+        camera_ = {c.x + maze_.tileW * 0.84f, kMenuEyeHeight, c.z - maze_.tileD * 1.42f};
+        XMFLOAT3 target{c.x - maze_.tileW * 0.08f, 1.34f, c.z + maze_.tileD * 0.22f};
         yaw_ = YawToPoint(target);
         bodyYaw_ = yaw_;
         lookPitch_ = std::clamp(PitchToPoint(target), -0.42f, 0.42f);
@@ -308,8 +312,17 @@
         menuPointerY_ = menuPointerTargetY_ = 0.5f;
         menuDoorOpen_ = 0.0f;
         menuBloodAmount_ = 0.0f;
+        menuLampBurstPending_ = false;
+        menuLampBurstPlayed_ = false;
         bloodWorldActivationTime_ = time_;
-        fadeInTimer_ = 0.0f;
+        fadeInTimer_ = settings_.fadeInSeconds;
+        menuStartTransitionActive_ = false;
+        menuStartTransitionComplete_ = false;
+        menuStartTransitionTimer_ = 0.0f;
+        menuStartTransitionFade_ = 0.0f;
+        menuStartCamera_ = camera_;
+        menuStartYaw_ = yaw_;
+        menuStartPitch_ = lookPitch_;
         exitDoorAngle_ = 0.0f;
         path_.clear();
         pathIndex_ = 0;
@@ -318,7 +331,55 @@
     }
 
     void UpdateMainMenuScene(float dt) {
-        fadeInTimer_ = 0.0f;
+        if (menuStartTransitionActive_) {
+            menuStartTransitionTimer_ += std::max(0.0f, dt);
+            float t = menuStartTransitionTimer_;
+            constexpr float kMenuEyeHeight = 1.45f;
+            Tile hallEnd{std::clamp(maze_.start.x + 1, 1, maze_.w - 2), 1};
+            XMFLOAT3 hallCenter = maze_.WorldCenter(hallEnd, 0.0f);
+            float turn = SmoothStep(0.08f, 1.62f, t);
+            float plantedTurn = SmoothStep(0.06f, 0.92f, t) * (1.0f - SmoothStep(1.10f, 1.82f, t));
+            float walkAge = std::max(0.0f, t - 1.48f);
+            float align = SmoothStep(1.45f, 2.45f, t);
+            constexpr float kMenuWalkSpeed = 1.18f;
+            float walkedMeters = walkAge * kMenuWalkSpeed;
+            XMFLOAT3 walkPos = menuStartCamera_;
+            walkPos.x = Lerp(menuStartCamera_.x, hallCenter.x, align);
+            walkPos.z = menuStartCamera_.z - walkedMeters;
+            float stepBob = std::sin(walkedMeters * 4.65f) * 0.028f + std::sin(walkedMeters * 9.30f) * 0.010f;
+            float bobWeight = SmoothStep(1.52f, 2.08f, t);
+            float turnBreath = std::sin(t * 8.6f) * 0.006f * plantedTurn;
+            float turnLean = std::sin(turn * kPi) * 0.035f;
+            camera_ = walkPos;
+            camera_.x += std::sin(menuStartYaw_ + kPi * 0.5f) * turnLean * (1.0f - align);
+            camera_.z += std::cos(menuStartYaw_ + kPi * 0.5f) * turnLean * (1.0f - align);
+            camera_.y = kMenuEyeHeight + turnBreath + stepBob * bobWeight;
+            XMFLOAT3 lookPoint{hallCenter.x, 1.34f, camera_.z - maze_.tileD * 5.0f};
+            float targetYaw = YawToPoint(lookPoint);
+            float targetPitch = std::clamp(PitchToPoint(lookPoint), -0.28f, 0.22f);
+            float yawEase = turn + std::sin(turn * kPi) * 0.035f;
+            yaw_ = menuStartYaw_ + AngleWrap(targetYaw - menuStartYaw_) * Clamp01(yawEase);
+            bodyYaw_ = menuStartYaw_ + AngleWrap(yaw_ - menuStartYaw_) * SmoothStep(0.0f, 1.0f, turn);
+            lookPitch_ = Lerp(menuStartPitch_, targetPitch, SmoothStep(0.18f, 1.0f, turn)) + turnBreath * 0.18f;
+            flashlightYaw_ += AngleWrap(yaw_ - flashlightYaw_) * std::min(1.0f, dt * 9.5f);
+            flashlightPitch_ += (lookPitch_ - flashlightPitch_) * std::min(1.0f, dt * 9.5f);
+            previousCameraYaw_ = yaw_;
+            previousCameraPitch_ = lookPitch_;
+            menuStartTransitionFade_ = SmoothStep(2.55f, 4.05f, t);
+            if (t > 1.10f && !menuLampBurstPlayed_) menuLampBurstPending_ = true;
+            if (t >= 4.80f) {
+                menuStartTransitionActive_ = false;
+                menuStartTransitionComplete_ = true;
+                menuStartTransitionFade_ = 1.0f;
+            }
+            UpdateBrokenRuntimeLampSparks(dt, 1.65f, 5.8f, 0.22f);
+            UpdateSparks(dt);
+            UpdateAirParticles(dt);
+            UpdateAirParticleFocus(dt);
+            UpdateDreadMeterDisplay(dt);
+            return;
+        }
+
         menuPointerX_ += (menuPointerTargetX_ - menuPointerX_) * std::min(1.0f, dt * 7.5f);
         menuPointerY_ += (menuPointerTargetY_ - menuPointerY_) * std::min(1.0f, dt * 7.5f);
 
@@ -363,16 +424,21 @@
         menuDoorOpen_ += (doorTarget - menuDoorOpen_) * std::min(1.0f, dt * doorResponse);
         exitDoorAngle_ = menuDoorOpen_ * 1.38f;
 
-        if (menuSinglePlayerHover_) {
-            if (menuBloodAmount_ <= 0.001f) {
-                bloodWorldActivationTime_ = time_ - 0.35f;
-                menuLampBurstPending_ = true;
-            }
-            menuBloodAmount_ = 1.0f;
+        if (menuSinglePlayerHover_ && !menuLampBurstPlayed_) {
+            menuLampBurstPending_ = true;
         }
 
         if (menuLampBurstPending_) {
             menuLampBurstPending_ = false;
+            if (menuLampBurstPlayed_) {
+                UpdateBrokenRuntimeLampSparks(dt, 1.65f, 5.8f, 0.22f);
+                UpdateSparks(dt);
+                UpdateAirParticles(dt);
+                UpdateAirParticleFocus(dt);
+                UpdateDreadMeterDisplay(dt);
+                return;
+            }
+            menuLampBurstPlayed_ = true;
             if (!runtimeLamps_.empty()) {
                 RuntimeLampState* nearest = &runtimeLamps_.front();
                 XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
@@ -1078,8 +1144,7 @@
             if (!point.triggered) {
                 point.triggered = true;
                 if (point.waterLiquid) {
-                    float prewarm = Clamp01((horizontalDist - tileAvg * 2.0f) / std::max(tileAvg * 3.8f, 0.1f)) * 4.6f;
-                    point.activationTime = time_ - prewarm;
+                    point.activationTime = time_;
                     point.focusTaken = true;
                 } else {
                     point.activationTime = time_;
@@ -1328,7 +1393,8 @@
         float step = std::min(std::max(dt, 0.0f), 0.10f);
         float keepRadius = std::clamp(settings_.flashlightShadowDistanceMeters * 0.78f, 6.5f, 13.0f);
         float keepRadiusSq = keepRadius * keepRadius;
-        for (AirParticle& p : airParticles_) {
+        for (size_t i = 0; i < airParticles_.size(); ++i) {
+            AirParticle& p = airParticles_[i];
             p.age += step;
             float driftA = p.seed * kPi * 2.0f;
             p.pos.x += (p.vel.x + std::sin(time_ * 0.19f + driftA) * 0.012f) * step;
@@ -1338,12 +1404,18 @@
 
             float dx = p.pos.x - camera_.x;
             float dz = p.pos.z - camera_.z;
-            Tile tile = maze_.TileFromWorld(p.pos.x, p.pos.z);
+            bool validateTile = ((static_cast<int>(i) + airParticleValidationCursor_) & 3) == 0;
+            bool blocked = false;
+            if (validateTile) {
+                Tile tile = maze_.TileFromWorld(p.pos.x, p.pos.z);
+                blocked = !maze_.IsOpen(tile.x, tile.y);
+            }
             if (p.age >= p.life || p.pos.y < 0.16f || p.pos.y > settings_.wallHeightMeters - 0.10f ||
-                dx * dx + dz * dz > keepRadiusSq || !maze_.IsOpen(tile.x, tile.y)) {
+                dx * dx + dz * dz > keepRadiusSq || blocked) {
                 RespawnAirParticle(p, false);
             }
         }
+        airParticleValidationCursor_ = (airParticleValidationCursor_ + 1) & 3;
     }
 
     void UpdateFlashlightAim(float dt) {

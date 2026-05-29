@@ -15,15 +15,19 @@ enum class DebugSliceEffect {
 
 bool gEffectDebugViewer = false;
 DebugSliceEffect gDebugSliceEffect = DebugSliceEffect::Blood;
+DebugSliceEffect gStartupDebugSliceEffect = DebugSliceEffect::Blood;
 int gDebugSliceTiles = 3;
 int gDebugPropIndex = 0;
 bool gBloodDebugEveryWall = false;
+bool gDebugHideMonster = false;
 
 struct StartupProgressUpdate {
     const wchar_t* phase = L"";
     const wchar_t* detail = L"";
     int current = 0;
     int total = 1;
+    int fineCurrent = 0;
+    int fineTotal = 0;
     int shaderDone = 0;
     int shaderTotal = 0;
     int shaderCompiled = 0;

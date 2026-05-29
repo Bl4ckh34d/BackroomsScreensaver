@@ -52,6 +52,9 @@
         D3D11_DEPTH_STENCIL_DESC readOnlyDsd = dsd;
         readOnlyDsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
         if (FAILED(device_->CreateDepthStencilState(&readOnlyDsd, &depthReadOnlyState_))) return false;
+        D3D11_DEPTH_STENCIL_DESC liquidDsd = lessDsd;
+        liquidDsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+        if (FAILED(device_->CreateDepthStencilState(&liquidDsd, &liquidDepthStencilState_))) return false;
         D3D11_DEPTH_STENCIL_DESC overlayDsd{};
         overlayDsd.DepthEnable = FALSE;
         overlayDsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;

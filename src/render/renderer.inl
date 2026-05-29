@@ -19,6 +19,7 @@ public:
 private:
     static constexpr int kStartupProgressPreShaderSteps = 3;
     static constexpr int kStartupProgressPostShaderSteps = 10;
+    static constexpr int kStartupProgressUnitsPerStep = 4;
 
     struct StaticPropMesh {
         std::vector<Vertex> vertices;

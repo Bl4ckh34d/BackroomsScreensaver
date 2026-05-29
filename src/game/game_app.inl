@@ -124,7 +124,7 @@ int RunGame(HINSTANCE hInstance) {
                     DestroyWindow(app.gameConfig);
                 }
             } else if (app.gameState == GameState::MainMenu && app.gameRunStarted && !app.gameDebugActive) {
-                EnterGamePlay(hwnd);
+                ActivateGameMenuCommand(hwnd, kGameSinglePlayerId);
             }
         }
         escapeWasDown = pauseDown;

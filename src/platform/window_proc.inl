@@ -281,6 +281,25 @@ RunMode ParseMode(int argc, wchar_t** argv, HWND& previewParent) {
         if (arg == L"/monsterpreview" || arg == L"-monsterpreview") return RunMode::MonsterPreview;
         if (arg == L"/blooddebug" || arg == L"-blooddebug" ||
             arg == L"/effectdebug" || arg == L"-effectdebug") return RunMode::BloodDebug;
+        if (arg == L"/floorwaterdebug" || arg == L"-floorwaterdebug") {
+            gStartupDebugSliceEffect = DebugSliceEffect::FloorWater;
+            gDebugHideMonster = true;
+            return RunMode::BloodDebug;
+        }
+        if (arg == L"/ceilingwaterdebug" || arg == L"-ceilingwaterdebug") {
+            gStartupDebugSliceEffect = DebugSliceEffect::CeilingWater;
+            gDebugHideMonster = true;
+            return RunMode::BloodDebug;
+        }
+        if (arg == L"/wallwaterdebug" || arg == L"-wallwaterdebug") {
+            gStartupDebugSliceEffect = DebugSliceEffect::WallWater;
+            gDebugHideMonster = true;
+            return RunMode::BloodDebug;
+        }
+        if (arg == L"/nodebugmonster" || arg == L"-nodebugmonster") {
+            gDebugHideMonster = true;
+            continue;
+        }
         if (arg.rfind(L"/p", 0) == 0 || arg.rfind(L"-p", 0) == 0) {
             uintptr_t handle = 0;
             if (arg.size() > 2) handle = ParseHandle(arg.c_str() + 2);

@@ -82,6 +82,8 @@
         float fleshFlickerCooldown = 0.0f;
         float fleshFlickerTimer = 0.0f;
         float fleshFlickerDuration = 0.0f;
+        float visionFlashTimer = 0.0f;
+        float visionFlashDuration = 0.0f;
         bool lampDamageDirty = false;
         Tile scareEventTile{};
         XMFLOAT3 propLookTarget{};
@@ -139,6 +141,7 @@
         bool flashlightSnapSharp = false;
         float flashlightHoldYaw = 0.0f;
         float flashlightHoldPitch = 0.0f;
+        bool flashlightEnabled = true;
         float airFocusDistance = 0.0f;
         float ventReactionTimer = 0.0f;
         float ventReactionDuration = 0.0f;
@@ -285,6 +288,8 @@
         s->fleshFlickerCooldown = fleshFlickerCooldown_;
         s->fleshFlickerTimer = fleshFlickerTimer_;
         s->fleshFlickerDuration = fleshFlickerDuration_;
+        s->visionFlashTimer = visionFlashTimer_;
+        s->visionFlashDuration = visionFlashDuration_;
         s->lampDamageDirty = lampDamageDirty_;
         s->scareEventTile = scareEventTile_;
         s->propLookTarget = propLookTarget_;
@@ -342,6 +347,7 @@
         s->flashlightSnapSharp = flashlightSnapSharp_;
         s->flashlightHoldYaw = flashlightHoldYaw_;
         s->flashlightHoldPitch = flashlightHoldPitch_;
+        s->flashlightEnabled = flashlightEnabled_;
         s->airFocusDistance = airFocusDistance_;
         s->ventReactionTimer = ventReactionTimer_;
         s->ventReactionDuration = ventReactionDuration_;
@@ -494,6 +500,8 @@
         fleshFlickerCooldown_ = s.fleshFlickerCooldown;
         fleshFlickerTimer_ = s.fleshFlickerTimer;
         fleshFlickerDuration_ = s.fleshFlickerDuration;
+        visionFlashTimer_ = s.visionFlashTimer;
+        visionFlashDuration_ = s.visionFlashDuration;
         lampDamageDirty_ = true;
         scareEventTile_ = s.scareEventTile;
         propLookTarget_ = s.propLookTarget;
@@ -551,6 +559,8 @@
         flashlightSnapSharp_ = s.flashlightSnapSharp;
         flashlightHoldYaw_ = s.flashlightHoldYaw;
         flashlightHoldPitch_ = s.flashlightHoldPitch;
+        flashlightEnabled_ = s.flashlightEnabled;
+        previousFlashlightInput_ = false;
         airFocusDistance_ = s.airFocusDistance;
         ventReactionTimer_ = s.ventReactionTimer;
         ventReactionDuration_ = s.ventReactionDuration;

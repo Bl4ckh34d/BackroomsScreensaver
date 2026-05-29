@@ -110,13 +110,15 @@
         return IsWetCeilingTile(lamp.tile) || IsWetFootstepTile(lamp.tile);
     }
 
-    void BreakRuntimeLamp(RuntimeLampState& lamp) {
+    void BreakRuntimeLamp(RuntimeLampState& lamp, bool emitPlayerNoise = true, bool playBreakSound = true) {
         if (lamp.broken) return;
         lamp.broken = true;
         lamp.damage = 1.0f;
         lamp.sparkTimer = RandRange(1.2f, 3.4f);
         MarkLampDamagePixel(lamp.tile, lamp.damage);
-        PlayLightBulbBreakSoundAt(lamp.pos, 1.0f);
+        if (playBreakSound) {
+            PlayLightBulbBreakSoundAt(lamp.pos, 1.0f, emitPlayerNoise);
+        }
         if (settings_.sparkParticles && LampCanEmitSparks(lamp)) {
             float intensity = std::max(2.2f, PickBrokenLampSparkIntensity() * 1.18f);
             EmitSparkBurstAt(lamp.pos, intensity);
@@ -250,7 +252,7 @@
             }
 
             if (lamp.damage >= 0.995f) {
-                BreakRuntimeLamp(lamp);
+                BreakRuntimeLamp(lamp, false, RandRange(0.0f, 1.0f) < 0.50f);
             }
         }
     }
@@ -308,6 +310,15 @@
         flashlightAgitation_ = std::max(flashlightAgitation_, 0.55f + sensory * 0.30f);
     }
 
+    void TriggerVisionFlashJumpscare(bool bloodWorld) {
+        visionFlashDuration_ = 0.16f;
+        visionFlashTimer_ = visionFlashDuration_;
+        flashlightAgitation_ = std::max(flashlightAgitation_, bloodWorld ? 0.82f : 0.74f);
+        if (audioReady_) {
+            audio_.PlayRandom(GameSound::VisionFlash, AudioBus::Effects, camera_, bloodWorld ? 1.08f : 0.98f, false);
+        }
+    }
+
     void UpdateScareEvents(float dt) {
         scareCooldown_ = std::max(0.0f, scareCooldown_ - dt);
         fleshFlickerTimer_ = std::max(0.0f, fleshFlickerTimer_ - dt);
@@ -334,8 +345,9 @@
         if (settings_.fleshFlicker) {
             fleshFlickerCooldown_ = std::max(0.0f, fleshFlickerCooldown_ - dt);
             if (fleshFlickerCooldown_ <= 0.0f && fleshFlickerTimer_ <= 0.0f && scareCooldown_ <= 0.0f) {
-                fleshFlickerDuration_ = RandRange(settings_.fleshFlickerDuration * 0.72f, settings_.fleshFlickerDuration * 0.92f);
+                fleshFlickerDuration_ = settings_.fleshFlickerDuration;
                 fleshFlickerTimer_ = fleshFlickerDuration_;
+                TriggerVisionFlashJumpscare(false);
                 fleshFlickerCooldown_ = RandRange(settings_.fleshFlickerMinSeconds, settings_.fleshFlickerMaxSeconds) * scareScale;
                 scareCooldown_ = std::max(scareCooldown_, fleshFlickerDuration_ + RandRange(8.0f, 18.0f) * scareScale);
                 flashlightAgitation_ = std::max(flashlightAgitation_, 0.62f);
@@ -349,8 +361,9 @@
             bloodWorldFlickerCooldown_ = std::max(0.0f, bloodWorldFlickerCooldown_ - dt);
             if (bloodWorldActivationTime_ < -900.0f &&
                 bloodWorldFlickerCooldown_ <= 0.0f && bloodWorldFlickerTimer_ <= 0.0f && scareCooldown_ <= 0.0f) {
-                bloodWorldFlickerDuration_ = RandRange(settings_.bloodWorldFlickerDuration * 0.82f, settings_.bloodWorldFlickerDuration * 1.24f);
+                bloodWorldFlickerDuration_ = settings_.bloodWorldFlickerDuration;
                 bloodWorldFlickerTimer_ = bloodWorldFlickerDuration_;
+                TriggerVisionFlashJumpscare(true);
                 bloodWorldActivationTime_ = time_;
                 bloodWorldFlickerCooldown_ = RandRange(settings_.bloodWorldFlickerMinSeconds, settings_.bloodWorldFlickerMaxSeconds) * scareScale;
                 scareCooldown_ = std::max(scareCooldown_, bloodWorldFlickerDuration_ + RandRange(9.0f, 20.0f) * scareScale);

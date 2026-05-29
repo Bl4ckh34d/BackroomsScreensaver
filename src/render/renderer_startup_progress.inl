@@ -10,6 +10,8 @@
         update.detail = detail.c_str();
         update.current = startupProgressStep_;
         update.total = std::max(1, startupProgressTotal_);
+        update.fineCurrent = startupProgressFineCurrent_;
+        update.fineTotal = std::max(1, startupProgressFineTotal_);
         update.shaderDone = startupShaderDone_;
         update.shaderTotal = startupShaderTotal_;
         update.shaderCompiled = startupShaderCompiled_;
@@ -19,6 +21,16 @@
 
     void ReportStartupStep(const wchar_t* phase, const std::wstring& detail = L"") {
         startupProgressStep_ = std::min(startupProgressStep_ + 1, std::max(1, startupProgressTotal_));
+        startupProgressFineCurrent_ = std::min(startupProgressStep_ * kStartupProgressUnitsPerStep,
+            std::max(1, startupProgressFineTotal_));
+        ReportStartupActivity(phase, detail);
+    }
+
+    void ReportStartupSubStep(const wchar_t* phase, const std::wstring& detail, int subStep) {
+        int base = startupProgressStep_ * kStartupProgressUnitsPerStep;
+        int fine = base + std::clamp(subStep, 0, kStartupProgressUnitsPerStep - 1);
+        startupProgressFineCurrent_ = std::max(startupProgressFineCurrent_,
+            std::min(fine, std::max(1, startupProgressFineTotal_)));
         ReportStartupActivity(phase, detail);
     }
 
@@ -41,7 +53,8 @@
     }
 
     void ReportShaderActivity(const wchar_t* action, const char* entry, const char* profile) {
-        ReportStartupActivity(L"Loading shaders", ShaderProgressDetail(action, entry, profile, false));
+        int subStep = action && std::wcscmp(action, L"Compiling") == 0 ? 2 : 1;
+        ReportStartupSubStep(L"Loading shaders", ShaderProgressDetail(action, entry, profile, false), subStep);
     }
 
     void ReportShaderComplete(const wchar_t* action, const char* entry, const char* profile, bool compiled) {

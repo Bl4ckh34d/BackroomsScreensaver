@@ -84,8 +84,9 @@
         float fadeIn = (fadeInTimer_ > 0.0f && settings_.fadeInSeconds > 0.001f)
             ? 1.0f - SmoothStep(0.0f, settings_.fadeInSeconds, settings_.fadeInSeconds - fadeInTimer_)
             : 0.0f;
-        float transitionFade = std::max(exitFade, fadeIn);
-        XMMATRIX proj = XMMatrixPerspectiveFovLH(fovDegrees * kPi / 180.0f, aspect, 0.045f, 42.0f);
+        float transitionFade = std::max(std::max(exitFade, fadeIn), menuStartTransitionFade_);
+        float viewFarMeters = monsterPreview_ ? 1000.0f : std::max(72.0f, settings_.fogEndMeters + maze_.TileAverage() * 12.0f);
+        XMMATRIX proj = XMMatrixPerspectiveFovLH(fovDegrees * kPi / 180.0f, aspect, 0.045f, viewFarMeters);
 
         XMFLOAT3 flashlightForward = FlashlightForward();
         XMVECTOR lightDir = XMVector3Normalize(XMVectorSet(flashlightForward.x, flashlightForward.y, flashlightForward.z, 0.0f));
@@ -110,7 +111,10 @@
         XMStoreFloat4x4(&cb.monsterEyeViewProj1, XMMatrixIdentity());
         XMFLOAT3 eyePos{};
         XMStoreFloat3(&eyePos, eye);
+        XMFLOAT3 viewDirFloat{};
+        XMStoreFloat3(&viewDirFloat, viewDir);
         float flashlightIntensity = settings_.flashlightIntensity * DreadFlashlightMultiplier();
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && !flashlightEnabled_) flashlightIntensity = 0.0f;
         if (monsterPreview_) flashlightIntensity = 1.45f;
         cb.cameraPosTime = {eyePos.x, eyePos.y, eyePos.z, time_};
         cb.cameraDirAspect = {lightDirFloat.x, lightDirFloat.y, lightDirFloat.z, aspect};
@@ -183,9 +187,17 @@
             std::clamp(settings_.bloomAmount, 0.0f, 2.0f),
             std::clamp(settings_.lensDirtAmount, 0.0f, 2.0f)
         };
+        float visionFlashT = visionFlashDuration_ > 0.001f ? Clamp01(visionFlashTimer_ / visionFlashDuration_) : 0.0f;
+        cb.post2 = {
+            visionFlashT * visionFlashT,
+            0.0f,
+            0.0f,
+            0.0f
+        };
         if (monsterPreview_) {
             cb.post0 = {1.0f, 2.2f, 0.0f, 0.0f};
             cb.post1 = {0.0f, 0.0f, 0.0f, 0.0f};
+            cb.post2 = {0.0f, 0.0f, 0.0f, 0.0f};
         }
         cb.shadow0 = {
             lightPosFloat.x,
@@ -378,13 +390,13 @@
             exitDoorOpen = SmoothStep(0.14f, 1.0f, rawDoorOpen);
             float doorwayLightOpen = SmoothStep(0.24f, 1.0f, rawDoorOpen);
             doorwayLightOpen *= doorwayLightOpen;
-            XMFLOAT3 throughDoor = Scale3(exitDoorNormal_, -4.85f);
-            doorwayLightPos = Add3(exitDoorCenter_, throughDoor);
-            doorwayLightPos.y = exitDoorCenter_.y + 1.02f;
-            doorwayLightStrength = doorwayLightOpen * 10.4f;
-            exitLightDir = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
+            XMFLOAT3 stairSource = Scale3(exitDoorNormal_, -1.55f);
+            doorwayLightPos = Add3(exitDoorCenter_, stairSource);
+            doorwayLightPos.y = exitDoorCenter_.y + 2.56f;
+            doorwayLightStrength = doorwayLightOpen * 9.6f;
+            exitLightDir = Normalize3(Add3(exitDoorNormal_, {0.0f, -0.66f, 0.0f}), exitDoorNormal_);
             doorwayPortalPos = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.04f));
-            doorwayPortalHalfWidth = 0.50f;
+            doorwayPortalHalfWidth = 0.44f;
         }
         cb.exitLight0 = {
             exitLightPos.x,
@@ -469,6 +481,7 @@
         float monsterEyeStrength = 0.0f;
         float monsterEyeRange = 0.0f;
         float monsterEyeAlert = 0.0f;
+        float monsterEyeFov = 54.0f * kPi / 180.0f;
         XMFLOAT3 monsterEyeDir = Normalize3(monsterEyeForward_, {std::sin(monsterYaw_), 0.0f, std::cos(monsterYaw_)});
         if (runtimeMode_ != RendererRuntimeMode::MainMenu && !monsterPreview_ && !gEffectDebugViewer && monsterEyeWorldCount_ >= 2) {
             XMFLOAT3 midpoint = Scale3(Add3(monsterEyeWorld_[0], monsterEyeWorld_[1]), 0.5f);
@@ -501,12 +514,12 @@
                     upVec = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
                 }
             }
-            float eyeFov = Lerp(54.0f, 38.0f, Clamp01(monsterEyeAlert)) * kPi / 180.0f;
+            monsterEyeFov = Lerp(54.0f, 38.0f, Clamp01(monsterEyeAlert)) * kPi / 180.0f;
             for (int i = 0; i < 2; ++i) {
                 XMVECTOR eyeLightPos = XMLoadFloat3(&monsterEyeWorld_[static_cast<size_t>(i)]);
                 monsterEyeViewProj[static_cast<size_t>(i)] =
                     XMMatrixLookAtLH(eyeLightPos, eyeLightPos + dirVec, upVec) *
-                    XMMatrixPerspectiveFovLH(eyeFov, 1.0f, 0.035f, std::max(0.5f, monsterEyeRange));
+                    XMMatrixPerspectiveFovLH(monsterEyeFov, 1.0f, 0.035f, std::max(0.5f, monsterEyeRange));
             }
             XMStoreFloat4x4(&cb.monsterEyeViewProj0, monsterEyeViewProj[0]);
             XMStoreFloat4x4(&cb.monsterEyeViewProj1, monsterEyeViewProj[1]);
@@ -521,7 +534,90 @@
             };
         }
 
-        auto renderDepthShadow = [&](ID3D11DepthStencilView* shadowDsv, UINT shadowSize, const XMMATRIX& shadowViewProj) {
+        auto chunkVisible = [](const StaticIndexChunk& chunk, XMFLOAT3 origin, XMFLOAT3 direction, float maxDistance, float coneCos) {
+            float dx = chunk.center.x - origin.x;
+            float dy = chunk.center.y - origin.y;
+            float dz = chunk.center.z - origin.z;
+            float padded = std::max(0.1f, maxDistance + chunk.radius);
+            float distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq > padded * padded) return false;
+            float depth = dx * direction.x + dy * direction.y + dz * direction.z;
+            if (depth < -chunk.radius) return false;
+            if (coneCos > -0.99f && distSq > 0.0001f) {
+                float dist = std::sqrt(distSq);
+                float radiusSlack = std::min(0.55f, chunk.radius / std::max(0.1f, dist));
+                if (depth / dist < coneCos - radiusSlack) return false;
+            }
+            return true;
+        };
+
+        auto chunkMazeVisible = [&](const StaticIndexChunk& chunk, Tile originTile, int forceTileRadius) {
+            if (!maze_.IsOpen(originTile.x, originTile.y)) return true;
+            if (originTile.x >= chunk.minTileX - forceTileRadius && originTile.x <= chunk.maxTileX + forceTileRadius &&
+                originTile.y >= chunk.minTileY - forceTileRadius && originTile.y <= chunk.maxTileY + forceTileRadius) {
+                return true;
+            }
+
+            auto visibleTile = [&](int x, int y) {
+                Tile t{std::clamp(x, 0, std::max(0, maze_.w - 1)), std::clamp(y, 0, std::max(0, maze_.h - 1))};
+                if (maze_.IsOpen(t.x, t.y) && maze_.LineClear(originTile, t)) return true;
+                const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                for (auto& d : dirs) {
+                    Tile n{t.x + d[0], t.y + d[1]};
+                    if (maze_.IsOpen(n.x, n.y) && maze_.LineClear(originTile, n)) return true;
+                }
+                return false;
+            };
+
+            int cx = (chunk.minTileX + chunk.maxTileX) / 2;
+            int cy = (chunk.minTileY + chunk.maxTileY) / 2;
+            if (visibleTile(cx, cy)) return true;
+            if (visibleTile(chunk.minTileX, chunk.minTileY)) return true;
+            if (visibleTile(chunk.maxTileX, chunk.minTileY)) return true;
+            if (visibleTile(chunk.minTileX, chunk.maxTileY)) return true;
+            if (visibleTile(chunk.maxTileX, chunk.maxTileY)) return true;
+            return false;
+        };
+
+        auto drawVisibleChunks = [&](const std::vector<StaticIndexChunk>& chunks,
+                                     XMFLOAT3 origin,
+                                     XMFLOAT3 direction,
+                                     float maxDistance,
+                                     float coneCos,
+                                     float forceVisibleDistance = 0.0f,
+                                     bool useMazeVisibility = false,
+                                     int forceTileRadius = 1) {
+            UINT drawn = 0;
+            Tile originTile = maze_.TileFromWorld(origin.x, origin.z);
+            for (const StaticIndexChunk& chunk : chunks) {
+                bool forceByDistance = false;
+                if (forceVisibleDistance > 0.0f) {
+                    float dx = chunk.center.x - origin.x;
+                    float dy = chunk.center.y - origin.y;
+                    float dz = chunk.center.z - origin.z;
+                    float force = forceVisibleDistance + chunk.radius;
+                    if (dx * dx + dy * dy + dz * dz <= force * force) {
+                        forceByDistance = true;
+                    }
+                }
+                if (!forceByDistance && !chunkVisible(chunk, origin, direction, maxDistance, coneCos)) continue;
+                if (useMazeVisibility && !chunkMazeVisible(chunk, originTile, forceTileRadius)) continue;
+                context_->DrawIndexed(chunk.indexCount, chunk.startIndex, 0);
+                drawn += chunk.indexCount;
+            }
+            return drawn;
+        };
+
+        float mainHalfFov = fovDegrees * 0.5f * kPi / 180.0f;
+        float mainHorizontalHalfFov = std::atan(std::tan(mainHalfFov) * std::max(0.1f, aspect));
+        float mainConeCos = std::cos(std::min(kPi * 0.98f, std::max(mainHalfFov, mainHorizontalHalfFov) + 0.58f));
+        float mainCullDistance = monsterPreview_
+            ? 1000.0f
+            : std::max(viewFarMeters, settings_.fogEndMeters + maze_.TileAverage() * 12.0f);
+        float mainForceVisibleDistance = std::max(maze_.TileAverage() * 5.0f, 8.0f);
+
+        auto renderDepthShadow = [&](ID3D11DepthStencilView* shadowDsv, UINT shadowSize, const XMMATRIX& shadowViewProj,
+                                     XMFLOAT3 shadowOrigin, XMFLOAT3 shadowDirection, float shadowRange, float shadowConeCos) {
             if (!shadowDsv) return;
             ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
             context_->PSSetShaderResources(0, 9, nullSrvs);
@@ -562,12 +658,24 @@
             context_->OMSetDepthStencilState(depthState_.Get(), 0);
             context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
             if (!monsterPreview_) {
-                UINT shadowStaticIndexCount = staticWaterStartIndex_ > 0 ? staticWaterStartIndex_ :
-                    (staticTransparentStartIndex_ > 0 ? staticTransparentStartIndex_ : indexCount_);
-                if (shadowStaticIndexCount > 0) {
-                    StartupProfileLine(L"Render before ShadowStatic DrawIndexed");
-                    context_->DrawIndexed(shadowStaticIndexCount, 0, 0);
+                if (!staticOpaqueChunks_.empty() || !staticFloorCeilingChunks_.empty()) {
+                    StartupProfileLine(L"Render before ShadowStatic chunked DrawIndexed");
+                    UINT drawn = drawVisibleChunks(staticOpaqueChunks_, shadowOrigin, shadowDirection, shadowRange, shadowConeCos);
+                    drawn += drawVisibleChunks(staticFloorCeilingChunks_, shadowOrigin, shadowDirection, shadowRange, shadowConeCos);
+                    if (drawn == 0) {
+                        UINT shadowStaticIndexCount = staticWaterStartIndex_ > 0 ? staticWaterStartIndex_ :
+                            (staticTransparentStartIndex_ > 0 ? staticTransparentStartIndex_ : indexCount_);
+                        context_->DrawIndexed(shadowStaticIndexCount, 0, 0);
+                    }
                     renderProfile.Mark(L"ShadowStatic");
+                } else {
+                    UINT shadowStaticIndexCount = staticWaterStartIndex_ > 0 ? staticWaterStartIndex_ :
+                        (staticTransparentStartIndex_ > 0 ? staticTransparentStartIndex_ : indexCount_);
+                    if (shadowStaticIndexCount > 0) {
+                        StartupProfileLine(L"Render before ShadowStatic DrawIndexed");
+                        context_->DrawIndexed(shadowStaticIndexCount, 0, 0);
+                        renderProfile.Mark(L"ShadowStatic");
+                    }
                 }
                 if (staticPropShadowIndexCount_ > 0) {
                     context_->PSSetShader(nullptr, nullptr, 0);
@@ -592,7 +700,8 @@
         if (shadowDsv_ && settings_.flashlightShadows && settings_.flashlightShadowStrength > 0.001f &&
             flashlightIntensity > 0.001f && transitionFade < 0.995f) {
             renderProfile.Mark(L"BeginShadowPass");
-            renderDepthShadow(shadowDsv_.Get(), shadowMapSize_, lightViewProj);
+            renderDepthShadow(shadowDsv_.Get(), shadowMapSize_, lightViewProj,
+                lightPosFloat, lightDirFloat, shadowDistance, std::cos(shadowFov * 0.5f));
         }
         if (monsterEyeStrength > 0.001f) {
             for (int eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
@@ -601,7 +710,11 @@
                     renderDepthShadow(
                         monsterEyeShadowDsv_[static_cast<size_t>(eyeIndex)].Get(),
                         monsterEyeShadowMapSize_,
-                        monsterEyeViewProj[static_cast<size_t>(eyeIndex)]);
+                        monsterEyeViewProj[static_cast<size_t>(eyeIndex)],
+                        monsterEyeWorld_[static_cast<size_t>(eyeIndex)],
+                        monsterEyeDir,
+                        std::max(0.5f, monsterEyeRange),
+                        std::cos(monsterEyeFov * 0.5f));
                 }
             }
         }
@@ -646,9 +759,45 @@
         context_->RSSetState(rasterState_.Get());
         context_->OMSetDepthStencilState(depthState_.Get(), 0);
 
-        if (!monsterPreview_) {
+        auto bindStaticScenePipeline = [&]() {
+            context_->IASetInputLayout(inputLayout_.Get());
+            context_->IASetPrimitiveTopology(useFleshTessellation
+                ? D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST
+                : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             context_->IASetVertexBuffers(0, 1, vertexBuffer_.GetAddressOf(), &stride, &offset);
             context_->IASetIndexBuffer(indexBuffer_.Get(), DXGI_FORMAT_R32_UINT, 0);
+            context_->VSSetShader(vertexShader_.Get(), nullptr, 0);
+            context_->HSSetShader(useFleshTessellation ? hullShader_.Get() : nullptr, nullptr, 0);
+            context_->DSSetShader(useFleshTessellation ? domainShader_.Get() : nullptr, nullptr, 0);
+            context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
+            context_->VSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+            context_->HSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+            context_->DSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+            context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+            context_->PSSetShaderResources(0, 9, srvs);
+            if (useFleshTessellation) {
+                context_->DSSetShaderResources(0, 9, srvs);
+                context_->DSSetSamplers(0, 1, sampler_.GetAddressOf());
+            }
+            context_->PSSetSamplers(0, 2, samplers);
+        };
+
+        auto bindDynamicScenePipeline = [&]() {
+            context_->IASetInputLayout(inputLayout_.Get());
+            context_->HSSetShader(nullptr, nullptr, 0);
+            context_->DSSetShader(nullptr, nullptr, 0);
+            context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            context_->IASetVertexBuffers(0, 1, dynamicBuffer_.GetAddressOf(), &stride, &offset);
+            context_->VSSetShader(vertexShader_.Get(), nullptr, 0);
+            context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
+            context_->VSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+            context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+            context_->PSSetShaderResources(0, 9, srvs);
+            context_->PSSetSamplers(0, 2, samplers);
+        };
+
+        if (!monsterPreview_) {
+            bindStaticScenePipeline();
             context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
             UINT opaqueIndexCount = std::min(floorCeilingStartIndex_, indexCount_);
             if (opaqueIndexCount > 0) {
@@ -661,30 +810,10 @@
                 context_->DrawIndexed(floorCeilingIndexCount_, floorCeilingStartIndex_, 0);
                 renderProfile.Mark(L"FloorCeiling");
             }
-            if (staticWaterIndexCount_ > 0) {
-                context_->OMSetDepthStencilState(depthLessState_.Get(), 0);
-                context_->OMSetBlendState(alphaBlend_.Get(), blendFactor, 0xffffffff);
-                StartupProfileLine(L"Render before StaticWater DrawIndexed");
-                context_->DrawIndexed(staticWaterIndexCount_, staticWaterStartIndex_, 0);
-                renderProfile.Mark(L"StaticWater");
-                context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
-            }
-            if (staticTransparentIndexCount_ > 0) {
-                context_->OMSetDepthStencilState(depthReadOnlyState_.Get(), 0);
-                context_->OMSetBlendState(alphaBlend_.Get(), blendFactor, 0xffffffff);
-                StartupProfileLine(L"Render before StaticTransparent DrawIndexed");
-                context_->DrawIndexed(staticTransparentIndexCount_, staticTransparentStartIndex_, 0);
-                renderProfile.Mark(L"StaticTransparent");
-                context_->OMSetDepthStencilState(depthState_.Get(), 0);
-                context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
-            }
         }
 
         if (dynamicOpaqueVertexCount_ > 0 || dynamicTransparentVertexCount_ > 0) {
-            context_->HSSetShader(nullptr, nullptr, 0);
-            context_->DSSetShader(nullptr, nullptr, 0);
-            context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            context_->IASetVertexBuffers(0, 1, dynamicBuffer_.GetAddressOf(), &stride, &offset);
+            bindDynamicScenePipeline();
         }
         if (dynamicOpaqueVertexCount_ > 0) {
             context_->OMSetDepthStencilState(depthState_.Get(), 0);
@@ -693,7 +822,38 @@
             context_->Draw(dynamicOpaqueVertexCount_, 0);
             renderProfile.Mark(L"DynamicOpaque");
         }
+        if (!monsterPreview_) {
+            if (staticWaterIndexCount_ > 0 || staticTransparentIndexCount_ > 0) {
+                bindStaticScenePipeline();
+            }
+            if (staticWaterIndexCount_ > 0) {
+                context_->OMSetDepthStencilState(liquidDepthStencilState_.Get(), 0);
+                context_->OMSetBlendState(alphaBlend_.Get(), blendFactor, 0xffffffff);
+                context_->PSSetShader(liquidPixelShader_ ? liquidPixelShader_.Get() : pixelShader_.Get(), nullptr, 0);
+                StartupProfileLine(L"Render before StaticWater DrawIndexed");
+                if (!staticWaterChunks_.empty()) {
+                    drawVisibleChunks(staticWaterChunks_, eyePos, viewDirFloat, mainCullDistance, mainConeCos,
+                        mainForceVisibleDistance, true, 2);
+                } else {
+                    context_->DrawIndexed(staticWaterIndexCount_, staticWaterStartIndex_, 0);
+                }
+                renderProfile.Mark(L"StaticWater");
+                context_->OMSetDepthStencilState(depthState_.Get(), 0);
+                context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
+            }
+            if (staticTransparentIndexCount_ > 0) {
+                context_->OMSetDepthStencilState(depthReadOnlyState_.Get(), 0);
+                context_->OMSetBlendState(alphaBlend_.Get(), blendFactor, 0xffffffff);
+                context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
+                StartupProfileLine(L"Render before StaticTransparent DrawIndexed");
+                context_->DrawIndexed(staticTransparentIndexCount_, staticTransparentStartIndex_, 0);
+                renderProfile.Mark(L"StaticTransparent");
+                context_->OMSetDepthStencilState(depthState_.Get(), 0);
+                context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
+            }
+        }
         if (dynamicTransparentVertexCount_ > 0) {
+            bindDynamicScenePipeline();
             context_->OMSetDepthStencilState(depthReadOnlyState_.Get(), 0);
             context_->OMSetBlendState(alphaBlend_.Get(), blendFactor, 0xffffffff);
             StartupProfileLine(L"Render before DynamicTransparent Draw");

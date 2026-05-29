@@ -345,6 +345,7 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.paperDensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"PaperDensity", s.paperDensity), 0.0f, 4.0f);
     s.hallwayPaperRunDensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"HallwayPaperRunDensity", s.hallwayPaperRunDensity), 0.0f, 4.0f);
     s.chairDensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"ChairDensity", s.chairDensity), 0.0f, 4.0f);
+    s.waterDamageEnabled = ParseConfigInt(state, L"Atmosphere", L"WaterDamageEnabled", s.waterDamageEnabled ? 1 : 0) != 0;
     s.waterDamageDensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"WaterDamageDensity", s.waterDamageDensity), 0.0f, 4.0f);
     s.metalCabinetDensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"MetalCabinetDensity", s.metalCabinetDensity), 0.0f, 4.0f);
     s.jumpscareFrequency = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"JumpscareFrequency", s.jumpscareFrequency), 0.0f, 1.0f);

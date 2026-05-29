@@ -1,4 +1,6 @@
     void UpdateSimulation(float dt) {
+        visionFlashTimer_ = std::max(0.0f, visionFlashTimer_ - std::max(0.0f, dt));
+
         if (deathActive_) {
             UpdateDeath(dt);
             UpdateDreadMeterDisplay(dt);
@@ -6,6 +8,17 @@
             UpdateAirParticles(dt);
             UpdateAirParticleFocus(dt);
             return;
+        }
+
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame) {
+            bool flashlightPressed = gameInput_.flashlight;
+            if (flashlightPressed && !previousFlashlightInput_) {
+                flashlightEnabled_ = !flashlightEnabled_;
+                audio_.PlayRandom(GameSound::FlashlightStutter, AudioBus::Effects, camera_, 0.82f, false);
+            }
+            previousFlashlightInput_ = flashlightPressed;
+        } else {
+            previousFlashlightInput_ = false;
         }
 
         fadeInTimer_ = std::max(0.0f, fadeInTimer_ - dt);

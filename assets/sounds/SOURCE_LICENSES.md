@@ -18,6 +18,12 @@ SoundEffects+ downloads are from:
 
 - `https://www.soundeffectsplus.com/download.php?fid=<fid>`
 
+### Generated Original Files
+
+| Local file | Source |
+| --- | --- |
+| `vision_flash/vision_flash_1.wav` | Derived from `Screams of Agony` by SoundReality on Pixabay, Pixabay Content License, https://pixabay.com/sound-effects/horror-screams-of-agony-142447/. Trimmed and processed with generated flame, impact, and vision-rip layers for this project on 2026-05-30. |
+
 ### SoundEffects+ Files
 
 | Local file | Source ID |
@@ -54,10 +60,12 @@ SoundEffects+ downloads are from:
 | `neon_light_hum/neon_light_hum_loud_2.wav` | Processed candidate, attenuated 2026-05-28 |
 | `carpet_steps/soft_muffled_steps_mattress_3.wav` | 534 |
 | `soaked_carpet_steps/muddy_wet_steps_5.wav` | 537 |
-| `electric_crackling/electric_crackling_sparks_1.wav` | 2603 |
-| `electric_crackling/electric_crackling_static_2.wav` | 2592 |
-| `electric_crackling/electric_crackling_short_static_3.wav` | 1453 |
-| `electric_crackling/electric_crackling_lightning_blast_4.wav` | 2601 |
+| `electric_crackling/electric_crackling_heavy_shockwave_1.wav` | 2599 |
+| `electric_crackling/electric_crackling_static_power_surge_2.wav` | 2600 |
+| `electric_crackling/electric_crackling_screechy_shock_3.wav` | 3213 |
+| `electric_crackling/electric_crackling_futuristic_sparks_4.wav` | 2598 |
+| `electric_crackling/electric_crackling_static_crackles_5.wav` | 1455 |
+| `electric_crackling/electric_crackling_engine_glitch_snap_6.wav` | 2954 |
 | `neon_light_switch_on_off/neon_light_switch_tap_1.wav` | 2585 |
 | `neon_light_switch_on_off/neon_light_switch_click_2.wav` | 2579 |
 | `neon_light_switch_on_off/neon_light_quick_switch_click_3.wav` | 2582 |

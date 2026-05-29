@@ -161,14 +161,19 @@ struct Maze {
     }
 
     void GenerateMenuRoom() {
-        w = 6;
-        h = 6;
+        w = 14;
+        h = 24;
         open.assign(static_cast<size_t>(w * h), 0);
-        start = {2, 3};
+        start = {9, 21};
         exit = start;
         for (int y = start.y - 2; y <= start.y; ++y) {
-            SetOpen(start.x, y);
-            SetOpen(start.x + 1, y);
+            for (int x = start.x; x <= start.x + 2; ++x) {
+                SetOpen(x, y);
+            }
+        }
+        const int hallX = std::clamp(start.x + 1, 1, w - 2);
+        for (int y = 1; y <= start.y - 2; ++y) {
+            SetOpen(hallX, y);
         }
     }
 

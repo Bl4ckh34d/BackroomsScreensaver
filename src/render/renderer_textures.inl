@@ -51,7 +51,7 @@
         uint64_t textureHash = TextureCacheHash();
         if (LoadTextureCache(textureHash, albedo, normal, props)) {
             profile.Mark(L"LoadTextureCache");
-            ReportStartupActivity(L"Loading textures", L"Loaded cached material atlas. Creating GPU texture views.");
+            ReportStartupSubStep(L"Loading textures", L"Loaded cached material atlas. Creating GPU texture views.", 2);
             if (!makeSrv(albedo, albedoSrv_)) return false;
             profile.Mark(L"CreateAlbedoSRV");
             if (!makeSrv(normal, normalSrv_)) return false;
@@ -61,7 +61,7 @@
             return true;
         }
         profile.Mark(L"TextureCacheMiss");
-        ReportStartupActivity(L"Loading textures", L"Texture cache miss. Generating material atlas.");
+        ReportStartupSubStep(L"Loading textures", L"Texture cache miss. Generating material atlas.", 1);
 
         std::vector<float> heights(static_cast<size_t>(width * height), 0.5f);
         std::vector<uint8_t> externalNormal(static_cast<size_t>(width * height * 4), 0);
@@ -171,7 +171,7 @@
             }
         };
 
-        ReportStartupActivity(L"Loading textures", L"Generating procedural material atlas.");
+        ReportStartupSubStep(L"Loading textures", L"Generating procedural material atlas.", 1);
         for (int y = 0; y < kTextureSize; ++y) {
             for (int x = 0; x < kTextureSize; ++x) {
                 float u = static_cast<float>(x) / kTextureSize;
@@ -353,8 +353,7 @@
         fillRuntimeMaterial(23, 0.035f, 0.034f, 0.031f, 0.70f);
         fillRuntimeMaterial(24, 0.78f, 0.74f, 0.62f, 0.58f);
 
-        auto fillMenuLabelAtlas = [&]() {
-            constexpr int material = 18;
+        auto fillMenuLabelAtlas = [&](int material) {
             for (int y = 0; y < kTextureSize; ++y) {
                 int gy = material * kTextureSize + y;
                 for (int x = 0; x < kTextureSize; ++x) {
@@ -387,16 +386,17 @@
                 HGDIOBJ oldBitmap = SelectObject(dc, bitmap);
                 std::memset(bits, 0, dib.size());
                 SetBkMode(dc, TRANSPARENT);
-                HFONT font = CreateFontW(-44, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+                HFONT font = CreateFontW(-38, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                     DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
                 HGDIOBJ oldFont = SelectObject(dc, font);
-                const wchar_t* labels[] = {L"Single Player", L"Settings", L"Debug"};
-                for (int row = 0; row < 3; ++row) {
-                    int top = row * kTextureSize / 3;
-                    int bottom = (row + 1) * kTextureSize / 3;
-                    RECT textRect{18, top + 28, kTextureSize - 18, bottom - 24};
-                    SetTextColor(dc, RGB(70, 52, 18));
+                const wchar_t* labels[] = {L"Single Player", L"Resume", L"Settings", L"Debug"};
+                constexpr int kMenuLabelRows = 4;
+                for (int row = 0; row < kMenuLabelRows; ++row) {
+                    int top = row * kTextureSize / kMenuLabelRows;
+                    int bottom = (row + 1) * kTextureSize / kMenuLabelRows;
+                    RECT textRect{28, top + 18, kTextureSize - 28, bottom - 16};
+                    SetTextColor(dc, RGB(58, 45, 18));
                     for (int oy = -3; oy <= 3; ++oy) {
                         for (int ox = -3; ox <= 3; ++ox) {
                             if (ox * ox + oy * oy > 10) continue;
@@ -405,7 +405,7 @@
                             DrawTextW(dc, labels[row], -1, &glow, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                         }
                     }
-                    SetTextColor(dc, RGB(255, 225, 132));
+                    SetTextColor(dc, RGB(238, 212, 132));
                     DrawTextW(dc, labels[row], -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                 }
                 SelectObject(dc, oldFont);
@@ -433,7 +433,7 @@
                 }
             }
         };
-        fillMenuLabelAtlas();
+        fillMenuLabelAtlas(18);
 
         auto loadRuntimeAlbedo = [&](int material, const wchar_t* relativePath) {
             if (material < 0 || material >= kMaterialCount) return;
@@ -488,7 +488,7 @@
         };
 
         {
-            ReportStartupActivity(L"Loading textures", L"Loading external PBR textures.");
+            ReportStartupSubStep(L"Loading textures", L"Loading external PBR textures.", 2);
             ScopedCom com;
             if (com.Ok()) {
                 loadPbrMaterial(0, settings_.wallStem.c_str());
@@ -510,7 +510,7 @@
         }
         profile.Mark(L"LoadExternalPBRs");
 
-        ReportStartupActivity(L"Loading textures", L"Building normal and material property maps.");
+        ReportStartupSubStep(L"Loading textures", L"Building normal and material property maps.", 3);
         for (int m = 0; m < kMaterialCount; ++m) {
             for (int y = 0; y < kTextureSize; ++y) {
                 for (int x = 0; x < kTextureSize; ++x) {
@@ -545,7 +545,7 @@
         SaveTextureCache(textureHash, albedo, normal, props);
         profile.Mark(L"SaveTextureCache");
 
-        ReportStartupActivity(L"Loading textures", L"Creating GPU texture views.");
+        ReportStartupSubStep(L"Loading textures", L"Creating GPU texture views.", 3);
         if (!makeSrv(albedo, albedoSrv_)) return false;
         profile.Mark(L"CreateAlbedoSRV");
         if (!makeSrv(normal, normalSrv_)) return false;

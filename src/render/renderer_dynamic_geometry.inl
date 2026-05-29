@@ -186,7 +186,9 @@
         float halfW = 0.60f;
         float halfH = 1.05f;
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
-        float angle = exitDoorAngle_;
+        float angle = runtimeMode_ == RendererRuntimeMode::MainMenu
+            ? std::min(exitDoorAngle_ * 1.12f, 1.54f)
+            : exitDoorAngle_;
         XMFLOAT3 right = RotateYVec(exitDoorRight_, angle);
         XMFLOAT3 normal = RotateYVec(exitDoorNormal_, angle);
         XMFLOAT3 center = Add3(exitDoorHinge_, Add3(Scale3(right, halfW), Scale3(normal, 0.012f)));
@@ -213,16 +215,16 @@
         XMFLOAT3 right = Normalize3(exitDoorRight_, {1.0f, 0.0f, 0.0f});
         XMFLOAT3 inward = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
         XMFLOAT3 behind = Scale3(inward, -1.0f);
-        XMFLOAT3 start = Add3(exitDoorCenter_, Add3(Scale3(behind, 0.10f), {0.0f, 0.04f, 0.0f}));
-        XMFLOAT3 room = Add3(exitDoorCenter_, Add3(Scale3(inward, 2.45f), {0.0f, -0.03f, 0.0f}));
-        float openMat = 19.58f + openT * 0.22f;
+        XMFLOAT3 start = Add3(exitDoorCenter_, Add3(Scale3(behind, 0.12f), {0.0f, 0.12f, 0.0f}));
+        XMFLOAT3 room = Add3(exitDoorCenter_, Add3(Scale3(behind, 1.38f), {0.0f, 1.16f, 0.0f}));
+        float openMat = 19.72f + openT * 0.22f;
 
-        XMFLOAT3 nearSide = Scale3(right, 0.56f);
-        XMFLOAT3 farSide = Scale3(right, 0.82f);
-        XMFLOAT3 nearUp = Scale3(up, 1.02f);
-        XMFLOAT3 farUp = Scale3(up, 1.12f);
-        XMFLOAT3 centerYNear = Add3(start, {0.0f, 1.12f, 0.0f});
-        XMFLOAT3 centerYFar = Add3(room, {0.0f, 1.10f, 0.0f});
+        XMFLOAT3 nearSide = Scale3(right, 0.50f);
+        XMFLOAT3 farSide = Scale3(right, 0.42f);
+        XMFLOAT3 nearUp = Scale3(up, 0.98f);
+        XMFLOAT3 farUp = Scale3(up, 0.78f);
+        XMFLOAT3 centerYNear = Add3(start, {0.0f, 1.16f, 0.0f});
+        XMFLOAT3 centerYFar = Add3(room, {0.0f, 1.70f, 0.0f});
 
         AppendDynamicQuadUV(transparentVerts,
             Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), Scale3(nearUp, -1.0f))),
@@ -231,91 +233,79 @@
             Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), nearUp)),
             inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.018f);
         AppendDynamicQuadUV(transparentVerts,
-            Add3(centerYNear, Scale3(nearUp, -1.0f)),
-            Add3(centerYFar, Scale3(farUp, -1.0f)),
-            Add3(centerYFar, farUp),
-            Add3(centerYNear, nearUp),
-            right, inward, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat);
-        AppendDynamicQuadUV(transparentVerts,
-            Add3(centerYFar, Add3(Scale3(farSide, -1.0f), Scale3(up, -0.08f))),
-            Add3(centerYFar, Add3(farSide, Scale3(up, -0.08f))),
-            Add3(centerYNear, Add3(nearSide, Scale3(up, 0.18f))),
-            Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), Scale3(up, 0.18f))),
-            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.045f);
+            Add3(centerYNear, Add3(Scale3(nearSide, -0.72f), Scale3(up, 0.10f))),
+            Add3(centerYNear, Add3(Scale3(nearSide, 0.72f), Scale3(up, 0.10f))),
+            Add3(centerYFar, Add3(Scale3(farSide, 0.92f), Scale3(farUp, -0.30f))),
+            Add3(centerYFar, Add3(Scale3(farSide, -0.92f), Scale3(farUp, -0.30f))),
+            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.012f);
     }
 
     void AppendMenuButtonPlaques(std::vector<Vertex>& verts, std::vector<Vertex>& transparentVerts) {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
-        XMFLOAT3 c = maze_.WorldCenter(maze_.start, 0.0f);
+        if (menuStartTransitionActive_ || menuStartTransitionComplete_) return;
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
-        MenuPlaquePlacement primaryPlaque = MenuButtonPlacement(0);
-        XMFLOAT3 right = primaryPlaque.right;
-        XMFLOAT3 inward{0.0f, 0.0f, -1.0f};
-        float wallZ = c.z + maze_.tileD * 0.5f;
-        float x = primaryPlaque.center.x;
-        float bloodTopY = settings_.wallHeightMeters - 0.006f;
-        float bloodBottomY = 0.012f;
-        float bloodCenterY = (bloodTopY + bloodBottomY) * 0.5f;
-        float bloodHalfHeight = std::max(0.40f, (bloodTopY - bloodBottomY) * 0.5f);
-        XMFLOAT3 bloodCenter{x, bloodCenterY, wallZ - 0.002f};
-        XMFLOAT3 bloodHalfW = Scale3(right, primaryPlaque.halfW * 1.03f);
-        XMFLOAT3 bloodHalfH = Scale3(up, bloodHalfHeight);
-        constexpr float kMenuWallBloodMaterial = 14.985f;
-        constexpr float kMenuPoolBloodMaterial = 14.66f;
-        AppendDynamicQuadUV(transparentVerts,
-            Add3(bloodCenter, Add3(Scale3(bloodHalfW, -1.0f), Scale3(bloodHalfH, -1.0f))),
-            Add3(bloodCenter, Add3(bloodHalfW, Scale3(bloodHalfH, -1.0f))),
-            Add3(bloodCenter, Add3(bloodHalfW, bloodHalfH)),
-            Add3(bloodCenter, Add3(Scale3(bloodHalfW, -1.0f), bloodHalfH)),
-            inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, kMenuWallBloodMaterial);
-        float ceilingDepth = std::min(maze_.tileD * 0.42f, 0.68f);
-        float ceilingY = settings_.wallHeightMeters - 0.003f;
-        XMFLOAT3 ceilingCenter{x, ceilingY, wallZ - ceilingDepth * 0.16f};
-        XMFLOAT3 ceilingHalfD = Scale3(inward, ceilingDepth * 0.5f);
-        AppendDynamicQuadUV(transparentVerts,
-            Add3(ceilingCenter, Add3(Scale3(bloodHalfW, -1.0f), Scale3(ceilingHalfD, -1.0f))),
-            Add3(ceilingCenter, Add3(bloodHalfW, Scale3(ceilingHalfD, -1.0f))),
-            Add3(ceilingCenter, Add3(bloodHalfW, ceilingHalfD)),
-            Add3(ceilingCenter, Add3(Scale3(bloodHalfW, -1.0f), ceilingHalfD)),
-            Scale3(up, -1.0f), right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, kMenuPoolBloodMaterial);
-        float poolDepth = std::min(maze_.tileD * 0.40f, 0.64f);
-        XMFLOAT3 poolCenter{x, 0.014f, wallZ - poolDepth * 0.15f};
-        XMFLOAT3 poolHalfW = Scale3(right, primaryPlaque.halfW * 0.94f);
-        XMFLOAT3 poolHalfD = Scale3(inward, poolDepth * 0.5f);
-        AppendDynamicQuadUV(transparentVerts,
-            Add3(poolCenter, Add3(Scale3(poolHalfW, -1.0f), poolHalfD)),
-            Add3(poolCenter, Add3(poolHalfW, poolHalfD)),
-            Add3(poolCenter, Add3(poolHalfW, Scale3(poolHalfD, -1.0f))),
-            Add3(poolCenter, Add3(Scale3(poolHalfW, -1.0f), Scale3(poolHalfD, -1.0f))),
-            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, kMenuPoolBloodMaterial);
         for (int i = 0; i < 3; ++i) {
             bool hover = menuHoverButtonIndex_ == i;
-            float material = hover ? 10.72f : 9.70f;
+            float material = hover ? 9.88f : 9.68f;
             MenuPlaquePlacement plaque = MenuButtonPlacement(i);
-            AppendDynamicBoxAxes(verts, plaque.center, plaque.right, up, plaque.inward, {plaque.halfW, plaque.halfH, 0.034f}, material);
+            AppendDynamicBoxAxes(verts, plaque.center, plaque.right, up, plaque.inward, {plaque.halfW, plaque.halfH, 0.030f}, material);
             XMFLOAT3 capCenter = Add3(plaque.center, Add3(Scale3(plaque.right, -plaque.halfW + 0.012f), Scale3(plaque.inward, -0.017f)));
-            AppendDynamicBoxAxes(verts, capCenter, plaque.right, up, plaque.inward, {0.018f, plaque.halfH + 0.012f, 0.026f}, 10.0f);
+            AppendDynamicBoxAxes(verts, capCenter, plaque.right, up, plaque.inward, {0.016f, plaque.halfH + 0.010f, 0.024f}, hover ? 9.94f : 9.78f);
             XMFLOAT3 labelCenter = Add3(plaque.center, Scale3(plaque.inward, 0.036f));
-            XMFLOAT3 hw = Scale3(plaque.right, std::min(plaque.halfW * 0.58f, 0.78f));
-            XMFLOAT3 hh = Scale3(up, 0.112f);
-            float v0 = (static_cast<float>(i) + 0.12f) / 3.0f;
-            float v1 = (static_cast<float>(i) + 0.88f) / 3.0f;
-            float labelMaterial = hover ? 18.65f : 18.08f;
+            XMFLOAT3 hw = Scale3(plaque.right, std::min(plaque.halfW * 0.72f, 0.76f));
+            XMFLOAT3 hh = Scale3(up, 0.096f);
+            int labelIndex = (i == 0 && menuResumeLabel_) ? 1 : (i == 0 ? 0 : i + 1);
+            constexpr float kMenuLabelRows = 4.0f;
+            float v0 = (static_cast<float>(labelIndex) + 0.18f) / kMenuLabelRows;
+            float v1 = (static_cast<float>(labelIndex) + 0.82f) / kMenuLabelRows;
+            float labelMaterial = 18.0f + (hover ? 0.46f : 0.08f);
             AppendDynamicQuadUV(transparentVerts,
                 Add3(labelCenter, Add3(Scale3(hw, -1.0f), Scale3(hh, -1.0f))),
                 Add3(labelCenter, Add3(hw, Scale3(hh, -1.0f))),
                 Add3(labelCenter, Add3(hw, hh)),
                 Add3(labelCenter, Add3(Scale3(hw, -1.0f), hh)),
-                plaque.inward, plaque.right, {0.06f, v1}, {0.94f, v1}, {0.94f, v0}, {0.06f, v0}, labelMaterial);
+                plaque.inward, plaque.right, {0.08f, v1}, {0.92f, v1}, {0.92f, v0}, {0.08f, v0}, labelMaterial);
         }
     }
 
     void AppendMonsterBillboard(std::vector<Vertex>& solidVerts, std::vector<Vertex>& transparentVerts) {
+        if (gEffectDebugViewer && gDebugHideMonster) return;
         monsterEyeWorldCount_ = 0;
         float modelY = std::clamp(settings_.monsterScale, 0.35f, 1.25f);
         float modelXZ = std::clamp(settings_.monsterScale, 0.35f, 1.35f);
         float dist = MonsterDistance();
         bool canTrackPlayer = !monsterPreview_ && MonsterVisualEncounterPlayer();
+        bool debugEffectMonster = runtimeMode_ == RendererRuntimeMode::DebugViewer && gDebugSliceEffect != DebugSliceEffect::Props;
+        float tileScale = std::max(maze_.TileAverage(), 0.1f);
+        bool monsterTileVisible = monsterPreview_ || debugEffectMonster || deathActive_;
+        bool monsterOccluded = false;
+        bool occludedContactProxy = false;
+        if (!monsterPreview_ && !debugEffectMonster && !deathActive_) {
+            Tile cameraTile = CameraTile();
+            Tile monsterTile = MonsterTile();
+            monsterTileVisible = maze_.IsOpen(cameraTile.x, cameraTile.y) &&
+                maze_.IsOpen(monsterTile.x, monsterTile.y) &&
+                maze_.LineClear(cameraTile, monsterTile);
+            monsterOccluded = !monsterTileVisible;
+            float monsterAudibleDistance = std::max(24.0f, tileScale * 14.0f);
+            bool outsideHearingAndOccluded = !monsterTileVisible && dist > monsterAudibleDistance;
+            if (outsideHearingAndOccluded && monsterHeadChaseBlend_ < 0.36f && !monsterHasLastKnown_ && !monsterHasSound_) {
+                monsterBodySmoothTime_ = -1000.0f;
+                monsterLimbAnchors_.clear();
+                return;
+            }
+            occludedContactProxy = monsterOccluded &&
+                (dist < tileScale * 2.15f || monsterHeadChaseBlend_ > 0.36f || monsterHasLastKnown_ || monsterHasSound_);
+            if (monsterOccluded && !occludedContactProxy) {
+                monsterBodySmoothTime_ = -1000.0f;
+                return;
+            }
+        }
+        bool highDetailMonster = monsterPreview_ || deathActive_ || canTrackPlayer ||
+            monsterHeadChaseBlend_ > 0.62f || (monsterTileVisible && dist < tileScale * 4.2f);
+        bool mediumDetailMonster = highDetailMonster || (!monsterOccluded && (monsterHasLastKnown_ || monsterHasSound_)) ||
+            monsterHeadChaseBlend_ > 0.18f || dist < tileScale * 8.5f || monsterTileVisible;
+        int monsterDetail = occludedContactProxy ? 0 : (debugEffectMonster ? 1 : (highDetailMonster ? 2 : (mediumDetailMonster ? 1 : 0)));
         float faceYaw = monsterYaw_;
         if (canTrackPlayer) {
             float cameraYaw = std::atan2(camera_.x - monster_.x, camera_.z - monster_.z);
@@ -520,6 +510,9 @@
             XMFLOAT3 side0 = Normalize3(Cross3(ref, tangent), right);
             XMFLOAT3 side1 = Normalize3(Cross3(tangent, side0), up);
             sides = std::clamp(sides, 4, 18);
+            if (!debugEffectMonster) {
+                sides = std::max(4, sides - (monsterDetail >= 2 ? 1 : (monsterDetail == 1 ? 2 : 3)));
+            }
             for (int s = 0; s < sides; ++s) {
                 float a0 = static_cast<float>(s) / static_cast<float>(sides) * kPi * 2.0f;
                 float a1 = static_cast<float>(s + 1) / static_cast<float>(sides) * kPi * 2.0f;
@@ -549,13 +542,14 @@
         std::array<XMFLOAT3, maxBodyCount> bodyTangents{};
         std::array<float, maxBodyCount> bodyUvV{};
         std::array<float, maxBodyCount> bodyUvShift{};
-        bool debugEffectMonster = runtimeMode_ == RendererRuntimeMode::DebugViewer && gDebugSliceEffect != DebugSliceEffect::Props;
-        float bodySpacing = maze_.TileMinimum() * (debugEffectMonster ? 0.21f : 0.16f);
-        float visualBodySpacing = maze_.TileMinimum() * (debugEffectMonster ? 0.19f : 0.145f);
+        float bodySpacing = maze_.TileMinimum() * (debugEffectMonster ? 0.21f : (monsterDetail >= 2 ? 0.19f : (monsterDetail == 1 ? 0.24f : 0.32f)));
+        float visualBodySpacing = maze_.TileMinimum() * (debugEffectMonster ? 0.19f : (monsterDetail >= 2 ? 0.17f : (monsterDetail == 1 ? 0.22f : 0.29f)));
         float bodyLengthMeters = std::min(11.5f, 5.9f + static_cast<float>(std::max(0, monsterKillCount_)) * 0.72f);
         int bodyCount = debugEffectMonster
             ? 22
-            : std::clamp(static_cast<int>(std::ceil(bodyLengthMeters / std::max(0.12f, bodySpacing))) + 1, 20, maxBodyCount);
+            : std::clamp(static_cast<int>(std::ceil(bodyLengthMeters / std::max(0.12f, bodySpacing))) + 1,
+                monsterDetail >= 2 ? 18 : (monsterDetail == 1 ? 14 : 10),
+                monsterDetail >= 2 ? 36 : (monsterDetail == 1 ? 26 : 18));
         float curiosityPose = MonsterCuriosityAmount();
         XMFLOAT3 monsterForward{std::sin(monsterYaw_), 0.0f, std::cos(monsterYaw_)};
         XMFLOAT3 monsterRight{std::cos(monsterYaw_), 0.0f, -std::sin(monsterYaw_)};
@@ -820,7 +814,7 @@
             bodyUps[static_cast<size_t>(i)] = upProjected;
             bodySides[static_cast<size_t>(i)] = Normalize3(Cross3(bodyUps[static_cast<size_t>(i)], tangent), bodySides[static_cast<size_t>(i)]);
         }
-        const int tubeSides = debugEffectMonster ? 14 : 22;
+        const int tubeSides = debugEffectMonster ? 14 : (monsterDetail >= 2 ? 16 : (monsterDetail == 1 ? 12 : 8));
         struct TubeVertex {
             XMFLOAT3 pos;
             XMFLOAT3 normal;
@@ -855,14 +849,17 @@
             solidVerts.push_back({b.pos, b.normal, b.tangent, b.uv, material});
             solidVerts.push_back({c.pos, c.normal, c.tangent, c.uv, material});
         };
-        for (int i = 0; i + 1 < bodyCount; ++i) {
-            for (int r = 0; r < tubeSides; ++r) {
-                TubeVertex a = tubeVertex(i, r);
-                TubeVertex b = tubeVertex(i, r + 1);
-                TubeVertex c = tubeVertex(i + 1, r + 1);
-                TubeVertex d = tubeVertex(i + 1, r);
-                pushTubeTri(a, b, c, gutMat);
-                pushTubeTri(a, c, d, gutMat);
+        bool renderBodyMass = !occludedContactProxy;
+        if (renderBodyMass) {
+            for (int i = 0; i + 1 < bodyCount; ++i) {
+                for (int r = 0; r < tubeSides; ++r) {
+                    TubeVertex a = tubeVertex(i, r);
+                    TubeVertex b = tubeVertex(i, r + 1);
+                    TubeVertex c = tubeVertex(i + 1, r + 1);
+                    TubeVertex d = tubeVertex(i + 1, r);
+                    pushTubeTri(a, b, c, gutMat);
+                    pushTubeTri(a, c, d, gutMat);
+                }
             }
         }
         int thoraxIndex = std::min(2, bodyCount - 1);
@@ -871,35 +868,37 @@
             Scale3(bodyTangents[static_cast<size_t>(thoraxIndex)], 0.045f * modelXZ));
         XMFLOAT3 abdomen = Add3(bodyPoints[static_cast<size_t>(abdomenIndex)],
             Scale3(bodyTangents[static_cast<size_t>(abdomenIndex)], -0.045f * modelXZ));
-        AppendDynamicEllipsoid(solidVerts, thorax,
-            bodySides[static_cast<size_t>(thoraxIndex)], bodyUps[static_cast<size_t>(thoraxIndex)], bodyTangents[static_cast<size_t>(thoraxIndex)],
-            {0.50f * modelXZ, 0.32f * modelY, 0.54f * modelXZ}, debugEffectMonster ? 18 : 26, debugEffectMonster ? 8 : 12, gutMat + 0.020f);
-        AppendDynamicEllipsoid(solidVerts, abdomen,
-            bodySides[static_cast<size_t>(abdomenIndex)], bodyUps[static_cast<size_t>(abdomenIndex)], bodyTangents[static_cast<size_t>(abdomenIndex)],
-            {0.70f * modelXZ, 0.43f * modelY, 0.92f * modelXZ}, debugEffectMonster ? 20 : 30, debugEffectMonster ? 9 : 14, gutMat + 0.055f);
-        AppendDynamicEllipsoid(solidVerts, Add3(abdomen, Scale3(bodyTangents[static_cast<size_t>(abdomenIndex)], -0.34f * modelXZ)),
-            bodySides[static_cast<size_t>(abdomenIndex)], bodyUps[static_cast<size_t>(abdomenIndex)], bodyTangents[static_cast<size_t>(abdomenIndex)],
-            {0.43f * modelXZ, 0.30f * modelY, 0.38f * modelXZ}, debugEffectMonster ? 16 : 22, debugEffectMonster ? 7 : 10, gutMat + 0.075f);
-        for (int i = bodyCount - 1; i >= 0; --i) {
-            if (i != 0 && (i % 3) != 1) continue;
-            float fi = static_cast<float>(i);
-            float centerWeight = i == 0 ? 1.0f : Clamp01(1.0f - Length3(Sub3(bodyPoints[static_cast<size_t>(i)], bodyPoints[0])) / std::max(0.1f, maze_.TileMinimum() * 1.18f));
-            XMFLOAT3 p = bodyPoints[static_cast<size_t>(i)];
-            float breatheScale = 1.0f + std::sin(time_ * 2.15f + fi * 0.91f) * 0.034f;
-            float secondaryScale = i == 0 ? 1.0f : Lerp(0.78f, 0.56f, Clamp01(fi / static_cast<float>(bodyCount - 1)));
-            XMFLOAT3 blobRadii{
-                (0.27f + centerWeight * 0.14f) * modelXZ * breatheScale * secondaryScale,
-                (0.22f + centerWeight * 0.10f) * modelY * breatheScale * secondaryScale,
-                (0.34f + centerWeight * 0.18f) * modelXZ * breatheScale * secondaryScale
-            };
-            AppendDynamicEllipsoid(solidVerts, p,
-                bodySides[static_cast<size_t>(i)], bodyUps[static_cast<size_t>(i)], bodyTangents[static_cast<size_t>(i)],
-                blobRadii, debugEffectMonster ? 14 : 22, debugEffectMonster ? 7 : 11, gutMat + std::fmod(fi * 0.011f, 0.10f));
+        if (renderBodyMass) {
+            AppendDynamicEllipsoid(solidVerts, thorax,
+                bodySides[static_cast<size_t>(thoraxIndex)], bodyUps[static_cast<size_t>(thoraxIndex)], bodyTangents[static_cast<size_t>(thoraxIndex)],
+                {0.50f * modelXZ, 0.32f * modelY, 0.54f * modelXZ}, debugEffectMonster ? 18 : 26, debugEffectMonster ? 8 : 12, gutMat + 0.020f);
+            AppendDynamicEllipsoid(solidVerts, abdomen,
+                bodySides[static_cast<size_t>(abdomenIndex)], bodyUps[static_cast<size_t>(abdomenIndex)], bodyTangents[static_cast<size_t>(abdomenIndex)],
+                {0.70f * modelXZ, 0.43f * modelY, 0.92f * modelXZ}, debugEffectMonster ? 20 : 30, debugEffectMonster ? 9 : 14, gutMat + 0.055f);
+            AppendDynamicEllipsoid(solidVerts, Add3(abdomen, Scale3(bodyTangents[static_cast<size_t>(abdomenIndex)], -0.34f * modelXZ)),
+                bodySides[static_cast<size_t>(abdomenIndex)], bodyUps[static_cast<size_t>(abdomenIndex)], bodyTangents[static_cast<size_t>(abdomenIndex)],
+                {0.43f * modelXZ, 0.30f * modelY, 0.38f * modelXZ}, debugEffectMonster ? 16 : 22, debugEffectMonster ? 7 : 10, gutMat + 0.075f);
+            for (int i = bodyCount - 1; i >= 0; --i) {
+                if (i != 0 && (i % 3) != 1) continue;
+                float fi = static_cast<float>(i);
+                float centerWeight = i == 0 ? 1.0f : Clamp01(1.0f - Length3(Sub3(bodyPoints[static_cast<size_t>(i)], bodyPoints[0])) / std::max(0.1f, maze_.TileMinimum() * 1.18f));
+                XMFLOAT3 p = bodyPoints[static_cast<size_t>(i)];
+                float breatheScale = 1.0f + std::sin(time_ * 2.15f + fi * 0.91f) * 0.034f;
+                float secondaryScale = i == 0 ? 1.0f : Lerp(0.78f, 0.56f, Clamp01(fi / static_cast<float>(bodyCount - 1)));
+                XMFLOAT3 blobRadii{
+                    (0.27f + centerWeight * 0.14f) * modelXZ * breatheScale * secondaryScale,
+                    (0.22f + centerWeight * 0.10f) * modelY * breatheScale * secondaryScale,
+                    (0.34f + centerWeight * 0.18f) * modelXZ * breatheScale * secondaryScale
+                };
+                AppendDynamicEllipsoid(solidVerts, p,
+                    bodySides[static_cast<size_t>(i)], bodyUps[static_cast<size_t>(i)], bodyTangents[static_cast<size_t>(i)],
+                    blobRadii, debugEffectMonster ? 14 : 22, debugEffectMonster ? 7 : 11, gutMat + std::fmod(fi * 0.011f, 0.10f));
+            }
         }
 
-        int limbPairs = debugEffectMonster ? 8 : 14;
+        int limbPairs = debugEffectMonster ? 8 : (monsterDetail >= 2 ? 10 : (monsterDetail == 1 ? 7 : 4));
         int requiredLimbAnchors = std::max(0, limbPairs * 2);
-        if (monsterLimbAnchors_.size() != static_cast<size_t>(requiredLimbAnchors)) {
+        if (monsterLimbAnchors_.size() < static_cast<size_t>(requiredLimbAnchors)) {
             monsterLimbAnchors_.resize(static_cast<size_t>(requiredLimbAnchors));
         }
         float gaitDrive = Clamp01(SmoothStep(0.0f, 1.0f, Clamp01(monsterRoamBurstTimer_ / 1.05f)) * (1.0f - monsterHeadChaseBlend_ * 0.65f) +
@@ -1043,7 +1042,7 @@
                 XMFLOAT3 rootToPlayer = Sub3(playerAim, root);
                 float rootPlayerDist = Length3(rootToPlayer);
                 float closeGrabRange = (upperLen + lowerLen) * (1.34f + frontness * 0.18f);
-                bool playerReachable = runtimeMode_ == RendererRuntimeMode::PlayableGame &&
+                bool playerReachable = IsPlayableSimulationMode(runtimeMode_) &&
                     !settings_.debugInvincible &&
                     !MonsterIgnoresPlayer() &&
                     !deathActive_ &&
@@ -1108,15 +1107,17 @@
                         BeginDeath();
                     }
                 }
-                for (int finger = -1; finger <= 1; ++finger) {
-                    float f = static_cast<float>(finger);
-                    float spread = f * limb * 0.88f * grabHandScale;
-                    float hookCurl = (1.0f - std::abs(f)) * limb * 0.28f;
-                    XMFLOAT3 base = Add3(padCenter, Add3(Scale3(palmRight, spread), Scale3(palmUp, limb * 0.46f * handScale)));
-                    XMFLOAT3 mid = Add3(base, Add3(Scale3(palmUp, limb * 0.82f * handScale), Scale3(contactNormal, limb * 0.20f * (0.65f + swing))));
-                    XMFLOAT3 tip = Add3(mid, Add3(Scale3(palmUp, limb * 0.24f * handScale), Scale3(contactNormal, -limb * (0.48f + swing * 0.24f) - hookCurl)));
-                    organicSegment(base, mid, limb * 0.22f * handScale, limb * 0.13f * handScale, darkMat, 5);
-                    organicSegment(mid, tip, limb * 0.14f * handScale, limb * 0.055f * handScale, darkMat, 5);
+                if (monsterDetail >= 1 || closeGrabWeight > 0.10f) {
+                    for (int finger = -1; finger <= 1; ++finger) {
+                        float f = static_cast<float>(finger);
+                        float spread = f * limb * 0.88f * grabHandScale;
+                        float hookCurl = (1.0f - std::abs(f)) * limb * 0.28f;
+                        XMFLOAT3 base = Add3(padCenter, Add3(Scale3(palmRight, spread), Scale3(palmUp, limb * 0.46f * handScale)));
+                        XMFLOAT3 mid = Add3(base, Add3(Scale3(palmUp, limb * 0.82f * handScale), Scale3(contactNormal, limb * 0.20f * (0.65f + swing))));
+                        XMFLOAT3 tip = Add3(mid, Add3(Scale3(palmUp, limb * 0.24f * handScale), Scale3(contactNormal, -limb * (0.48f + swing * 0.24f) - hookCurl)));
+                        organicSegment(base, mid, limb * 0.22f * handScale, limb * 0.13f * handScale, darkMat, 5);
+                        organicSegment(mid, tip, limb * 0.14f * handScale, limb * 0.055f * handScale, darkMat, 5);
+                    }
                 }
                 XMFLOAT3 wristWeb = Add3(palmCenter, Scale3(contactNormal, -limb * 0.34f));
                 organicSegment(knee, wristWeb, limb * 0.78f, limb * 0.32f, limbMaterial + 0.035f, 7);
@@ -1328,9 +1329,15 @@
         monsterEyeForward_ = hForward;
         monsterEyeUp_ = hUp;
         auto appendEye = [&](float xOffset, float eyeUp, float eyeForward, float variant) {
-            float eyeHalfW = externalSkull ? 0.055f : 0.092f;
-            float eyeHalfH = externalSkull ? 0.044f : 0.068f;
+            float eyeHalfW = externalSkull ? 0.024f : 0.092f;
+            float eyeHalfH = externalSkull ? 0.020f : 0.068f;
             XMFLOAT3 eyeBase = externalSkull ? externalMaskCenter : skull;
+            if (externalSkull) {
+                XMFLOAT3 local = RotateSkullLocalVector({xOffset, eyeUp, eyeForward});
+                xOffset = local.x;
+                eyeUp = local.y;
+                eyeForward = local.z;
+            }
             XMFLOAT3 center = Add3(eyeBase, OrientedOffset(hRight, hUp, hForward,
                 xOffset * modelXZ, eyeUp * modelY, eyeForward * modelXZ));
             XMFLOAT3 eyeNormal = hForward;
@@ -1344,13 +1351,13 @@
                 eyeNormal = hForward;
                 eyeRight = hRight;
                 eyeUpAxis = hUp;
-                XMFLOAT3 orbCenter = Add3(center, Scale3(eyeNormal, 0.078f * modelXZ));
+                XMFLOAT3 orbCenter = Add3(center, Scale3(eyeNormal, 0.038f * modelXZ));
                 if (monsterEyeWorldCount_ < 2) {
-                    monsterEyeWorld_[static_cast<size_t>(monsterEyeWorldCount_)] = Add3(center, Scale3(eyeNormal, 0.112f * modelXZ));
+                    monsterEyeWorld_[static_cast<size_t>(monsterEyeWorldCount_)] = Add3(center, Scale3(eyeNormal, 0.052f * modelXZ));
                     ++monsterEyeWorldCount_;
                 }
                 AppendDynamicEllipsoid(solidVerts, orbCenter, eyeRight, eyeUpAxis, eyeNormal,
-                    {0.044f * modelXZ, 0.036f * modelY, 0.022f * modelXZ}, 18, 9, 10.72f + variant * 0.025f);
+                    {eyeHalfW * modelXZ, eyeHalfH * modelY, 0.010f * modelXZ}, 14, 7, 10.72f + variant * 0.025f);
             }
             if (!externalSkull && monsterEyeWorldCount_ < 2) {
                 monsterEyeWorld_[static_cast<size_t>(monsterEyeWorldCount_)] = Add3(center, Scale3(eyeNormal, 0.090f * modelXZ));
@@ -1371,8 +1378,13 @@
                 eyeNormal, eyeRight, eyeMaterial);
         };
         if (externalSkull) {
-            appendEye(-0.105f, 0.030f, 0.230f, 0.22f);
-            appendEye(0.105f, 0.030f, 0.230f, 0.38f);
+            if (monsterUsingAltSkull_) {
+                appendEye(settings_.monsterAltRightEyeX, settings_.monsterAltRightEyeY, settings_.monsterAltRightEyeZ, 0.22f);
+                appendEye(settings_.monsterAltLeftEyeX, settings_.monsterAltLeftEyeY, settings_.monsterAltLeftEyeZ, 0.38f);
+            } else {
+                appendEye(settings_.monsterRightEyeX, settings_.monsterRightEyeY, settings_.monsterRightEyeZ, 0.22f);
+                appendEye(settings_.monsterLeftEyeX, settings_.monsterLeftEyeY, settings_.monsterLeftEyeZ, 0.38f);
+            }
         } else {
             appendEye(-0.125f, 0.090f, 0.205f, 0.14f);
             appendEye(0.125f, 0.090f, 0.205f, 0.34f);
@@ -1416,11 +1428,14 @@
         int maxParticles = std::min<int>(static_cast<int>(airParticles_.size()), std::clamp(static_cast<int>(3400.0f * std::clamp(settings_.airParticleDensity, 0.0f, 4.0f)), 0, 11000));
         int emitted = 0;
         XMFLOAT3 worldUp{0.0f, 1.0f, 0.0f};
+        float maxDistSq = maxDist * maxDist;
         for (const AirParticle& p : airParticles_) {
             if (emitted >= maxParticles) break;
             XMFLOAT3 pos = p.pos;
             XMFLOAT3 fromLight = Sub3(pos, lightOrigin);
-            float lightDist = Length3(fromLight);
+            float lightDistSq = Dot3(fromLight, fromLight);
+            if (lightDistSq < 0.09f || lightDistSq > maxDistSq) continue;
+            float lightDist = std::sqrt(lightDistSq);
             if (lightDist < 0.30f || lightDist > maxDist) continue;
             XMFLOAT3 ray = Scale3(fromLight, 1.0f / std::max(0.001f, lightDist));
             float cone = SmoothStep(coneOuter, coneInner, Dot3(ray, lightDir));

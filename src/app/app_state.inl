@@ -56,6 +56,8 @@ struct App {
     ULONGLONG gameMenuLampBurstStart = 0;
     ULONGLONG gameMenuFadeStart = 0;
     int gameMenuPendingCommand = 0;
+    bool gameMenuStartCinematic = false;
+    bool gameSkipNextLoadingOverlay = false;
     bool gameMenuFadeOut = false;
     bool gameMenuFadeIn = true;
     bool firstMouse = true;

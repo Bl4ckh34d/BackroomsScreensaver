@@ -70,6 +70,17 @@ struct OverlayVertex {
     XMFLOAT4 color;
 };
 
+struct StaticIndexChunk {
+    UINT startIndex = 0;
+    UINT indexCount = 0;
+    XMFLOAT3 center{};
+    float radius = 0.0f;
+    int minTileX = 0;
+    int minTileY = 0;
+    int maxTileX = 0;
+    int maxTileY = 0;
+};
+
 enum class RendererRuntimeMode {
     ScreensaverAutopilot,
     MainMenu,
@@ -77,6 +88,11 @@ enum class RendererRuntimeMode {
     DebugViewer,
     Preview
 };
+
+inline bool IsPlayableSimulationMode(RendererRuntimeMode mode) {
+    return mode == RendererRuntimeMode::PlayableGame ||
+        mode == RendererRuntimeMode::ScreensaverAutopilot;
+}
 
 struct GameInputSnapshot {
     float moveX = 0.0f;
@@ -87,6 +103,7 @@ struct GameInputSnapshot {
     bool sprint = false;
     bool crouch = false;
     bool interact = false;
+    bool flashlight = false;
     bool pause = false;
 };
 
@@ -103,6 +120,7 @@ struct SceneConstants {
     XMFLOAT4 ao0;
     XMFLOAT4 post0;
     XMFLOAT4 post1;
+    XMFLOAT4 post2;
     XMFLOAT4 shadow0;
     XMFLOAT4 shadow1;
     XMFLOAT4 shadow2;
@@ -206,6 +224,7 @@ struct WetFloorFootprint {
     XMFLOAT2 forward{0.0f, 1.0f};
     float halfW = 0.0f;
     float halfD = 0.0f;
+    float wetDelaySeconds = 0.0f;
 };
 
 struct PlayerAudibleSoundPulse {
