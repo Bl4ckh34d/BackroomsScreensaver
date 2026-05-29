@@ -263,6 +263,8 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.roomCountRange = std::clamp(ParseConfigInt(state, L"Maze", L"RoomCountRange", s.roomCountRange), 0, 80);
     s.roomMinRadiusRange = std::clamp(ParseConfigInt(state, L"Maze", L"RoomMinRadiusRange", s.roomMinRadiusRange), 0, 12);
     s.roomMaxRadiusRange = std::clamp(ParseConfigInt(state, L"Maze", L"RoomMaxRadiusRange", s.roomMaxRadiusRange), 0, 16);
+    s.extraConnectorMinRatio = std::clamp(ParseConfigFloat(state, L"Maze", L"ExtraConnectorMinRatio", s.extraConnectorMinRatio), 0.0f, 0.20f);
+    s.extraConnectorMaxRatio = std::clamp(ParseConfigFloat(state, L"Maze", L"ExtraConnectorMaxRatio", s.extraConnectorMaxRatio), s.extraConnectorMinRatio, 0.20f);
     s.mazeSeed = static_cast<uint32_t>(std::clamp(ParseConfigInt(state, L"Maze", L"RandomSeed", static_cast<int>(s.mazeSeed)), 0, std::numeric_limits<int>::max()));
     s.mapOverlay = ParseConfigInt(state, L"Maze", L"MapOverlay", s.mapOverlay ? 1 : 0) != 0;
     s.debugAiMapOverlay = ParseConfigInt(state, L"Debug", L"AiMapOverlay", s.debugAiMapOverlay ? 1 : 0) != 0;

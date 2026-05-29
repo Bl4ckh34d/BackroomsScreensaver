@@ -167,6 +167,8 @@ struct Settings {
     int roomCountRange = 1;
     int roomMinRadiusRange = 1;
     int roomMaxRadiusRange = 1;
+    float extraConnectorMinRatio = 0.005f;
+    float extraConnectorMaxRatio = 0.050f;
     uint32_t mazeSeed = 0;
     bool mapOverlay = true;
     bool debugAiMapOverlay = false;
@@ -508,6 +510,9 @@ std::wstring DefaultConfigText() {
       << L"RoomCountRange=1\r\n"
       << L"RoomMinRadiusRange=1\r\n"
       << L"RoomMaxRadiusRange=1\r\n"
+      << L"; Opens this random fraction of eligible interior wall tiles after maze generation.\r\n"
+      << L"ExtraConnectorMinRatio=0.005\r\n"
+      << L"ExtraConnectorMaxRatio=0.05\r\n"
       << L"RandomSeed=0\r\n\r\n"
       << L"MapOverlay=1\r\n\r\n"
       << L"TileWidthMeters=1.6\r\n"
@@ -784,6 +789,8 @@ Settings LoadSettings() {
     s.roomCountRange = std::clamp(IniInt(L"Maze", L"RoomCountRange", s.roomCountRange), 0, 80);
     s.roomMinRadiusRange = std::clamp(IniInt(L"Maze", L"RoomMinRadiusRange", s.roomMinRadiusRange), 0, 12);
     s.roomMaxRadiusRange = std::clamp(IniInt(L"Maze", L"RoomMaxRadiusRange", s.roomMaxRadiusRange), 0, 16);
+    s.extraConnectorMinRatio = std::clamp(IniFloat(L"Maze", L"ExtraConnectorMinRatio", s.extraConnectorMinRatio), 0.0f, 0.20f);
+    s.extraConnectorMaxRatio = std::clamp(IniFloat(L"Maze", L"ExtraConnectorMaxRatio", s.extraConnectorMaxRatio), s.extraConnectorMinRatio, 0.20f);
     s.mazeSeed = static_cast<uint32_t>(std::clamp(IniInt(L"Maze", L"RandomSeed", static_cast<int>(s.mazeSeed)), 0, std::numeric_limits<int>::max()));
     s.mapOverlay = IniInt(L"Maze", L"MapOverlay", s.mapOverlay ? 1 : 0) != 0;
     s.debugAiMapOverlay = IniInt(L"Debug", L"AiMapOverlay", s.debugAiMapOverlay ? 1 : 0) != 0;

@@ -126,6 +126,8 @@ const ConfigFieldDef kConfigFields[] = {
     {1, 1, kConfigFieldBaseId + 113, L"Room Generation", L"Maze", L"RoomCountRange", L"Room count +/-", L"1", ConfigFieldKind::Text, 90},
     {1, 1, kConfigFieldBaseId + 114, L"Room Generation", L"Maze", L"RoomMinRadiusRange", L"Min radius +/-", L"1", ConfigFieldKind::Text, 90},
     {1, 1, kConfigFieldBaseId + 115, L"Room Generation", L"Maze", L"RoomMaxRadiusRange", L"Max radius +/-", L"1", ConfigFieldKind::Text, 90},
+    {1, 1, kConfigFieldBaseId + 180, L"Extra Connectors", L"Maze", L"ExtraConnectorMinRatio", L"Min wall openings", L"0.005", ConfigFieldKind::Text, 90},
+    {1, 1, kConfigFieldBaseId + 181, L"Extra Connectors", L"Maze", L"ExtraConnectorMaxRatio", L"Max wall openings", L"0.05", ConfigFieldKind::Text, 90},
     {1, 0, kConfigFieldBaseId + 49, L"Maze Size", L"Maze", L"RandomSeed", L"Random seed (0=random)", L"0", ConfigFieldKind::Text, 90},
     {1, 0, kConfigFieldBaseId + 128, L"Maze Debug", L"Maze", L"MapOverlay", L"Show map overlay", L"1", ConfigFieldKind::Bool, 0},
     {1, 1, kConfigFieldBaseId + 100, L"Randomization", L"Randomization", L"RunVariation", L"Per-run variation", L"0.1", ConfigFieldKind::Text, 90},

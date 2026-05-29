@@ -634,8 +634,8 @@
             monsterAlertVocalTimer_ = 0.0f;
             nextMonsterGrowlSeconds_ -= dt;
             if (nextMonsterGrowlSeconds_ <= 0.0f) {
-                PlayMonsterAlertGroan(RandRange(0.24f, 0.38f));
-                nextMonsterGrowlSeconds_ = RandRange(4.0f, 16.0f);
+                PlayMonsterAlertGroan(RandRange(0.20f, 0.32f));
+                nextMonsterGrowlSeconds_ = RandRange(12.0f, 36.0f);
             }
             return;
         }
@@ -667,7 +667,7 @@
         PlayMonsterAlertGroan(alertVolume);
         monsterAlertVocalTimer_ = visibleChase
             ? RandRange(1.05f, 2.35f)
-            : RandRange(1.85f, 3.65f);
+            : RandRange(4.0f, 8.5f);
     }
 
     void UpdateVentMonsterGroans(float dt) {
@@ -694,9 +694,9 @@
         float chance = Lerp(0.18f, 0.52f, aroundFourTiles);
         if (RandRange(0.0f, 1.0f) < chance) {
             PlayVentMonsterGroan();
-            ventMonsterGroanCooldown_ = RandRange(8.5f, 19.0f);
+            ventMonsterGroanCooldown_ = RandRange(18.0f, 42.0f);
         }
-        ventMonsterGroanTimer_ = RandRange(3.0f, 8.5f);
+        ventMonsterGroanTimer_ = RandRange(7.0f, 18.0f);
     }
 
     bool AudioRayClear(XMFLOAT3 from, XMFLOAT3 to) const {
@@ -756,10 +756,10 @@
 
     void SetupPersistentAudioEmitters() {
         audio_.StopAll();
-        nextMonsterGrowlSeconds_ = RandRange(4.0f, 16.0f);
+        nextMonsterGrowlSeconds_ = RandRange(12.0f, 36.0f);
         monsterSpottedScreamCooldown_ = 0.0f;
-        ventMonsterGroanTimer_ = RandRange(3.0f, 9.0f);
-        ventMonsterGroanCooldown_ = RandRange(5.0f, 14.0f);
+        ventMonsterGroanTimer_ = RandRange(7.0f, 18.0f);
+        ventMonsterGroanCooldown_ = RandRange(14.0f, 32.0f);
         previousStepAudioPhase_ = stepPhase_;
         exitDoorOpenSoundPlayed_ = false;
         exitDoorCloseCreakSoundPlayed_ = false;

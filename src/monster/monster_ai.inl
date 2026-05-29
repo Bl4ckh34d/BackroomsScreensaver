@@ -663,14 +663,14 @@
                     float impulse = std::pow(std::max(0.0f,
                         std::sin(time_ * Lerp(2.1f, 4.4f, impulseSeed) + monster_.x * 0.41f - monster_.z * 0.23f)), Lerp(2.7f, 7.5f, impulseSeed));
                     float stutter = Lerp(0.58f, 1.78f, impulse);
-                    speed = Lerp(2.20f, 3.65f, proximity) * settings_.monsterSprintSpeed * (0.88f + creepSurge * 0.12f) * stutter;
+                    speed = Lerp(2.40f, 3.98f, proximity) * settings_.monsterSprintSpeed * (0.88f + creepSurge * 0.12f) * stutter;
                 } else if (monsterHasLastKnown_) {
                     float searchSeed = Rand01(mt.x * 23 + mt.y * 71 + static_cast<int>(time_ * 1.4f), 1423, runtimeSeed_);
                     float searchPulse = std::pow(std::max(0.0f,
                         std::sin(time_ * Lerp(1.2f, 3.1f, searchSeed) + monster_.z * 0.35f)), Lerp(2.5f, 6.0f, searchSeed));
-                    speed = 2.10f * settings_.monsterSprintSpeed * Lerp(0.62f, 1.46f, searchPulse) * (0.90f + creepSurge * 0.16f);
+                    speed = 2.24f * settings_.monsterSprintSpeed * Lerp(0.62f, 1.46f, searchPulse) * (0.90f + creepSurge * 0.16f);
                 } else if (monsterHasSound_) {
-                    speed = 2.35f * settings_.monsterSprintSpeed * (0.92f + creepSurge * 0.16f);
+                    speed = 2.48f * settings_.monsterSprintSpeed * (0.92f + creepSurge * 0.16f);
                 } else {
                     float pulseSeed = Rand01(mt.x * 19 + mt.y * 37 + static_cast<int>(monsterPathIndex_) * 11, 1289, runtimeSeed_);
                     float lizardPulse = 0.5f + 0.5f *

@@ -1221,7 +1221,7 @@
         float headLock = std::max(deathHeadLock, liveLock);
         float scanWeight = 1.0f - SmoothStep(0.0f, 1.0f, Clamp01(headLock));
         float headYaw = faceYaw + monsterHeadYawOffset_ * 0.24f * scanWeight +
-            twitch * 0.22f * (1.0f - deathHeadLock * 0.85f) * scanWeight;
+            twitch * 0.32f * (1.0f - deathHeadLock * 0.85f) * scanWeight;
         XMFLOAT3 hRight{std::cos(headYaw), 0.0f, -std::sin(headYaw)};
         XMFLOAT3 hUp = bodyUps[0];
         XMFLOAT3 hForward{std::sin(headYaw), 0.0f, std::cos(headYaw)};
@@ -1274,16 +1274,16 @@
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
         }
         keepHeadOnSurface();
-        if (canTrackPlayer && headLock > 0.70f && visualPlayerLock) {
+        if (canTrackPlayer && headLock > 0.55f && visualPlayerLock) {
             XMFLOAT3 cameraFocus{camera_.x, camera_.y + 0.04f, camera_.z};
             XMFLOAT3 toPlayer = Normalize3(Sub3(cameraFocus, skull), hForward);
-            float centered = SmoothStep(std::cos(5.0f * kPi / 180.0f), std::cos(1.2f * kPi / 180.0f), Dot3(hForward, toPlayer));
-            float rage = centered * SmoothStep(0.70f, 1.0f, headLock);
+            float centered = SmoothStep(std::cos(7.0f * kPi / 180.0f), std::cos(1.2f * kPi / 180.0f), Dot3(hForward, toPlayer));
+            float rage = centered * SmoothStep(0.55f, 1.0f, headLock);
             if (rage > 0.001f) {
-                float yawJitter = (std::sin(time_ * 74.0f + monster_.x * 3.1f) * 0.007f +
-                    std::sin(time_ * 121.0f + monster_.z * 1.7f) * 0.004f) * rage;
-                float pitchJitter = (std::sin(time_ * 91.0f + monster_.z * 2.4f) * 0.006f +
-                    std::sin(time_ * 147.0f + monster_.x * 1.6f) * 0.003f) * rage;
+                float yawJitter = (std::sin(time_ * 74.0f + monster_.x * 3.1f) * 0.012f +
+                    std::sin(time_ * 121.0f + monster_.z * 1.7f) * 0.007f) * rage;
+                float pitchJitter = (std::sin(time_ * 91.0f + monster_.z * 2.4f) * 0.010f +
+                    std::sin(time_ * 147.0f + monster_.x * 1.6f) * 0.005f) * rage;
 
                 hForward = Normalize3(Add3(Scale3(hForward, std::cos(yawJitter)), Scale3(hRight, std::sin(yawJitter))), hForward);
                 hRight = Normalize3(Cross3(hUp, hForward), hRight);
@@ -1291,8 +1291,8 @@
                 hUp = Normalize3(Cross3(hForward, hRight), hUp);
                 hRight = Normalize3(Cross3(hUp, hForward), hRight);
                 hUp = Normalize3(Cross3(hForward, hRight), hUp);
-                skull = Add3(skull, Add3(Scale3(hRight, std::sin(time_ * 137.0f) * 0.010f * rage),
-                    Scale3(hUp, std::sin(time_ * 151.0f + 1.7f) * 0.008f * rage)));
+                skull = Add3(skull, Add3(Scale3(hRight, std::sin(time_ * 137.0f) * 0.016f * rage),
+                    Scale3(hUp, std::sin(time_ * 151.0f + 1.7f) * 0.012f * rage)));
             }
         }
         keepHeadOnSurface();
