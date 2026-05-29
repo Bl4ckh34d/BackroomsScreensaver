@@ -1078,13 +1078,16 @@ float3 ExitSignLight(float3 worldPos, float3 worldN, float materialId)
     {
         float3 L = gExitLight0.xyz - worldPos;
         float d = length(L);
-        if (d > 0.001 && d <= 3.65)
+        float signMaterial = step(6.5, materialId) * (1.0 - step(7.5, materialId));
+        float signReach = lerp(1.18, 3.65, signMaterial);
+        if (d > 0.001 && d <= signReach)
         {
             float visibility = LampRayClear(worldPos.xz + worldN.xz * 0.035, gExitLight0.xz);
             float3 Ln = L / d;
             float diffuse = saturate(dot(worldN, Ln) * 0.72 + 0.28);
-            float falloff = pow(saturate(1.0 - d / 3.65), 2.0) / (1.0 + d * d * 0.62);
-            result += float3(0.045, 0.92, 0.34) * strength * falloff * diffuse * visibility;
+            float falloff = pow(saturate(1.0 - d / signReach), 2.0) / (1.0 + d * d * 0.86);
+            float surfaceSpill = lerp(0.12, 1.0, signMaterial);
+            result += float3(0.045, 0.92, 0.34) * strength * falloff * diffuse * visibility * surfaceSpill;
         }
     }
 
@@ -1092,58 +1095,77 @@ float3 ExitSignLight(float3 worldPos, float3 worldN, float materialId)
     float doorOpen = saturate(gExitLight1.w);
     if (doorStrength > 0.001 && doorOpen > 0.001)
     {
-        float3 L = gExitLight2.xyz - worldPos;
-        float d = length(L);
-        float reach = 18.0;
-        if (d > 0.001 && d <= reach)
-        {
-            float3 Ln = L / d;
-            float diffuse = saturate(dot(worldN, Ln) * 0.56 + 0.52);
             float3 doorDir = normalize(gExitLight1.xyz + float3(0.0001, 0.0, 0.0001));
             float3 doorRight = normalize(float3(doorDir.z, 0.0, -doorDir.x) + float3(0.0001, 0.0, 0.0001));
-            float3 ray = worldPos - gExitLight2.xyz;
-            float denom = dot(ray, doorDir);
-            float planeDist = dot(gExitLight3.xyz - gExitLight2.xyz, doorDir);
-            float hitT = planeDist / max(denom, 0.0001);
-            float3 portalHit = gExitLight2.xyz + ray * hitT;
-            float3 hitLocal = portalHit - gExitLight3.xyz;
-            float hitX = dot(hitLocal, doorRight);
-            float hitY = hitLocal.y;
             float doorHalfW = max(0.12, gExitLight3.w);
-            float doorHalfH = 1.18;
-            float edgeSoft = 0.080;
-            float insideX = smoothstep(doorHalfW + edgeSoft, doorHalfW - edgeSoft, abs(hitX));
-            float insideY = smoothstep(doorHalfH + edgeSoft, doorHalfH - edgeSoft, abs(hitY));
-            float throughPortal = step(0.0, hitT) * step(hitT, 1.0) * step(0.0, denom) * insideX * insideY;
             float axial = dot(worldPos - gExitLight3.xyz, doorDir);
-            float roomSide = smoothstep(-0.08, 0.20, axial);
             float lateral = dot(worldPos - gExitLight3.xyz, doorRight);
-            float nearFrame = 1.0 - smoothstep(0.10, 1.02, axial);
-            float frameGate = lerp(1.0,
-                smoothstep(doorHalfW - 0.035, doorHalfW - 0.120, abs(lateral)),
-                nearFrame);
-            float sideWallReceiver = smoothstep(0.70, 0.96, abs(dot(worldN, doorRight)));
-            float sideWallAperture = lerp(1.0,
-                smoothstep(doorHalfW * 1.45, doorHalfW * 0.18, abs(lateral)),
-                sideWallReceiver);
             float doorPanelMaterial = step(5.5, materialId) * (1.0 - step(6.5, materialId));
             float corridorExtraWidth = lerp(0.28, 1.08, doorPanelMaterial);
             float corridorWidth = smoothstep(doorHalfW + corridorExtraWidth, doorHalfW - 0.02, abs(lateral));
+            float doorHalfH = 1.18;
             float corridorHeight = smoothstep(doorHalfH + 0.38, doorHalfH - 0.18, abs(worldPos.y - doorHalfH));
             float corridorSide = (1.0 - smoothstep(-0.10, 0.08, axial)) * corridorWidth * corridorHeight;
-            float grazing = saturate(dot(worldN, Ln) * 0.45 + 0.62);
-            float falloff = 1.0 / (1.0 + d * d * 0.028);
             float3 warmDaylight = float3(0.91, 0.965, 1.0);
-            float roomReceiver = smoothstep(0.0, 0.28, axial) *
-                smoothstep(doorHalfW * 4.6, doorHalfW * 0.18, abs(lateral)) *
-                smoothstep(3.25, 0.10, abs(worldPos.y - 0.95));
-            float roomWash = roomReceiver * exp(-max(0.0, axial) * 0.090) * (0.34 + 0.66 * saturate(dot(worldN, Ln) * 0.35 + 0.65));
-            result += warmDaylight * doorStrength * falloff * diffuse * grazing * throughPortal * roomSide * frameGate * sideWallAperture * 0.92;
-            result += warmDaylight * doorStrength * falloff * roomWash * doorOpen * 0.18;
-            result += warmDaylight * doorStrength * falloff * (1.12 + diffuse * 0.42) * corridorSide * 2.45;
-        }
+            float floorReceiver = smoothstep(0.42, 0.82, worldN.y);
+            float roomDistance = max(0.0, axial);
+            float beamHalfWidth = lerp(doorHalfW * 0.72, doorHalfW * 3.75, saturate(roomDistance / 4.80));
+            float sideSoft = lerp(0.12, 0.58, saturate(roomDistance / 4.80));
+            float sideMask = smoothstep(beamHalfWidth, beamHalfWidth - sideSoft, abs(lateral));
+            float lengthMask = smoothstep(0.04, 0.38, roomDistance) * (1.0 - smoothstep(5.10, 6.75, roomDistance));
+            float sourceCut = smoothstep(doorHalfW * 1.28, doorHalfW * 0.08, abs(lateral));
+            float floorLane = floorReceiver * sideMask * lengthMask * lerp(sourceCut, 1.0, saturate(roomDistance / 1.25));
+            float floorFalloff = exp(-roomDistance * 0.145);
+            result += warmDaylight * doorStrength * floorLane * floorFalloff * 0.54;
+            float ceilingReceiver = smoothstep(0.42, 0.82, -worldN.y);
+            float verticalReceiver = (1.0 - floorReceiver) * (1.0 - ceilingReceiver);
+            float wallFacing = smoothstep(-0.08, 0.46, max(dot(worldN, -doorDir) * 0.92, abs(dot(worldN, doorRight)) * 0.86));
+            float wallHeight = smoothstep(0.08, 0.34, worldPos.y) * (1.0 - smoothstep(2.74, 3.04, worldPos.y));
+            float wallWidth = smoothstep(doorHalfW * 5.35, doorHalfW * 0.64, abs(lateral));
+            float wallLane = verticalReceiver * wallFacing * wallWidth * smoothstep(0.50, 0.92, roomDistance) *
+                (1.0 - smoothstep(5.20, 6.60, roomDistance)) * wallHeight;
+            result += warmDaylight * doorStrength * wallLane * floorFalloff * 0.315;
+            float roomWash = (floorLane * 0.16 + wallLane * 0.34) * (1.0 - smoothstep(6.0, 8.2, roomDistance));
+            result += warmDaylight * doorStrength * roomWash * 0.145;
+            result += warmDaylight * doorStrength * corridorSide * 0.92;
     }
     return result;
+}
+
+)" R"(
+float DoorRoomSideLightBlock(float3 worldPos, float3 worldN, float materialId)
+{
+    float doorOpen = saturate(gExitLight1.w);
+    float doorStrength = gExitLight2.w * (1.0 - saturate(gTransition0.z));
+    if (doorOpen <= 0.001 || doorStrength <= 0.001)
+    {
+        return 0.0;
+    }
+
+    float3 doorDir = normalize(gExitLight1.xyz + float3(0.0001, 0.0, 0.0001));
+    float3 doorRight = normalize(float3(doorDir.z, 0.0, -doorDir.x) + float3(0.0001, 0.0, 0.0001));
+    float3 rel = worldPos - gExitLight3.xyz;
+    float axial = dot(rel, doorDir);
+    float lateral = dot(rel, doorRight);
+    float doorHalfW = max(0.12, gExitLight3.w);
+
+    float floorReceiver = smoothstep(0.42, 0.82, worldN.y);
+    float ceilingReceiver = smoothstep(0.42, 0.82, -worldN.y);
+    float verticalSurface = (1.0 - floorReceiver) * (1.0 - ceilingReceiver);
+    float roomSideWall = verticalSurface * smoothstep(0.52, 0.84, dot(worldN, doorDir));
+    float nearWallPlane = smoothstep(0.26, 0.02, abs(axial));
+    float aroundDoor = smoothstep(doorHalfW * 3.60, doorHalfW * 0.30, abs(lateral));
+    float heightGate = smoothstep(0.02, 0.22, worldPos.y) * (1.0 - smoothstep(2.62, 2.88, worldPos.y));
+    float wallBlock = roomSideWall * nearWallPlane * aroundDoor * heightGate;
+
+    float doorFrameMaterial = step(9.5, materialId) * (1.0 - step(10.5, materialId));
+    float frameBlock = doorFrameMaterial *
+        smoothstep(doorHalfW * 3.10, doorHalfW * 0.10, abs(lateral)) *
+        smoothstep(0.62, 0.02, abs(axial)) *
+        smoothstep(-0.08, 0.18, worldPos.y) *
+        (1.0 - smoothstep(2.78, 3.04, worldPos.y));
+
+    return saturate(doorOpen * max(wallBlock, frameBlock));
 }
 
 float3 ApplyPost(float3 color)
@@ -2942,9 +2964,9 @@ float4 PSMain(VSOut input) : SV_TARGET
         float streak = smoothstep(1.02, 0.16, abs(p.x + (haze - 0.5) * 0.34));
         float dist = length(input.worldPos - cam);
         float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.22), 1.12);
-        float alpha = edge * lerp(0.045, 0.18, strength) * (0.54 + streak * 0.44) * fogVisibility;
+        float alpha = edge * lerp(0.058, 0.24, strength) * (0.54 + streak * 0.44) * fogVisibility;
         if (alpha < 0.008) discard;
-        float3 color = float3(0.88, 0.95, 1.0) * (4.2 + strength * 9.2) * (0.76 + haze * 0.30);
+        float3 color = float3(0.88, 0.95, 1.0) * (4.8 + strength * 11.0) * (0.76 + haze * 0.30);
         return float4(saturate(ApplyPost(color) + color * 0.20), saturate(alpha));
     }
 
@@ -3186,6 +3208,8 @@ float4 PSMain(VSOut input) : SV_TARGET
     float sparkLight = SparkLight(input.worldPos, worldN);
     float monsterEyeLight = MonsterEyeLight(input.worldPos, worldN);
     float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
+    float doorLightBlock = DoorRoomSideLightBlock(input.worldPos, N, materialId);
+    exitGreen *= (1.0 - doorLightBlock);
     float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
 
     float fixture = FixturePower(input.worldPos, time);
@@ -3201,6 +3225,7 @@ float4 PSMain(VSOut input) : SV_TARGET
     }
     float3 color = base.rgb * (ambient + overhead + flashlight + sparkLight) * lerp(0.58, 1.0, aoMap);
     color += base.rgb * exitGreen * lerp(0.58, 1.0, aoMap);
+    color = lerp(color, min(color, base.rgb * (ambient + overhead * 0.18 + flashlight * 0.10 + sparkLight * 0.12) * lerp(0.58, 1.0, aoMap)), doorLightBlock);
     color += float3(1.0, 0.025, 0.012) * monsterEyeLight * lerp(0.72, 1.22, aoMap);
     float3 toLight = normalize(gShadow0.xyz - input.worldPos);
     float specFacing = saturate(dot(reflect(-toLight, worldN), V));
@@ -3212,7 +3237,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         surfaceSpec += (pow(specFacing, 120.0) * 0.34 + fresnel * 0.11) * (flashlight + sparkLight * 0.45 + monsterEyeLight * 0.62);
         color += base.rgb * (flashlight * 0.22 + monsterEyeLight * 0.075);
     }
-    color += float3(1.0, 0.92, 0.78) * surfaceSpec;
+    color += float3(1.0, 0.92, 0.78) * surfaceSpec * (1.0 - doorLightBlock);
+    color = lerp(color, min(color, base.rgb * (ambient + overhead * 0.14 + flashlight * 0.08 + sparkLight * 0.08) * lerp(0.58, 1.0, aoMap)), doorLightBlock);
     if (materialId > 1.5 && materialId < 2.5)
     {
         color += base.rgb * 0.035 * saturate(gLighting0.z * 12.0) * (1.0 - saturate(gTransition0.z));

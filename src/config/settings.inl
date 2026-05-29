@@ -324,7 +324,7 @@ struct Settings {
     std::wstring monsterSkullMesh = L"assets\\models\\monster_face_mask\\horror_mask.obj";
     std::wstring monsterAltSkullMesh = L"";
     float monsterAltSkullChance = 0.0f;
-    int monsterSkullMaxTriangles = 65000;
+    int monsterSkullMaxTriangles = 16000;
     float monsterSkullYawDegrees = 0.0f;
     float monsterSkullPitchDegrees = 0.0f;
     float monsterSkullRollDegrees = 0.0f;
@@ -678,7 +678,7 @@ std::wstring DefaultConfigText() {
       << L"SkullMesh=assets\\models\\monster_face_mask\\horror_mask.obj\r\n"
       << L"AlternateSkullMesh=\r\n"
       << L"AlternateSkullChance=0\r\n"
-      << L"SkullMaxTriangles=65000\r\n"
+      << L"SkullMaxTriangles=16000\r\n"
       << L"SkullYawDegrees=0\r\n"
       << L"SkullPitchDegrees=0\r\n"
       << L"SkullRollDegrees=0\r\n"
@@ -973,7 +973,7 @@ Settings LoadSettings() {
         });
         if (loweredSkull.find(L"horror_mask") != std::wstring::npos ||
             loweredSkull.find(L"monster_face_mask") != std::wstring::npos) {
-            s.monsterSkullMaxTriangles = std::max(s.monsterSkullMaxTriangles, 65000);
+            s.monsterSkullMaxTriangles = std::max(s.monsterSkullMaxTriangles, 16000);
         }
     }
     if (s.monsterAltSkullMesh.empty()) {

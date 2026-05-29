@@ -254,7 +254,12 @@
                 Rand01(lamp.tile.x * 19 + 17, lamp.tile.y * 29 + 31, runtimeSeed_ ^ 0xA04D10u));
             float damageLift = Lerp(0.94f, 1.10f, Clamp01(lamp.damage));
             float volume = baseVolume * lampVariation * damageLift;
-            audio_.StartLoopTagged(hum, AudioBus::Ambience, lamp.pos, volume, true, tag, AudioOcclusionFor(lamp.pos));
+            uint32_t tx = static_cast<uint32_t>(lamp.tile.x + 4096);
+            uint32_t ty = static_cast<uint32_t>(lamp.tile.y + 4096);
+            uint32_t stableHumId = runtimeSeed_ ^ (tx * 73856093u) ^ (ty * 19349663u) ^
+                (static_cast<uint32_t>(lamp.humVariant + 17) * 83492791u);
+            size_t humSample = audio_.PickStableSample(hum, stableHumId);
+            audio_.StartLoopTaggedSample(hum, humSample, AudioBus::Ambience, lamp.pos, volume, true, tag, AudioOcclusionFor(lamp.pos));
         }
     }
 
@@ -356,6 +361,10 @@
 
     float LightBulbBreakHearingRadius() const {
         return TileHearingRadius(20.0f);
+    }
+
+    float FlashlightClickHearingRadius() const {
+        return std::max(0.55f, maze_.TileMinimum() * 0.62f);
     }
 
     float AirVentHearingRadius() const {

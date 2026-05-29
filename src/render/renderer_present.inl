@@ -126,7 +126,7 @@
         };
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
             float menuDoorAmbient = SmoothStep(0.04f, 0.78f, exitDoorAngle_ / 1.38f);
-            cb.lighting0.z = Lerp(0.012f, 0.105f, menuDoorAmbient);
+            cb.lighting0.z = Lerp(0.012f, 0.235f, menuDoorAmbient);
         }
         if (monsterPreview_) {
             cb.lighting0.y = 0.030f;
@@ -188,6 +188,12 @@
             std::clamp(settings_.bloomAmount, 0.0f, 2.0f),
             std::clamp(settings_.lensDirtAmount, 0.0f, 2.0f)
         };
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            float menuDoorGlow = SmoothStep(0.08f, 0.82f, exitDoorAngle_ / 1.38f);
+            cb.post0.x = Lerp(cb.post0.x, std::max(cb.post0.x, 1.12f), menuDoorGlow);
+            cb.post1.z = Lerp(cb.post1.z, std::max(cb.post1.z, 0.62f), menuDoorGlow);
+            cb.post1.w = Lerp(cb.post1.w, std::max(cb.post1.w, 0.32f), menuDoorGlow);
+        }
         float visionFlashT = visionFlashDuration_ > 0.001f ? Clamp01(visionFlashTimer_ / visionFlashDuration_) : 0.0f;
         cb.post2 = {
             visionFlashT * visionFlashT,
@@ -391,13 +397,13 @@
             exitDoorOpen = SmoothStep(0.08f, 0.92f, rawDoorOpen);
             float doorwayLightOpen = SmoothStep(0.12f, 0.90f, rawDoorOpen);
             doorwayLightOpen *= doorwayLightOpen;
-            XMFLOAT3 stairSource = Scale3(exitDoorNormal_, -1.85f);
+            XMFLOAT3 stairSource = Scale3(exitDoorNormal_, -2.65f);
             doorwayLightPos = Add3(exitDoorCenter_, stairSource);
-            doorwayLightPos.y = exitDoorCenter_.y + 3.45f;
-            doorwayLightStrength = doorwayLightOpen * 29.0f;
-            exitLightDir = Normalize3(Add3(exitDoorNormal_, {0.0f, -0.36f, 0.0f}), exitDoorNormal_);
+            doorwayLightPos.y = exitDoorCenter_.y + 4.35f;
+            doorwayLightStrength = doorwayLightOpen * 15.0f;
+            exitLightDir = Normalize3(exitDoorNormal_, exitDoorNormal_);
             doorwayPortalPos = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.04f));
-            doorwayPortalHalfWidth = 0.62f;
+            doorwayPortalHalfWidth = 0.56f;
         }
         cb.exitLight0 = {
             exitLightPos.x,

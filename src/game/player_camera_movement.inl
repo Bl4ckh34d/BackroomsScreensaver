@@ -725,7 +725,7 @@
     void AdvanceStepPhase(float metersMoved, float speedMetersPerSecond) {
         if (metersMoved <= 0.0001f || speedMetersPerSecond <= 0.0001f) return;
         float runBlend = Clamp01((speedMetersPerSecond - settings_.walkSpeed) / std::max(0.1f, settings_.runSpeed - settings_.walkSpeed));
-        float strideMeters = Lerp(1.42f, 1.16f, SmoothStep(0.0f, 1.0f, runBlend));
+        float strideMeters = Lerp(1.42f, 1.34f, SmoothStep(0.0f, 1.0f, runBlend));
         stepPhase_ += metersMoved * (kPi / std::max(0.25f, strideMeters));
         if (stepPhase_ > kPi * 128.0f) {
             stepPhase_ = std::fmod(stepPhase_, kPi * 2.0f);
@@ -3009,7 +3009,7 @@
         }
         float walkSpeed = settings_.walkSpeed;
         float sprintSpeed = std::max(settings_.runSpeed, walkSpeed * 1.35f);
-        float jogSpeed = std::max(walkSpeed * 1.16f, sprintSpeed * 0.58f);
+        float jogSpeed = Lerp(walkSpeed, sprintSpeed, 0.55f);
         constexpr float kJogStamina = 100.0f / 3.0f;
         constexpr float kSprintResumeStamina = 100.0f / 6.0f;
         constexpr float kExhaustedStamina = 5.0f;
@@ -3064,9 +3064,9 @@
 
         float moveBlend = Clamp01(smoothedMoveSpeed_ / std::max(0.1f, sprintSpeed));
         float runBlend = Clamp01((smoothedMoveSpeed_ - walkSpeed) / std::max(0.1f, sprintSpeed - walkSpeed));
-        float jogBlend = staminaJog ? std::min(0.50f, std::max(0.30f, runBlend)) : runBlend;
+        float jogBlend = staminaJog ? std::min(0.62f, std::max(0.40f, runBlend)) : runBlend;
         float sprintMotionTarget = wantsSprint ? (staminaJog ? jogBlend : runBlend) : moveBlend * 0.45f;
-        float sprintEffortTarget = wantsSprint ? (staminaJog ? 0.42f : runBlend) : 0.0f;
+        float sprintEffortTarget = wantsSprint ? (staminaJog ? 0.52f : runBlend) : 0.0f;
         runIntensity_ += (sprintMotionTarget - runIntensity_) *
             std::min(1.0f, dt * (wantsSprint ? 3.2f : 2.6f));
         runEffort_ += (sprintEffortTarget - runEffort_) *

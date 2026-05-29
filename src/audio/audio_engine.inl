@@ -124,7 +124,7 @@ public:
         AddFolder(settings, GameSound::MonsterGrowl, L"assets\\sounds\\monster_growls");
         AddFolder(settings, GameSound::MonsterSpottedScream, L"assets\\sounds\\monster_spotted_scream");
         AddFolder(settings, GameSound::ElectricCrackle, L"assets\\sounds\\electric_crackling");
-        AddFolder(settings, GameSound::NeonFlickerStarterClick, L"assets\\sounds\\Still_In_Works\\neon_light_flicker_start");
+        AddFolder(settings, GameSound::NeonFlickerStarterClick, L"assets\\sounds\\neon_light_flicker_start");
         AddFolder(settings, GameSound::AirVentDustPuff, L"assets\\sounds\\air_vent_dust_air_puff");
         AddFolder(settings, GameSound::WetCarpetCeilingDrip, L"assets\\sounds\\wet_carpet_ceiling_drips", L"muted_cardboard_drip_tap_*.wav");
         AddFolder(settings, GameSound::DoorOpenCreak, L"assets\\sounds\\door_open_creak");
@@ -216,6 +216,13 @@ public:
         StartVoice(sound, sampleIndex, bus, pos, volume, true, spatial, 1.0f, tag, initialOcclusion);
     }
 
+    void StartLoopTaggedSample(GameSound sound, size_t sampleIndex, AudioBus bus, XMFLOAT3 pos, float volume,
+                               bool spatial, int tag, float initialOcclusion = 0.0f) {
+        if (tag >= 0 && HasTaggedVoice(tag)) return;
+        if (sampleIndex == kInvalidSample) return;
+        StartVoice(sound, sampleIndex, bus, pos, volume, true, spatial, 1.0f, tag, initialOcclusion);
+    }
+
     bool HasTaggedVoice(int tag) const {
         if (tag < 0) return false;
         return std::any_of(voices_.begin(), voices_.end(), [tag](const AudioVoiceInstance& instance) {
@@ -237,6 +244,13 @@ public:
 
     size_t PickRandomSample(GameSound sound) {
         return PickSample(sound);
+    }
+
+    size_t PickStableSample(GameSound sound, uint32_t stableId) const {
+        if (!initialized_) return kInvalidSample;
+        const std::vector<size_t>& group = groups_[static_cast<size_t>(sound)];
+        if (group.empty()) return kInvalidSample;
+        return group[static_cast<size_t>(stableId) % group.size()];
     }
 
     size_t PickRandomSampleExcept(GameSound sound, size_t excludedSampleIndex) {
@@ -301,15 +315,23 @@ private:
         std::filesystem::path query = root / pattern;
         HANDLE find = FindFirstFileW(query.c_str(), &data);
         if (find == INVALID_HANDLE_VALUE) return;
+        std::vector<std::filesystem::path> paths;
         do {
             if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) continue;
+            paths.push_back(root / data.cFileName);
+        } while (FindNextFileW(find, &data));
+        FindClose(find);
+
+        std::sort(paths.begin(), paths.end(), [](const std::filesystem::path& a, const std::filesystem::path& b) {
+            return a.filename().wstring() < b.filename().wstring();
+        });
+        for (const std::filesystem::path& path : paths) {
             AudioSample sample{};
-            if (LoadWav(root / data.cFileName, sample)) {
+            if (LoadWav(path, sample)) {
                 groups_[static_cast<size_t>(sound)].push_back(samples_.size());
                 samples_.push_back(std::move(sample));
             }
-        } while (FindNextFileW(find, &data));
-        FindClose(find);
+        }
     }
 
     bool LoadWav(const std::filesystem::path& path, AudioSample& out) const {
@@ -410,6 +432,10 @@ private:
         buffer.AudioBytes = static_cast<UINT32>(sample.data.size());
         buffer.pAudioData = sample.data.data();
         buffer.Flags = loop ? 0 : XAUDIO2_END_OF_STREAM;
+        buffer.PlayBegin = 0;
+        buffer.PlayLength = 0;
+        buffer.LoopBegin = 0;
+        buffer.LoopLength = 0;
         buffer.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
         hr = voice->SubmitSourceBuffer(&buffer);
         if (FAILED(hr)) {

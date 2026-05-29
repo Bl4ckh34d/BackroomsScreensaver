@@ -227,30 +227,26 @@
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
         XMFLOAT3 right = Normalize3(exitDoorRight_, {1.0f, 0.0f, 0.0f});
         XMFLOAT3 inward = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
-        XMFLOAT3 behind = Scale3(inward, -1.0f);
-        XMFLOAT3 start = Add3(exitDoorCenter_, Add3(Scale3(behind, 0.12f), {0.0f, 0.12f, 0.0f}));
-        XMFLOAT3 room = Add3(exitDoorCenter_, Add3(Scale3(behind, 2.18f), {0.0f, 1.22f, 0.0f}));
-        float openMat = 19.66f + openT * 0.26f;
+        float openMat = 19.58f + openT * 0.18f;
 
-        XMFLOAT3 nearSide = Scale3(right, 0.56f);
-        XMFLOAT3 farSide = Scale3(right, 0.86f);
-        XMFLOAT3 nearUp = Scale3(up, 1.08f);
-        XMFLOAT3 farUp = Scale3(up, 0.94f);
-        XMFLOAT3 centerYNear = Add3(start, {0.0f, 1.16f, 0.0f});
-        XMFLOAT3 centerYFar = Add3(room, {0.0f, 1.70f, 0.0f});
-
+        XMFLOAT3 aperture = Add3(exitDoorCenter_, Add3(Scale3(inward, 0.66f), {0.0f, -0.46f, 0.0f}));
+        XMFLOAT3 floorHit = Add3(exitDoorCenter_, Add3(Scale3(inward, 2.95f), {0.0f, -0.92f, 0.0f}));
+        XMFLOAT3 farDust = Add3(exitDoorCenter_, Add3(Scale3(inward, 3.90f), {0.0f, -0.72f, 0.0f}));
+        XMFLOAT3 nearSide = Scale3(right, 0.38f);
+        XMFLOAT3 floorSide = Scale3(right, 1.46f);
+        XMFLOAT3 dustSide = Scale3(right, 0.86f);
         AppendDynamicQuadUV(transparentVerts,
-            Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), Scale3(nearUp, -1.0f))),
-            Add3(centerYNear, Add3(nearSide, Scale3(nearUp, -1.0f))),
-            Add3(centerYNear, Add3(nearSide, nearUp)),
-            Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), nearUp)),
-            inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.035f);
+            Add3(aperture, Scale3(nearSide, -1.0f)),
+            Add3(aperture, nearSide),
+            Add3(floorHit, floorSide),
+            Add3(floorHit, Scale3(floorSide, -1.0f)),
+            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.035f);
         AppendDynamicQuadUV(transparentVerts,
-            Add3(centerYNear, Add3(Scale3(nearSide, -0.72f), Scale3(up, 0.10f))),
-            Add3(centerYNear, Add3(Scale3(nearSide, 0.72f), Scale3(up, 0.10f))),
-            Add3(centerYFar, Add3(Scale3(farSide, 1.0f), Scale3(farUp, -0.30f))),
-            Add3(centerYFar, Add3(Scale3(farSide, -1.0f), Scale3(farUp, -0.30f))),
-            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.026f);
+            Add3(aperture, Add3(Scale3(dustSide, -0.72f), Scale3(up, -0.06f))),
+            Add3(aperture, Add3(Scale3(dustSide, 0.72f), Scale3(up, -0.06f))),
+            Add3(farDust, Add3(Scale3(dustSide, 1.0f), Scale3(up, 0.10f))),
+            Add3(farDust, Add3(Scale3(dustSide, -1.0f), Scale3(up, 0.10f))),
+            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.050f);
     }
 
     void AppendMenuButtonPlaques(std::vector<Vertex>& verts, std::vector<Vertex>& transparentVerts) {

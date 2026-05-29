@@ -14,7 +14,8 @@
             bool flashlightPressed = gameInput_.flashlight;
             if (flashlightPressed && !previousFlashlightInput_) {
                 flashlightEnabled_ = !flashlightEnabled_;
-                audio_.PlayRandom(GameSound::FlashlightStutter, AudioBus::Effects, camera_, 0.82f, false);
+                audio_.PlayRandom(GameSound::FlashlightStutter, AudioBus::Effects, camera_, 0.41f, false);
+                EmitPlayerAudibleSoundAtCamera(FlashlightClickHearingRadius(), 0.62f);
             }
             previousFlashlightInput_ = flashlightPressed;
         } else {

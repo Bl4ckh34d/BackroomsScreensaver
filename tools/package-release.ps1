@@ -56,7 +56,7 @@ function Set-IniValue {
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$Section,
         [Parameter(Mandatory = $true)][string]$Key,
-        [Parameter(Mandatory = $true)][string]$Value
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value
     )
 
     [BackroomsMazeIniNative]::WritePrivateProfileString($Section, $Key, $Value, $Path) | Out-Null
@@ -224,8 +224,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $runtimeFiles = @(
-    "assets\White-Tailed Deer Skull.obj",
-    "assets\models\Ram_Skull\Ram_Skull_Scan.OBJ",
     "assets\PBRs\backrooms_wall_color_4k.jpg",
     "assets\PBRs\backrooms_wall_height_4k.png",
     "assets\PBRs\backrooms_wall_normal_directx_4k.png",
@@ -244,6 +242,11 @@ $runtimeFiles = @(
     "assets\PBRs\downloads\Others001_4k\others_0001_normal_directx_4k.png",
     "assets\PBRs\downloads\Others001_4k\others_0001_roughness_4k.jpg",
     "assets\PBRs\downloads\t_flashlightpattern.png",
+    "assets\models\monster_face_mask\horror_mask.obj",
+    "assets\models\monster_face_mask\horror_mask.mtl",
+    "assets\models\monster_face_mask\horror_mask_baseColor.png",
+    "assets\models\monster_face_mask\horror_mask_normal.png",
+    "assets\models\monster_face_mask\horror_mask_metallicRoughness.png",
     "assets\models\runtime\office_chair_modern.brmesh",
     "assets\models\runtime\office_chair_classic.brmesh",
     "assets\models\runtime\office_chair_task.brmesh",
@@ -439,20 +442,16 @@ try {
     if (-not $SkipSelfTest) {
         Invoke-StageSelfTest -ExePath $stageTestExe -WorkingDirectory $stageDir -FailureMessage "Packaged self-test failed"
     }
+    Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMesh" -Value "assets\models\monster_face_mask\horror_mask.obj"
+    Set-IniValue -Path $stageIni -Section "Monster" -Key "AlternateSkullMesh" -Value ""
+    Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMaxTriangles" -Value "16000"
     New-PackagedSkullMesh `
         -StagePath $stageDir `
         -StageExe $stageTestExe `
         -StageIni $stageIni `
         -SourceCache $sourceCache `
-        -OutputRelativePath "assets\models\runtime\deer_skull_mesh.bin" `
+        -OutputRelativePath "assets\models\runtime\monster_mask_mesh.bin" `
         -AltChance "0"
-    New-PackagedSkullMesh `
-        -StagePath $stageDir `
-        -StageExe $stageTestExe `
-        -StageIni $stageIni `
-        -SourceCache $sourceCache `
-        -OutputRelativePath "assets\models\runtime\ram_skull_mesh.bin" `
-        -AltChance "1"
     Copy-CacheFiles -SourceCache $sourceCache -StagePath $stageDir
 }
 finally {
@@ -464,12 +463,16 @@ finally {
     [System.IO.File]::WriteAllText($stageIni, $originalStageIni, $ascii)
 }
 
-Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMesh" -Value "assets\models\runtime\deer_skull_mesh.bin"
-Set-IniValue -Path $stageIni -Section "Monster" -Key "AlternateSkullMesh" -Value "assets\models\runtime\ram_skull_mesh.bin"
+Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMesh" -Value "assets\models\runtime\monster_mask_mesh.bin"
+Set-IniValue -Path $stageIni -Section "Monster" -Key "AlternateSkullMesh" -Value ""
+Set-IniValue -Path $stageIni -Section "Monster" -Key "AlternateSkullChance" -Value "0"
+Set-IniValue -Path $stageIni -Section "Monster" -Key "SkullMaxTriangles" -Value "16000"
 
 foreach ($rawMesh in @(
     "assets\White-Tailed Deer Skull.obj",
-    "assets\models\Ram_Skull\Ram_Skull_Scan.OBJ"
+    "assets\models\Ram_Skull\Ram_Skull_Scan.OBJ",
+    "assets\models\monster_face_mask\horror_mask.obj",
+    "assets\models\monster_face_mask\horror_mask.mtl"
 )) {
     $rawMeshPath = Join-Path $stageDir $rawMesh
     if (Test-Path -LiteralPath $rawMeshPath -PathType Leaf) {
