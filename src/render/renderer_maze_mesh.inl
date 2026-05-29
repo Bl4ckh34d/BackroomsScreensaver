@@ -125,7 +125,8 @@
                               const StaticPropMesh& mesh, XMFLOAT3 origin, float yaw,
                               float scaleX, float scaleY, float scaleZ,
                               float pitch = 0.0f, float materialOverride = -1.0f,
-                              std::vector<uint32_t>* shadowIndices = nullptr) const {
+                              std::vector<uint32_t>* shadowIndices = nullptr,
+                              float materialVariant = 0.0f) const {
         if (mesh.vertices.empty()) return false;
         if (vertices.size() + mesh.vertices.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) return false;
 
@@ -172,7 +173,12 @@
             XMFLOAT3 tangent = Normalize3(Add3(Scale3(right, src.tangent.x * scaleX),
                 Add3(Scale3(up, src.tangent.y * scaleY), Scale3(forward, src.tangent.z * scaleZ))), right);
             XMFLOAT2 uv = mesh.generatedUvFallback ? generatedUv(src) : src.uv;
-            vertices.push_back({pos, normal, tangent, uv, materialOverride >= 0.0f ? materialOverride : src.material});
+            float outMaterial = materialOverride >= 0.0f ? materialOverride : src.material;
+            int materialId = std::clamp(static_cast<int>(std::floor(outMaterial)), 0, kMaterialCount - 1);
+            if (materialOverride < 0.0f && materialId == 22) {
+                outMaterial = 22.020f + std::fmod(std::abs(materialVariant), 0.92f);
+            }
+            vertices.push_back({pos, normal, tangent, uv, outMaterial});
         }
         for (uint32_t n = 0; n < static_cast<uint32_t>(mesh.vertices.size()); ++n) {
             uint32_t idx = base + n;
@@ -186,7 +192,8 @@
                                       const StaticPropMesh& mesh, XMFLOAT3 floorCenter, float yaw,
                                       float scaleX, float scaleY, float scaleZ,
                                       float pitch = 0.0f, float materialOverride = -1.0f,
-                                      std::vector<uint32_t>* shadowIndices = nullptr) const {
+                                      std::vector<uint32_t>* shadowIndices = nullptr,
+                                      float materialVariant = 0.0f) const {
         if (mesh.vertices.empty()) return false;
 
         float c = std::cos(yaw);
@@ -205,7 +212,7 @@
             minY = std::min(minY, y);
         }
         XMFLOAT3 origin{floorCenter.x, floorCenter.y - minY, floorCenter.z};
-        return AppendStaticPropMesh(vertices, indices, mesh, origin, yaw, scaleX, scaleY, scaleZ, pitch, materialOverride, shadowIndices);
+        return AppendStaticPropMesh(vertices, indices, mesh, origin, yaw, scaleX, scaleY, scaleZ, pitch, materialOverride, shadowIndices, materialVariant);
     }
 
     XMFLOAT2 FloorUv(float x, float z) const {
@@ -332,6 +339,12 @@
         propLookPoints_.clear();
         sparkEmitters_.clear();
         runtimeLamps_.clear();
+        staticOpaqueChunks_.clear();
+        staticFloorCeilingChunks_.clear();
+        staticWaterChunks_.clear();
+        staticTransparentChunks_.clear();
+        mapOverlayCachedVerts_.clear();
+        mapOverlayNextUpdateTime_ = 0.0f;
         lampDamagePixels_.assign(static_cast<size_t>(std::max(0, maze_.w * maze_.h)), 0);
         wetFootstepTiles_.assign(static_cast<size_t>(std::max(0, maze_.w * maze_.h)), 0);
         wetCeilingTiles_.assign(static_cast<size_t>(std::max(0, maze_.w * maze_.h)), 0);
@@ -520,7 +533,7 @@
                     float d1 = static_cast<float>(i + 1) * stepDepth;
                     float y0 = static_cast<float>(i) * stepRise;
                     float y1 = static_cast<float>(i + 1) * stepRise;
-                    float stairMaterial = i < 4 ? 22.0f : 23.0f;
+                    float stairMaterial = 1.0f;
                     AddQuadUV(vertices, indices,
                         p(-vestibuleHalf, y0, d0), p(vestibuleHalf, y0, d0), p(vestibuleHalf, y0, d1), p(-vestibuleHalf, y0, d1),
                         {0, 1, 0}, exitPortal.right,
@@ -533,7 +546,7 @@
                         p(vestibuleHalf, y0, d1), p(-vestibuleHalf, y0, d1), p(-vestibuleHalf, y1, d1), p(vestibuleHalf, y1, d1),
                         Scale3(outward, -1.0f), Scale3(exitPortal.right, -1.0f),
                         {0, 0}, {1, 0}, {1, stepRise / settings_.wallTextureMeters}, {0, stepRise / settings_.wallTextureMeters},
-                        22.0f);
+                        0.0f);
                 }
                 auto addStairSide = [&](float side) {
                     XMFLOAT3 normal = Scale3(exitPortal.right, -side);
@@ -555,12 +568,12 @@
                     c0, c1, c2, c3,
                     {0, -1, 0}, exitPortal.right,
                     CeilingUv(c0.x, c0.z), CeilingUv(c1.x, c1.z), CeilingUv(c2.x, c2.z), CeilingUv(c3.x, c3.z),
-                    23.0f);
+                    2.0f);
                 AddQuadUV(vertices, indices,
                     p(vestibuleHalf, totalRise, vestibuleLength), p(-vestibuleHalf, totalRise, vestibuleLength),
                     p(-vestibuleHalf, vestibuleH + totalRise * 0.78f, vestibuleLength), p(vestibuleHalf, vestibuleH + totalRise * 0.78f, vestibuleLength),
                     Scale3(outward, -1.0f), Scale3(exitPortal.right, -1.0f),
-                    {0, 0}, {1, 0}, {1, 1}, {0, 1}, 10.0f);
+                    {0, 0}, {1, 0}, {1, 1}, {0, 1}, 0.0f);
                 return;
             }
 
@@ -941,8 +954,9 @@
             if (!reserveRealisticFloorFootprint(px, pz, waitingChair ? 1.02f : 1.05f, waitingChair ? 0.96f : 1.02f,
                     placeYaw, 0.075f, LampHash(c.x + 2.3f, c.z - 1.7f))) return false;
             float scale = waitingChair ? 1.04f : 1.10f;
+            float fabricVariant = LampHash(px + placeYaw * 1.7f + (waitingChair ? 0.31f : 0.73f), pz - placeYaw * 0.9f);
             AppendStaticPropMeshGrounded(vertices, indices, *chairMesh, {px, 0.0f, pz}, placeYaw, scale, scale, scale,
-                0.0f, -1.0f, &propShadowIndices);
+                0.0f, -1.0f, &propShadowIndices, fabricVariant);
             addBakedPropShadow(px, pz, waitingChair ? 0.88f : 0.94f, waitingChair ? 0.82f : 0.90f,
                 waitingChair ? 0.96f : 1.05f, placeYaw, LampHash(px + 5.1f, pz - 2.8f));
             propLookPoints_.push_back({px, 0.72f, pz});
@@ -1111,7 +1125,7 @@
             float scale = waitingChair ? 1.02f : 1.08f;
             float pitch = seed < 0.5f ? kPi * 0.5f : -kPi * 0.5f;
             AppendStaticPropMeshGrounded(vertices, indices, *chairMesh, {px, 0.0f, pz}, yaw, scale, scale, scale, pitch,
-                -1.0f, &propShadowIndices);
+                -1.0f, &propShadowIndices, seed);
             addBakedPropShadow(px, pz, waitingChair ? 1.10f : 1.18f, waitingChair ? 1.26f : 1.34f,
                 0.46f, yaw, seed);
             propLookPoints_.push_back({px, 0.22f, pz});
@@ -1721,7 +1735,7 @@
         float paperHallwayChance = std::min(1.0f, 0.13f * hallwayPaperDensity);
         float ventChance = gEffectDebugViewer && gDebugSliceEffect == DebugSliceEffect::AirVents ? 1.0f : 0.026f;
         float waterDamageChance = 0.0f;
-        float waterLikeDamageChance = std::min(1.0f, 0.010f * std::clamp(settings_.waterDamageDensity, 0.0f, 4.0f));
+        float waterLikeDamageChance = std::min(1.0f, 0.003f * std::clamp(settings_.waterDamageDensity, 0.0f, 4.0f));
 
         auto waterMaterial = [](float seed, float bandStart, float bandWidth) {
             float h = std::fmod(std::abs(seed) * 37.719f + 0.137f, 1.0f);
@@ -2542,6 +2556,19 @@
             };
             auto bloodTileKey = [&](Tile tile) {
                 return tile.y * std::max(1, maze_.w) + tile.x;
+            };
+            std::unordered_set<int> waterDamageTiles;
+            auto waterDamageTileBlocked = [&](Tile tile) {
+                return !gEffectDebugViewer &&
+                    waterDamageTiles.find(bloodTileKey(tile)) != waterDamageTiles.end();
+            };
+            auto reserveWaterDamageTile = [&](Tile tile) {
+                if (maze_.IsOpen(tile.x, tile.y)) waterDamageTiles.insert(bloodTileKey(tile));
+            };
+            auto reserveWaterDamageCoveredTile = [&](Tile tile) {
+                if (!maze_.IsOpen(tile.x, tile.y)) return;
+                waterDamageTiles.insert(bloodTileKey(tile));
+                bloodCenterSeepCovered.insert(bloodTileKey(tile));
             };
             auto bloodCeilingFootprintClear = [&](float px, float pz, float width, float depth, float yaw, float pad = 0.012f) {
                 if (!footprintFitsMaze(px, pz, width, depth, yaw, pad)) return false;
@@ -3430,6 +3457,7 @@
 
             auto addBloodCenterDripTile = [&](Tile t, int dripIndex) {
                 if (!maze_.IsOpen(t.x, t.y) || t == maze_.start || t == maze_.exit) return false;
+                if (waterDamageTileBlocked(t)) return false;
                 if (bloodCenterSeepCovered.find(bloodTileKey(t)) != bloodCenterSeepCovered.end()) return false;
                 if (!maze_.IsOpen(t.x, t.y - 1) || !maze_.IsOpen(t.x, t.y + 1) ||
                     !maze_.IsOpen(t.x - 1, t.y) || !maze_.IsOpen(t.x + 1, t.y)) {
@@ -3483,6 +3511,7 @@
 
             auto addBloodLeak = [&](Tile t, int side, int leakIndex, bool wallOnly = false) {
                 if (!wallHasSurface(t, side)) return false;
+                if (waterDamageTileBlocked(t)) return false;
                 XMFLOAT3 c = maze_.WorldCenter(t, 0.0f);
                 float seed = Rand01(leakIndex, 701, scatterSeed);
                 float wallSpan = (side == 0 || side == 1) ? tileW : tileD;
@@ -3697,7 +3726,8 @@
                 emitWaterLiquid = false;
             };
 
-            emitWaterDamageUsingBloodSystem();
+            // The old water pass reused blood leak geometry and could mix water walls with
+            // blood floor/ceiling responses. Keep water on the dedicated water-like path.
 
             auto waterLikeMaterial = [](float seed, float rawSeed) {
                 return 25.0f + rawSeed + std::fmod(std::abs(seed) * 0.0017f, 0.0009f);
@@ -3808,6 +3838,7 @@
 
             auto addWaterLikeCenterTile = [&](Tile t, int dripIndex) {
                 if (!maze_.IsOpen(t.x, t.y) || (!gEffectDebugViewer && (t == maze_.start || t == maze_.exit))) return false;
+                if (waterDamageTileBlocked(t)) return false;
                 if (bloodCenterSeepCovered.find(bloodTileKey(t)) != bloodCenterSeepCovered.end()) return false;
                 if (!maze_.IsOpen(t.x, t.y - 1) || !maze_.IsOpen(t.x, t.y + 1) ||
                     !maze_.IsOpen(t.x - 1, t.y) || !maze_.IsOpen(t.x + 1, t.y)) {
@@ -3833,7 +3864,7 @@
                 if (placed) {
                     MarkWetCeilingDripEmitter({px, 0.10f, pz}, seed);
                     auto markCovered = [&](Tile covered) {
-                        if (maze_.IsOpen(covered.x, covered.y)) bloodCenterSeepCovered.insert(bloodTileKey(covered));
+                        reserveWaterDamageCoveredTile(covered);
                     };
                     markCovered(t);
                     if (w > tileW * 1.15f) {
@@ -3856,6 +3887,10 @@
 
             auto addWaterLikeLeak = [&](Tile t, int side, int leakIndex, bool wallOnly = false) {
                 if (!wallHasSurface(t, side)) return false;
+                if (waterDamageTileBlocked(t) ||
+                    bloodCenterSeepCovered.find(bloodTileKey(t)) != bloodCenterSeepCovered.end()) {
+                    return false;
+                }
                 XMFLOAT3 c = maze_.WorldCenter(t, 0.0f);
                 float seed = Rand01(leakIndex, 2401, scatterSeed);
                 float wallSpan = (side == 0 || side == 1) ? tileW : tileD;
@@ -3920,6 +3955,11 @@
                 if (floorPlaced && canSpreadForward) {
                     addWaterFloorBorderContinuation(t, side, wallCenter, right, inward, leakW, poolD,
                         sourceMat, seed, leakIndex + 43000);
+                }
+                if (ceilingPlaced || floorPlaced) {
+                    reserveWaterDamageTile(t);
+                    reserveWaterDamageCoveredTile(t);
+                    if (canSpreadForward) reserveWaterDamageCoveredTile(forwardTile);
                 }
                 if (ceilingPlaced && floorPlaced) {
                     MarkWetCeilingDripEmitter({floorCenter.x, 0.10f, floorCenter.z}, seed);
@@ -4012,7 +4052,7 @@
                 float bloodQuality = std::clamp(settings_.bloodShaderQuality, 0.25f, 1.0f);
                 float coverageScale = std::clamp(bloodQuality * bloodQuality * 1.35f, 0.16f, 1.0f);
                 float densityGate = std::clamp(settings_.bloodSplatterDensity, 0.0f, 1.0f);
-                float coverage = std::clamp(settings_.bloodWorldCoverage * densityGate * coverageScale * 0.08f, 0.0f, 1.0f);
+                float coverage = std::clamp(settings_.bloodWorldCoverage * densityGate * coverageScale * 0.03f, 0.0f, 1.0f);
                 for (Tile t : openTiles) {
                     int wallSides = 0;
                     for (int side = 0; side < 4; ++side) {
@@ -4048,8 +4088,13 @@
                     }
                 }
             } else {
-                int bloodLeaks = std::clamp(static_cast<int>(std::round(static_cast<float>(settings_.bloodBurstCount) * settings_.bloodSplatterDensity)), 0, 180);
-                int bloodLeakAttempts = std::max(0, bloodLeaks * 10);
+                float bloodLeakBudget = std::clamp(static_cast<float>(settings_.bloodBurstCount) * settings_.bloodSplatterDensity * 0.35f, 0.0f, 180.0f);
+                int bloodLeaks = static_cast<int>(std::floor(bloodLeakBudget));
+                float bloodLeakFraction = bloodLeakBudget - static_cast<float>(bloodLeaks);
+                if (bloodLeaks < 180 && Rand01(9131, 9137, scatterSeed) < bloodLeakFraction) {
+                    ++bloodLeaks;
+                }
+                int bloodLeakAttempts = bloodLeaks > 0 ? std::max(8, bloodLeaks * 14) : 0;
                 int placedBloodLeaks = 0;
                 for (int b = 0; b < bloodLeakAttempts && placedBloodLeaks < bloodLeaks; ++b) {
                     Tile t = openTiles[std::min(openTiles.size() - 1,
@@ -4247,7 +4292,7 @@
         AppendStaticIndexChunks(vertices, liquidIndices, 0, static_cast<UINT>(liquidIndices.size()), indices, staticWaterChunks_);
         staticWaterIndexCount_ = static_cast<UINT>(indices.size()) - staticWaterStartIndex_;
         staticTransparentStartIndex_ = static_cast<UINT>(indices.size());
-        indices.insert(indices.end(), transparentIndices.begin(), transparentIndices.end());
+        AppendStaticIndexChunks(vertices, transparentIndices, 0, static_cast<UINT>(transparentIndices.size()), indices, staticTransparentChunks_);
         staticTransparentIndexCount_ = static_cast<UINT>(indices.size()) - staticTransparentStartIndex_;
         staticPropShadowStartIndex_ = static_cast<UINT>(indices.size());
         indices.insert(indices.end(), propShadowIndices.begin(), propShadowIndices.end());

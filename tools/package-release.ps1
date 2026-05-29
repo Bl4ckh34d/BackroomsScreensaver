@@ -1,7 +1,8 @@
 param(
     [string]$Configuration = "Release",
     [string]$BuildPath = "build",
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipSelfTest
 )
 
 $ErrorActionPreference = "Stop"
@@ -84,7 +85,11 @@ function Invoke-StageSelfTest {
         [Parameter(Mandatory = $true)][string]$FailureMessage
     )
 
-    $run = Start-Process -FilePath $ExePath -ArgumentList "/selftest" -WorkingDirectory $WorkingDirectory -Wait -PassThru
+    $run = Start-Process -FilePath $ExePath -ArgumentList "/selftest" -WorkingDirectory $WorkingDirectory -PassThru
+    if (-not $run.WaitForExit(120000)) {
+        try { Stop-Process -Id $run.Id -Force -ErrorAction SilentlyContinue } catch {}
+        throw "$FailureMessage timed out"
+    }
     if ($run.ExitCode -ne 0) {
         throw "$FailureMessage with exit code $($run.ExitCode)"
     }
@@ -160,9 +165,15 @@ if (-not (Test-Path -LiteralPath $scrPath -PathType Leaf)) {
 
 $buildTestExe = Join-Path $releaseDir "BackroomsMazeTest.exe"
 Copy-Item -LiteralPath $scrPath -Destination $buildTestExe -Force
-$buildTest = Start-Process -FilePath $buildTestExe -ArgumentList "/selftest" -Wait -PassThru
-if ($buildTest.ExitCode -ne 0) {
-    throw "Build self-test failed with exit code $($buildTest.ExitCode)"
+if (-not $SkipSelfTest) {
+    $buildTest = Start-Process -FilePath $buildTestExe -ArgumentList "/selftest" -PassThru
+    if (-not $buildTest.WaitForExit(120000)) {
+        try { Stop-Process -Id $buildTest.Id -Force -ErrorAction SilentlyContinue } catch {}
+        throw "Build self-test timed out"
+    }
+    if ($buildTest.ExitCode -ne 0) {
+        throw "Build self-test failed with exit code $($buildTest.ExitCode)"
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
@@ -425,7 +436,9 @@ $previousLocalAppData = $env:LOCALAPPDATA
 $originalStageIni = [System.IO.File]::ReadAllText($stageIni)
 try {
     $env:LOCALAPPDATA = $cacheLocalAppData
-    Invoke-StageSelfTest -ExePath $stageTestExe -WorkingDirectory $stageDir -FailureMessage "Packaged self-test failed"
+    if (-not $SkipSelfTest) {
+        Invoke-StageSelfTest -ExePath $stageTestExe -WorkingDirectory $stageDir -FailureMessage "Packaged self-test failed"
+    }
     New-PackagedSkullMesh `
         -StagePath $stageDir `
         -StageExe $stageTestExe `
@@ -464,7 +477,9 @@ foreach ($rawMesh in @(
     }
 }
 
-Invoke-StageSelfTest -ExePath $stageTestExe -WorkingDirectory $stageDir -FailureMessage "Packaged optimized self-test failed"
+if (-not $SkipSelfTest) {
+    Invoke-StageSelfTest -ExePath $stageTestExe -WorkingDirectory $stageDir -FailureMessage "Packaged optimized self-test failed"
+}
 Remove-Item -LiteralPath $stageTestExe -Force
 $profileLog = Join-Path $stageDir "BackroomsMaze.profile.log"
 if (Test-Path -LiteralPath $profileLog) {

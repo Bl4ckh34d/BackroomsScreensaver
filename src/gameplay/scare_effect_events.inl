@@ -342,37 +342,48 @@
             ventReactionTimer_ = 0.0f;
             return;
         }
-        if (settings_.fleshFlicker) {
-            fleshFlickerCooldown_ = std::max(0.0f, fleshFlickerCooldown_ - dt);
-            if (fleshFlickerCooldown_ <= 0.0f && fleshFlickerTimer_ <= 0.0f && scareCooldown_ <= 0.0f) {
-                fleshFlickerDuration_ = settings_.fleshFlickerDuration;
-                fleshFlickerTimer_ = fleshFlickerDuration_;
-                TriggerVisionFlashJumpscare(false);
-                fleshFlickerCooldown_ = RandRange(settings_.fleshFlickerMinSeconds, settings_.fleshFlickerMaxSeconds) * scareScale;
-                scareCooldown_ = std::max(scareCooldown_, fleshFlickerDuration_ + RandRange(8.0f, 18.0f) * scareScale);
-                flashlightAgitation_ = std::max(flashlightAgitation_, 0.62f);
-                AddDread(settings_.dreadFleshGain);
-            }
-        } else {
+        bool fleshWorldEnabled = settings_.fleshFlicker;
+        bool bloodWorldEnabled = settings_.bloodWorldFlicker && settings_.bloodWorldCoverage > 0.001f;
+        if (!fleshWorldEnabled) {
             fleshFlickerTimer_ = 0.0f;
-            fleshFlickerCooldown_ = 1000000.0f;
         }
-        if (settings_.bloodWorldFlicker && settings_.bloodWorldCoverage > 0.001f) {
+        if (!bloodWorldEnabled) {
+            bloodWorldFlickerTimer_ = 0.0f;
+        }
+        if (!fleshWorldEnabled && !bloodWorldEnabled) {
+            fleshFlickerCooldown_ = 1000000.0f;
+            bloodWorldFlickerCooldown_ = 1000000.0f;
+        } else {
             bloodWorldFlickerCooldown_ = std::max(0.0f, bloodWorldFlickerCooldown_ - dt);
-            if (bloodWorldActivationTime_ < -900.0f &&
-                bloodWorldFlickerCooldown_ <= 0.0f && bloodWorldFlickerTimer_ <= 0.0f && scareCooldown_ <= 0.0f) {
+            fleshFlickerCooldown_ = bloodWorldFlickerCooldown_;
+            if (bloodWorldFlickerCooldown_ <= 0.0f && fleshFlickerTimer_ <= 0.0f &&
+                bloodWorldFlickerTimer_ <= 0.0f && scareCooldown_ <= 0.0f) {
+                bool triggerBloodWorld = bloodWorldEnabled && (!fleshWorldEnabled || RandRange(0.0f, 1.0f) < 0.50f);
+                if (!triggerBloodWorld) {
+                    fleshFlickerDuration_ = settings_.fleshFlickerDuration;
+                    fleshFlickerTimer_ = fleshFlickerDuration_;
+                    TriggerVisionFlashJumpscare(false);
+                    scareCooldown_ = std::max(scareCooldown_, fleshFlickerDuration_ + RandRange(8.0f, 18.0f) * scareScale);
+                    flashlightAgitation_ = std::max(flashlightAgitation_, 0.62f);
+                    AddDread(settings_.dreadFleshGain);
+                } else {
                 bloodWorldFlickerDuration_ = settings_.bloodWorldFlickerDuration;
                 bloodWorldFlickerTimer_ = bloodWorldFlickerDuration_;
                 TriggerVisionFlashJumpscare(true);
                 bloodWorldActivationTime_ = time_;
-                bloodWorldFlickerCooldown_ = RandRange(settings_.bloodWorldFlickerMinSeconds, settings_.bloodWorldFlickerMaxSeconds) * scareScale;
                 scareCooldown_ = std::max(scareCooldown_, bloodWorldFlickerDuration_ + RandRange(9.0f, 20.0f) * scareScale);
                 flashlightAgitation_ = std::max(flashlightAgitation_, 0.72f);
                 AddDread(std::max(settings_.dreadJumpscareGain * 0.90f, 0.30f));
+                }
+                float worldMinSeconds = std::min(
+                    fleshWorldEnabled ? settings_.fleshFlickerMinSeconds : settings_.bloodWorldFlickerMinSeconds,
+                    bloodWorldEnabled ? settings_.bloodWorldFlickerMinSeconds : settings_.fleshFlickerMinSeconds);
+                float worldMaxSeconds = std::max(
+                    fleshWorldEnabled ? settings_.fleshFlickerMaxSeconds : settings_.bloodWorldFlickerMaxSeconds,
+                    bloodWorldEnabled ? settings_.bloodWorldFlickerMaxSeconds : settings_.fleshFlickerMaxSeconds);
+                bloodWorldFlickerCooldown_ = RandRange(worldMinSeconds, std::max(worldMinSeconds, worldMaxSeconds));
+                fleshFlickerCooldown_ = bloodWorldFlickerCooldown_;
             }
-        } else {
-            bloodWorldFlickerTimer_ = 0.0f;
-            bloodWorldFlickerCooldown_ = 1000000.0f;
         }
         if (deathActive_ || exitTransitionActive_) return;
 

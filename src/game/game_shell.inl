@@ -521,7 +521,6 @@ GameInputSnapshot CollectGameInput() {
     input.lookDeltaY = gApp->gameMouseDeltaY;
     gApp->gameMouseDeltaX = 0.0f;
     gApp->gameMouseDeltaY = 0.0f;
-    input.jump = down(GameActionKey(settings, GameInputAction::Jump));
     input.sprint = down(GameActionKey(settings, GameInputAction::Sprint));
     input.crouch = down(GameActionKey(settings, GameInputAction::Crouch));
     input.interact = down(GameActionKey(settings, GameInputAction::Interact));

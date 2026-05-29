@@ -108,7 +108,6 @@ enum class GameInputAction {
     MoveBackward,
     MoveLeft,
     MoveRight,
-    Jump,
     Sprint,
     Crouch,
     Interact,
@@ -131,7 +130,6 @@ const GameInputBindingDef kGameInputBindings[] = {
     {GameInputAction::MoveBackward, L"Move backward", L"KeyMoveBackward", 'S'},
     {GameInputAction::MoveLeft, L"Move left", L"KeyMoveLeft", 'A'},
     {GameInputAction::MoveRight, L"Move right", L"KeyMoveRight", 'D'},
-    {GameInputAction::Jump, L"Jump", L"KeyJump", VK_SPACE},
     {GameInputAction::Sprint, L"Sprint", L"KeySprint", VK_SHIFT},
     {GameInputAction::Crouch, L"Crouch", L"KeyCrouch", VK_CONTROL},
     {GameInputAction::Interact, L"Interact", L"KeyInteract", 'E'},
@@ -217,7 +215,7 @@ struct Settings {
     float bloomAmount = 0.22f;
     float lensDirtAmount = 0.18f;
 
-    float walkSpeed = 1.88f;
+    float walkSpeed = 1.692f;
     float roomSpeed = 1.45f;
     float runSpeed = 3.05f;
     float turnLookAheadTiles = 2.1f;
@@ -227,7 +225,7 @@ struct Settings {
     float scanAngleDegrees = 55.0f;
     float lookBackMinSeconds = 5.0f;
     float lookBackMaxSeconds = 90.0f;
-    float headBobAmount = 0.075f;
+    float headBobAmount = 0.0825f;
     float sideSwayAmount = 0.025f;
     float junctionScanBaseSeconds = 0.85f;
     float junctionScanBranchSeconds = 1.08f;
@@ -253,8 +251,8 @@ struct Settings {
     float paperDensity = 1.0f;
     float hallwayPaperRunDensity = 1.0f;
     float chairDensity = 1.0f;
-    bool waterDamageEnabled = true;
-    float waterDamageDensity = 1.0f;
+    bool waterDamageEnabled = false;
+    float waterDamageDensity = 0.0f;
     float metalCabinetDensity = 0.85f;
     float jumpscareFrequency = 0.15f;
     bool sparkParticles = true;
@@ -267,7 +265,7 @@ struct Settings {
     float airParticleDensity = 1.0f;
     float airParticleSize = 1.0f;
     float airParticleBlur = 1.0f;
-    float bloodSplatterDensity = 0.05f;
+    float bloodSplatterDensity = 0.0f;
     int bloodBurstCount = 25;
     float bloodWetness = 0.995f;
     int bloodStreamCount = static_cast<int>(kEffectBloodStreamCount);
@@ -276,8 +274,8 @@ struct Settings {
     bool bloodWorldFlicker = true;
     bool bloodWorldAlwaysOn = false;
     float bloodWorldCoverage = 1.0f;
-    float bloodWorldFlickerMinSeconds = 42.0f;
-    float bloodWorldFlickerMaxSeconds = 110.0f;
+    float bloodWorldFlickerMinSeconds = 1500.0f;
+    float bloodWorldFlickerMaxSeconds = 4800.0f;
     float bloodWorldFlickerDuration = 0.35f;
     float bloodWorldFlickerIntensity = 1.0f;
     bool bloodStudyView = false;
@@ -285,8 +283,8 @@ struct Settings {
     bool fleshAlwaysOn = false;
     float fleshWetness = 0.995f;
     float fleshParallaxScale = 0.14f;
-    float fleshFlickerMinSeconds = 34.0f;
-    float fleshFlickerMaxSeconds = 92.0f;
+    float fleshFlickerMinSeconds = 1500.0f;
+    float fleshFlickerMaxSeconds = 4800.0f;
     float fleshFlickerDuration = 0.35f;
     float fleshFlickerIntensity = 1.0f;
 
@@ -561,7 +559,7 @@ std::wstring DefaultConfigText() {
       << L"BloomAmount=0.22\r\n"
       << L"LensDirtAmount=0.18\r\n\r\n"
       << L"[CameraAI]\r\n"
-      << L"WalkSpeed=1.88\r\n"
+      << L"WalkSpeed=1.692\r\n"
       << L"RoomSpeed=1.45\r\n"
       << L"RunSpeed=3.05\r\n"
       << L"TurnLookAheadTiles=2.1\r\n"
@@ -571,7 +569,7 @@ std::wstring DefaultConfigText() {
       << L"ScanAngleDegrees=55\r\n"
       << L"LookBackMinSeconds=5\r\n"
       << L"LookBackMaxSeconds=90\r\n"
-      << L"HeadBobAmount=0.075\r\n"
+      << L"HeadBobAmount=0.0825\r\n"
       << L"SideSwayAmount=0.025\r\n"
       << L"JunctionScanBaseSeconds=0.85\r\n"
       << L"JunctionScanBranchSeconds=1.08\r\n\r\n"
@@ -602,8 +600,8 @@ std::wstring DefaultConfigText() {
       << L"PaperDensity=1\r\n"
       << L"HallwayPaperRunDensity=1\r\n"
       << L"ChairDensity=1\r\n"
-      << L"WaterDamageEnabled=1\r\n"
-      << L"WaterDamageDensity=1\r\n"
+      << L"WaterDamageEnabled=0\r\n"
+      << L"WaterDamageDensity=0\r\n"
       << L"MetalCabinetDensity=0.85\r\n"
       << L"JumpscareFrequency=0.15\r\n"
       << L"SparkParticles=1\r\n"
@@ -616,7 +614,7 @@ std::wstring DefaultConfigText() {
       << L"AirParticleDensity=1\r\n"
       << L"AirParticleSize=1\r\n"
       << L"AirParticleBlur=1\r\n"
-        << L"BloodSplatterDensity=0.05\r\n"
+        << L"BloodSplatterDensity=0\r\n"
       << L"BloodBurstCount=25\r\n"
       << L"BloodWetness=0.995\r\n"
       << L"BloodStreamCount=30\r\n"
@@ -625,8 +623,8 @@ std::wstring DefaultConfigText() {
       << L"BloodWorldFlicker=1\r\n"
       << L"BloodWorldAlwaysOn=0\r\n"
       << L"BloodWorldCoverage=1\r\n"
-      << L"BloodWorldFlickerMinSeconds=42\r\n"
-      << L"BloodWorldFlickerMaxSeconds=110\r\n"
+      << L"BloodWorldFlickerMinSeconds=1500\r\n"
+      << L"BloodWorldFlickerMaxSeconds=4800\r\n"
       << L"BloodWorldFlickerDuration=0.35\r\n"
       << L"BloodWorldFlickerIntensity=1\r\n"
       << L"BloodStudyView=0\r\n"
@@ -634,8 +632,8 @@ std::wstring DefaultConfigText() {
       << L"FleshAlwaysOn=0\r\n"
       << L"FleshWetness=0.995\r\n"
       << L"FleshParallaxScale=0.14\r\n"
-      << L"FleshFlickerMinSeconds=34\r\n"
-      << L"FleshFlickerMaxSeconds=92\r\n"
+      << L"FleshFlickerMinSeconds=1500\r\n"
+      << L"FleshFlickerMaxSeconds=4800\r\n"
       << L"FleshFlickerDuration=0.35\r\n"
       << L"FleshFlickerIntensity=1\r\n\r\n"
       << L"[EffectTuning]\r\n"
@@ -888,6 +886,9 @@ Settings LoadSettings() {
     s.airParticleSize = std::clamp(IniFloat(L"Atmosphere", L"AirParticleSize", s.airParticleSize), 0.20f, 4.0f);
     s.airParticleBlur = std::clamp(IniFloat(L"Atmosphere", L"AirParticleBlur", s.airParticleBlur), 0.0f, 3.0f);
     s.bloodSplatterDensity = std::clamp(IniFloat(L"Atmosphere", L"BloodSplatterDensity", s.bloodSplatterDensity), 0.0f, 4.0f);
+    s.waterDamageEnabled = false;
+    s.waterDamageDensity = 0.0f;
+    s.bloodSplatterDensity = 0.0f;
     s.bloodBurstCount = std::clamp(IniInt(L"Atmosphere", L"BloodBurstCount", s.bloodBurstCount), 0, 160);
     s.bloodWetness = std::clamp(IniFloat(L"Atmosphere", L"BloodWetness", s.bloodWetness), 0.0f, 3.0f);
     s.bloodStreamCount = std::clamp(IniInt(L"Atmosphere", L"BloodStreamCount", s.bloodStreamCount), 4, 32);
@@ -896,8 +897,8 @@ Settings LoadSettings() {
     s.bloodWorldFlicker = IniInt(L"Atmosphere", L"BloodWorldFlicker", s.bloodWorldFlicker ? 1 : 0) != 0;
     s.bloodWorldAlwaysOn = IniInt(L"Atmosphere", L"BloodWorldAlwaysOn", s.bloodWorldAlwaysOn ? 1 : 0) != 0;
     s.bloodWorldCoverage = std::clamp(IniFloat(L"Atmosphere", L"BloodWorldCoverage", s.bloodWorldCoverage), 0.0f, 1.0f);
-    s.bloodWorldFlickerMinSeconds = std::clamp(IniFloat(L"Atmosphere", L"BloodWorldFlickerMinSeconds", s.bloodWorldFlickerMinSeconds), 3.0f, 600.0f);
-    s.bloodWorldFlickerMaxSeconds = std::max(s.bloodWorldFlickerMinSeconds, std::clamp(IniFloat(L"Atmosphere", L"BloodWorldFlickerMaxSeconds", s.bloodWorldFlickerMaxSeconds), 3.0f, 900.0f));
+    s.bloodWorldFlickerMinSeconds = std::clamp(IniFloat(L"Atmosphere", L"BloodWorldFlickerMinSeconds", s.bloodWorldFlickerMinSeconds), 60.0f, 7200.0f);
+    s.bloodWorldFlickerMaxSeconds = std::max(s.bloodWorldFlickerMinSeconds, std::clamp(IniFloat(L"Atmosphere", L"BloodWorldFlickerMaxSeconds", s.bloodWorldFlickerMaxSeconds), 60.0f, 7200.0f));
     s.bloodWorldFlickerDuration = std::clamp(IniFloat(L"Atmosphere", L"BloodWorldFlickerDuration", s.bloodWorldFlickerDuration), 0.15f, 8.0f);
     s.bloodWorldFlickerIntensity = std::clamp(IniFloat(L"Atmosphere", L"BloodWorldFlickerIntensity", s.bloodWorldFlickerIntensity), 0.0f, 2.0f);
     s.bloodStudyView = IniInt(L"Atmosphere", L"BloodStudyView", s.bloodStudyView ? 1 : 0) != 0;
@@ -905,8 +906,8 @@ Settings LoadSettings() {
     s.fleshAlwaysOn = IniInt(L"Atmosphere", L"FleshAlwaysOn", s.fleshAlwaysOn ? 1 : 0) != 0;
     s.fleshWetness = std::clamp(IniFloat(L"Atmosphere", L"FleshWetness", s.fleshWetness), 0.0f, 4.0f);
     s.fleshParallaxScale = std::clamp(IniFloat(L"Atmosphere", L"FleshParallaxScale", s.fleshParallaxScale), 0.0f, 0.32f);
-    s.fleshFlickerMinSeconds = std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerMinSeconds", s.fleshFlickerMinSeconds), 3.0f, 600.0f);
-    s.fleshFlickerMaxSeconds = std::max(s.fleshFlickerMinSeconds, std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerMaxSeconds", s.fleshFlickerMaxSeconds), 3.0f, 900.0f));
+    s.fleshFlickerMinSeconds = std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerMinSeconds", s.fleshFlickerMinSeconds), 60.0f, 7200.0f);
+    s.fleshFlickerMaxSeconds = std::max(s.fleshFlickerMinSeconds, std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerMaxSeconds", s.fleshFlickerMaxSeconds), 60.0f, 7200.0f));
     s.fleshFlickerDuration = std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerDuration", s.fleshFlickerDuration), 0.15f, 8.0f);
     s.fleshFlickerIntensity = std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerIntensity", s.fleshFlickerIntensity), 0.0f, 2.0f);
 
@@ -1128,6 +1129,9 @@ void ApplyRuntimeVariation(Settings& s, uint32_t seed) {
     s.hallwayPaperRunDensity = JitterScaled(seed, 402, s.hallwayPaperRunDensity, v, kUserFraction, 0.0f, 4.0f);
     s.chairDensity = JitterScaled(seed, 403, s.chairDensity, v, kUserFraction, 0.0f, 4.0f);
     s.waterDamageDensity = JitterScaled(seed, 406, s.waterDamageDensity, v, kUserFraction, 0.0f, 4.0f);
+    s.waterDamageEnabled = false;
+    s.waterDamageDensity = 0.0f;
+    s.bloodSplatterDensity = 0.0f;
     s.metalCabinetDensity = JitterScaled(seed, 407, s.metalCabinetDensity, v, kUserFraction, 0.0f, 4.0f);
     s.jumpscareFrequency = JitterScaled(seed, 408, s.jumpscareFrequency, v, kUserFraction, 0.0f, 1.0f);
     s.sparkEmitterRatio = JitterScaled(seed, 409, s.sparkEmitterRatio, v, kUserFraction, 0.0f, 1.0f);

@@ -98,6 +98,14 @@
     std::vector<StaticIndexChunk> staticOpaqueChunks_;
     std::vector<StaticIndexChunk> staticFloorCeilingChunks_;
     std::vector<StaticIndexChunk> staticWaterChunks_;
+    std::vector<StaticIndexChunk> staticTransparentChunks_;
+    std::vector<OverlayVertex> mapOverlayCachedVerts_;
+    float mapOverlayNextUpdateTime_ = 0.0f;
+    LONG mapOverlayCacheWidth_ = 0;
+    LONG mapOverlayCacheHeight_ = 0;
+    int mapOverlayCacheMazeW_ = 0;
+    int mapOverlayCacheMazeH_ = 0;
+    RendererRuntimeMode mapOverlayCacheMode_ = RendererRuntimeMode::ScreensaverAutopilot;
     UINT dynamicOpaqueVertexCount_ = 0;
     UINT dynamicTransparentVertexCount_ = 0;
     UINT dynamicVertexCount_ = 0;
@@ -145,10 +153,9 @@
     float playerHealth_ = 100.0f;
     float playerStamina_ = 100.0f;
     float playerVerticalOffset_ = 0.0f;
-    float playerVerticalVelocity_ = 0.0f;
     float playerStaminaRegenDelay_ = 0.0f;
     float playerNoiseRadiusMeters_ = 0.0f;
-    bool playerGrounded_ = true;
+    bool sprintStaminaLocked_ = false;
     bool monsterPreview_ = false;
     MonsterPreviewView monsterPreviewView_ = MonsterPreviewView::Orbit;
     bool monsterPreviewManualOrbit_ = false;
@@ -248,7 +255,7 @@
     std::vector<BloodRevealRegion> bloodRevealRegions_;
     int activeBloodScareIndex_ = -1;
     float bloodScareActiveUntil_ = 0.0f;
-    float bloodWorldFlickerCooldown_ = 22.0f;
+    float bloodWorldFlickerCooldown_ = 1500.0f;
     float bloodWorldFlickerTimer_ = 0.0f;
     float bloodWorldFlickerDuration_ = 1.0f;
     float bloodWorldActivationTime_ = -1000.0f;
@@ -261,7 +268,7 @@
     Tile bloodStudyTile_{-1000, -1000};
     float sparkCooldown_ = 3.0f;
     float scareCooldown_ = 2.0f;
-    float fleshFlickerCooldown_ = 18.0f;
+    float fleshFlickerCooldown_ = 1500.0f;
     float fleshFlickerTimer_ = 0.0f;
     float fleshFlickerDuration_ = 1.0f;
     float visionFlashTimer_ = 0.0f;

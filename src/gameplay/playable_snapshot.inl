@@ -161,10 +161,9 @@
         float playerHealth = 100.0f;
         float playerStamina = 100.0f;
         float playerVerticalOffset = 0.0f;
-        float playerVerticalVelocity = 0.0f;
         float playerStaminaRegenDelay = 0.0f;
         float playerNoiseRadiusMeters = 0.0f;
-        bool playerGrounded = true;
+        bool sprintStaminaLocked = false;
         XMFLOAT3 monster{};
         std::vector<Tile> monsterPath;
         std::vector<XMFLOAT3> monsterTrail;
@@ -367,10 +366,9 @@
         s->playerHealth = playerHealth_;
         s->playerStamina = playerStamina_;
         s->playerVerticalOffset = playerVerticalOffset_;
-        s->playerVerticalVelocity = playerVerticalVelocity_;
         s->playerStaminaRegenDelay = playerStaminaRegenDelay_;
         s->playerNoiseRadiusMeters = playerNoiseRadiusMeters_;
-        s->playerGrounded = playerGrounded_;
+        s->sprintStaminaLocked = sprintStaminaLocked_;
         s->monster = monster_;
         s->monsterPath = monsterPath_;
         s->monsterTrail = monsterTrail_;
@@ -580,10 +578,9 @@
         playerHealth_ = s.playerHealth;
         playerStamina_ = s.playerStamina;
         playerVerticalOffset_ = s.playerVerticalOffset;
-        playerVerticalVelocity_ = s.playerVerticalVelocity;
         playerStaminaRegenDelay_ = s.playerStaminaRegenDelay;
         playerNoiseRadiusMeters_ = s.playerNoiseRadiusMeters;
-        playerGrounded_ = s.playerGrounded;
+        sprintStaminaLocked_ = s.sprintStaminaLocked;
         monster_ = s.monster;
         monsterPath_ = std::move(s.monsterPath);
         monsterTrail_ = std::move(s.monsterTrail);

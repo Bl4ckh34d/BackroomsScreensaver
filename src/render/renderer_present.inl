@@ -76,7 +76,7 @@
             fovDegrees = 86.0f;
         }
         if (deathActive_) {
-            fovDegrees = Lerp(70.0f, 29.0f, SmoothStep(0.05f, 0.66f, deathProgress));
+            fovDegrees = Lerp(70.0f, 58.0f, SmoothStep(0.05f, 0.66f, deathProgress));
         }
         float exitStepStart = std::max(0.05f, settings_.exitDoorOpenSeconds * 0.68f);
         float exitStepEnd = exitStepStart + settings_.exitStepSeconds;
@@ -125,7 +125,8 @@
             std::max(2.0f, settings_.lampSpacing)
         };
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
-            cb.lighting0.z = SmoothStep(0.06f, 0.96f, exitDoorAngle_ / 1.38f) * 0.038f;
+            float menuDoorAmbient = SmoothStep(0.04f, 0.78f, exitDoorAngle_ / 1.38f);
+            cb.lighting0.z = Lerp(0.012f, 0.105f, menuDoorAmbient);
         }
         if (monsterPreview_) {
             cb.lighting0.y = 0.030f;
@@ -387,16 +388,16 @@
         float doorwayPortalHalfWidth = 0.0f;
         if (runtimeMode_ == RendererRuntimeMode::MainMenu && exitDoorAngle_ > 0.001f) {
             float rawDoorOpen = exitDoorAngle_ / 1.38f;
-            exitDoorOpen = SmoothStep(0.14f, 1.0f, rawDoorOpen);
-            float doorwayLightOpen = SmoothStep(0.24f, 1.0f, rawDoorOpen);
+            exitDoorOpen = SmoothStep(0.08f, 0.92f, rawDoorOpen);
+            float doorwayLightOpen = SmoothStep(0.12f, 0.90f, rawDoorOpen);
             doorwayLightOpen *= doorwayLightOpen;
-            XMFLOAT3 stairSource = Scale3(exitDoorNormal_, -1.55f);
+            XMFLOAT3 stairSource = Scale3(exitDoorNormal_, -1.85f);
             doorwayLightPos = Add3(exitDoorCenter_, stairSource);
-            doorwayLightPos.y = exitDoorCenter_.y + 2.56f;
-            doorwayLightStrength = doorwayLightOpen * 9.6f;
-            exitLightDir = Normalize3(Add3(exitDoorNormal_, {0.0f, -0.66f, 0.0f}), exitDoorNormal_);
+            doorwayLightPos.y = exitDoorCenter_.y + 3.45f;
+            doorwayLightStrength = doorwayLightOpen * 29.0f;
+            exitLightDir = Normalize3(Add3(exitDoorNormal_, {0.0f, -0.36f, 0.0f}), exitDoorNormal_);
             doorwayPortalPos = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.04f));
-            doorwayPortalHalfWidth = 0.44f;
+            doorwayPortalHalfWidth = 0.62f;
         }
         cb.exitLight0 = {
             exitLightPos.x,
@@ -615,6 +616,9 @@
             ? 1000.0f
             : std::max(viewFarMeters, settings_.fogEndMeters + maze_.TileAverage() * 12.0f);
         float mainForceVisibleDistance = std::max(maze_.TileAverage() * 5.0f, 8.0f);
+        float transparentCullDistance = monsterPreview_
+            ? mainCullDistance
+            : std::min(mainCullDistance, std::max(maze_.TileAverage() * 8.0f, settings_.fogEndMeters + maze_.TileAverage() * 4.0f));
 
         auto renderDepthShadow = [&](ID3D11DepthStencilView* shadowDsv, UINT shadowSize, const XMMATRIX& shadowViewProj,
                                      XMFLOAT3 shadowOrigin, XMFLOAT3 shadowDirection, float shadowRange, float shadowConeCos) {
@@ -832,7 +836,7 @@
                 context_->PSSetShader(liquidPixelShader_ ? liquidPixelShader_.Get() : pixelShader_.Get(), nullptr, 0);
                 StartupProfileLine(L"Render before StaticWater DrawIndexed");
                 if (!staticWaterChunks_.empty()) {
-                    drawVisibleChunks(staticWaterChunks_, eyePos, viewDirFloat, mainCullDistance, mainConeCos,
+                    drawVisibleChunks(staticWaterChunks_, eyePos, viewDirFloat, transparentCullDistance, mainConeCos,
                         mainForceVisibleDistance, true, 2);
                 } else {
                     context_->DrawIndexed(staticWaterIndexCount_, staticWaterStartIndex_, 0);
@@ -846,7 +850,12 @@
                 context_->OMSetBlendState(alphaBlend_.Get(), blendFactor, 0xffffffff);
                 context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
                 StartupProfileLine(L"Render before StaticTransparent DrawIndexed");
-                context_->DrawIndexed(staticTransparentIndexCount_, staticTransparentStartIndex_, 0);
+                if (!staticTransparentChunks_.empty()) {
+                    drawVisibleChunks(staticTransparentChunks_, eyePos, viewDirFloat, transparentCullDistance, mainConeCos,
+                        mainForceVisibleDistance, true, 2);
+                } else {
+                    context_->DrawIndexed(staticTransparentIndexCount_, staticTransparentStartIndex_, 0);
+                }
                 renderProfile.Mark(L"StaticTransparent");
                 context_->OMSetDepthStencilState(depthState_.Get(), 0);
                 context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);

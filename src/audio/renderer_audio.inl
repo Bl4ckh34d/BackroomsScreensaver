@@ -382,6 +382,7 @@
         float runSpeed = std::max(walkSpeed + 0.1f, settings_.runSpeed);
         float walkT = Clamp01(smoothedMoveSpeed_ / walkSpeed);
         float runT = Clamp01((smoothedMoveSpeed_ - walkSpeed) / std::max(0.1f, runSpeed - walkSpeed));
+        float runAudioBlend = std::max(runT, runEffort_ * 0.72f);
         if (runtimeMode_ == RendererRuntimeMode::PlayableGame && gameInput_.crouch) {
             float volume = Lerp(0.32f, 0.68f, walkT);
             volume *= 0.90f * RandRange(0.88f, 1.06f);
@@ -392,7 +393,7 @@
             return;
         }
         float volume = Lerp(0.74f, 1.14f, walkT);
-        volume = Lerp(volume, 2.08f, std::max(runT, runEffort_ * 0.72f));
+        volume = Lerp(volume, 2.08f, runAudioBlend);
         volume *= 0.90f * RandRange(0.92f, 1.08f);
         if (wetFootstep) volume *= kWetFootstepVolumeScale;
         volume *= kFootstepVolumeScale;

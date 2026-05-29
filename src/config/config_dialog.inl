@@ -368,8 +368,8 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.bloodWorldFlicker = ParseConfigInt(state, L"Atmosphere", L"BloodWorldFlicker", s.bloodWorldFlicker ? 1 : 0) != 0;
     s.bloodWorldAlwaysOn = ParseConfigInt(state, L"Atmosphere", L"BloodWorldAlwaysOn", s.bloodWorldAlwaysOn ? 1 : 0) != 0;
     s.bloodWorldCoverage = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"BloodWorldCoverage", s.bloodWorldCoverage), 0.0f, 1.0f);
-    s.bloodWorldFlickerMinSeconds = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"BloodWorldFlickerMinSeconds", s.bloodWorldFlickerMinSeconds), 3.0f, 600.0f);
-    s.bloodWorldFlickerMaxSeconds = std::max(s.bloodWorldFlickerMinSeconds, std::clamp(ParseConfigFloat(state, L"Atmosphere", L"BloodWorldFlickerMaxSeconds", s.bloodWorldFlickerMaxSeconds), 3.0f, 900.0f));
+    s.bloodWorldFlickerMinSeconds = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"BloodWorldFlickerMinSeconds", s.bloodWorldFlickerMinSeconds), 60.0f, 7200.0f);
+    s.bloodWorldFlickerMaxSeconds = std::max(s.bloodWorldFlickerMinSeconds, std::clamp(ParseConfigFloat(state, L"Atmosphere", L"BloodWorldFlickerMaxSeconds", s.bloodWorldFlickerMaxSeconds), 60.0f, 7200.0f));
     s.bloodWorldFlickerDuration = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"BloodWorldFlickerDuration", s.bloodWorldFlickerDuration), 0.15f, 8.0f);
     s.bloodWorldFlickerIntensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"BloodWorldFlickerIntensity", s.bloodWorldFlickerIntensity), 0.0f, 2.0f);
     s.bloodStudyView = ParseConfigInt(state, L"Atmosphere", L"BloodStudyView", s.bloodStudyView ? 1 : 0) != 0;
@@ -377,8 +377,8 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.fleshAlwaysOn = ParseConfigInt(state, L"Atmosphere", L"FleshAlwaysOn", s.fleshAlwaysOn ? 1 : 0) != 0;
     s.fleshWetness = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshWetness", s.fleshWetness), 0.0f, 4.0f);
     s.fleshParallaxScale = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshParallaxScale", s.fleshParallaxScale), 0.0f, 0.32f);
-    s.fleshFlickerMinSeconds = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerMinSeconds", s.fleshFlickerMinSeconds), 3.0f, 600.0f);
-    s.fleshFlickerMaxSeconds = std::max(s.fleshFlickerMinSeconds, std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerMaxSeconds", s.fleshFlickerMaxSeconds), 3.0f, 900.0f));
+    s.fleshFlickerMinSeconds = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerMinSeconds", s.fleshFlickerMinSeconds), 60.0f, 7200.0f);
+    s.fleshFlickerMaxSeconds = std::max(s.fleshFlickerMinSeconds, std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerMaxSeconds", s.fleshFlickerMaxSeconds), 60.0f, 7200.0f));
     s.fleshFlickerDuration = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerDuration", s.fleshFlickerDuration), 0.15f, 8.0f);
     s.fleshFlickerIntensity = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerIntensity", s.fleshFlickerIntensity), 0.0f, 2.0f);
 

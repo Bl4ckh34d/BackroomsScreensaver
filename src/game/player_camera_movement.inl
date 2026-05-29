@@ -80,22 +80,26 @@
         bloodFocusReactionCooldown_ = 0.0f;
         proximityBloodPulseCooldown_ = RandRange(4.5f, 9.0f);
         bloodFocusTarget_ = {};
-        float scareScale = ScareCooldownScale();
         sparkCooldown_ = settings_.sparkParticles
             ? RandRange(settings_.sparkBurstMinSeconds, settings_.sparkBurstMaxSeconds) * AmbientSparkCooldownScale()
             : 1000000.0f;
-        scareCooldown_ = RandRange(7.0f, 15.0f) * scareScale;
+        scareCooldown_ = RandRange(7.0f, 15.0f) * ScareCooldownScale();
         scareEventTile_ = CameraTile();
         fleshFlickerTimer_ = 0.0f;
         fleshFlickerDuration_ = settings_.fleshFlickerDuration;
         visionFlashTimer_ = 0.0f;
         visionFlashDuration_ = 0.16f;
-        fleshFlickerCooldown_ = settings_.fleshFlicker
-            ? RandRange(settings_.fleshFlickerMinSeconds * 0.90f, settings_.fleshFlickerMaxSeconds) * scareScale
-            : 1000000.0f;
-        bloodWorldFlickerCooldown_ = (settings_.bloodWorldFlicker && settings_.bloodWorldCoverage > 0.001f)
-            ? RandRange(settings_.bloodWorldFlickerMinSeconds * 0.90f, settings_.bloodWorldFlickerMaxSeconds) * scareScale
-            : 1000000.0f;
+        bool worldFlickersEnabled = settings_.fleshFlicker ||
+            (settings_.bloodWorldFlicker && settings_.bloodWorldCoverage > 0.001f);
+        if (worldFlickersEnabled) {
+            float worldMinSeconds = std::min(settings_.fleshFlickerMinSeconds, settings_.bloodWorldFlickerMinSeconds);
+            float worldMaxSeconds = std::max(settings_.fleshFlickerMaxSeconds, settings_.bloodWorldFlickerMaxSeconds);
+            bloodWorldFlickerCooldown_ = RandRange(worldMinSeconds, std::max(worldMinSeconds, worldMaxSeconds));
+            fleshFlickerCooldown_ = bloodWorldFlickerCooldown_;
+        } else {
+            fleshFlickerCooldown_ = 1000000.0f;
+            bloodWorldFlickerCooldown_ = 1000000.0f;
+        }
         secondsSinceLookBack_ = 0.0f;
         exitSpotted_ = false;
         exitLookBlend_ = 0.0f;
@@ -157,11 +161,10 @@
         playerHealth_ = 100.0f;
         playerStamina_ = 100.0f;
         playerVerticalOffset_ = 0.0f;
-        playerVerticalVelocity_ = 0.0f;
         playerStaminaRegenDelay_ = 0.0f;
         playerNoiseRadiusMeters_ = 0.0f;
+        sprintStaminaLocked_ = false;
         playerAudibleSoundPulses_.clear();
-        playerGrounded_ = true;
         monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
         monsterPath_.clear();
         monsterYaw_ = 0.0f;
@@ -721,8 +724,8 @@
 
     void AdvanceStepPhase(float metersMoved, float speedMetersPerSecond) {
         if (metersMoved <= 0.0001f || speedMetersPerSecond <= 0.0001f) return;
-        float runBlend = Clamp01((speedMetersPerSecond - settings_.walkSpeed) / std::max(0.1f, settings_.runSpeed * 1.55f - settings_.walkSpeed));
-        float strideMeters = Lerp(1.42f, 1.18f, runBlend);
+        float runBlend = Clamp01((speedMetersPerSecond - settings_.walkSpeed) / std::max(0.1f, settings_.runSpeed - settings_.walkSpeed));
+        float strideMeters = Lerp(1.42f, 1.16f, SmoothStep(0.0f, 1.0f, runBlend));
         stepPhase_ += metersMoved * (kPi / std::max(0.25f, strideMeters));
         if (stepPhase_ > kPi * 128.0f) {
             stepPhase_ = std::fmod(stepPhase_, kPi * 2.0f);
@@ -3002,18 +3005,29 @@
         if (settings_.debugInfiniteStamina) {
             playerStamina_ = 100.0f;
             playerStaminaRegenDelay_ = 0.0f;
+            sprintStaminaLocked_ = false;
         }
-        bool wantsSprint = gameInput_.sprint && wantsMove && !crouching && (settings_.debugInfiniteStamina || playerStamina_ > 10.0f);
         float walkSpeed = settings_.walkSpeed;
         float sprintSpeed = std::max(settings_.runSpeed, walkSpeed * 1.35f);
-        float targetSpeed = wantsSprint ? sprintSpeed : walkSpeed;
+        float jogSpeed = std::max(walkSpeed * 1.16f, sprintSpeed * 0.58f);
+        constexpr float kJogStamina = 100.0f / 3.0f;
+        constexpr float kSprintResumeStamina = 100.0f / 6.0f;
+        constexpr float kExhaustedStamina = 5.0f;
+        if (playerStamina_ < kExhaustedStamina) sprintStaminaLocked_ = true;
+        if (sprintStaminaLocked_ && playerStamina_ >= kSprintResumeStamina) sprintStaminaLocked_ = false;
+        bool sprintAllowed = settings_.debugInfiniteStamina || (!sprintStaminaLocked_ && playerStamina_ >= kExhaustedStamina);
+        bool wantsSprint = gameInput_.sprint && wantsMove && !crouching && sprintAllowed;
+        bool staminaJog = wantsSprint && !settings_.debugInfiniteStamina && playerStamina_ <= kJogStamina;
+        float targetSpeed = wantsSprint ? (staminaJog ? jogSpeed : sprintSpeed) : walkSpeed;
         if (crouching) targetSpeed *= 0.52f;
 
         if (wantsSprint && !settings_.debugInfiniteStamina) {
-            playerStamina_ = std::max(0.0f, playerStamina_ - 10.5f * dt);
-            playerStaminaRegenDelay_ = 1.15f;
-            if (playerStamina_ <= 0.0f) {
+            float drainRate = staminaJog ? 3.25f : 6.50f;
+            playerStamina_ = std::max(0.0f, playerStamina_ - drainRate * dt);
+            playerStaminaRegenDelay_ = 0.85f;
+            if (playerStamina_ < kExhaustedStamina) {
                 wantsSprint = false;
+                sprintStaminaLocked_ = true;
                 targetSpeed = walkSpeed;
             }
         } else if (wantsSprint && settings_.debugInfiniteStamina) {
@@ -3022,7 +3036,7 @@
         } else {
             playerStaminaRegenDelay_ = std::max(0.0f, playerStaminaRegenDelay_ - dt);
             if (playerStaminaRegenDelay_ <= 0.0f) {
-                playerStamina_ = std::min(100.0f, playerStamina_ + 6.0f * dt);
+                playerStamina_ = std::min(100.0f, playerStamina_ + 8.25f * dt);
             }
         }
 
@@ -3040,20 +3054,6 @@
                 moveDistance, std::max(0.1f, smoothedMoveSpeed_), CameraTile(), true);
         }
 
-        if (gameInput_.jump && playerGrounded_ && !crouching) {
-            playerVerticalVelocity_ = 4.2f;
-            playerGrounded_ = false;
-        }
-        if (!playerGrounded_) {
-            playerVerticalVelocity_ -= 9.81f * dt;
-            playerVerticalOffset_ += playerVerticalVelocity_ * dt;
-            if (playerVerticalOffset_ <= 0.0f) {
-                playerVerticalOffset_ = 0.0f;
-                playerVerticalVelocity_ = 0.0f;
-                playerGrounded_ = true;
-            }
-        }
-
         if (gameInput_.interact && !exitTransitionActive_) {
             Tile cur = CameraTile();
             float exitDistSq = TileDistanceSq(cur, maze_.exit);
@@ -3063,9 +3063,13 @@
         }
 
         float moveBlend = Clamp01(smoothedMoveSpeed_ / std::max(0.1f, sprintSpeed));
-        runIntensity_ += ((wantsSprint ? moveBlend : moveBlend * 0.45f) - runIntensity_) *
+        float runBlend = Clamp01((smoothedMoveSpeed_ - walkSpeed) / std::max(0.1f, sprintSpeed - walkSpeed));
+        float jogBlend = staminaJog ? std::min(0.50f, std::max(0.30f, runBlend)) : runBlend;
+        float sprintMotionTarget = wantsSprint ? (staminaJog ? jogBlend : runBlend) : moveBlend * 0.45f;
+        float sprintEffortTarget = wantsSprint ? (staminaJog ? 0.42f : runBlend) : 0.0f;
+        runIntensity_ += (sprintMotionTarget - runIntensity_) *
             std::min(1.0f, dt * (wantsSprint ? 3.2f : 2.6f));
-        runEffort_ += ((wantsSprint ? moveBlend : 0.0f) - runEffort_) *
+        runEffort_ += (sprintEffortTarget - runEffort_) *
             std::min(1.0f, dt * (wantsSprint ? 2.4f : 3.0f));
         if (wantsMove) {
             AdvanceStepPhase(moveDistance, std::max(0.1f, smoothedMoveSpeed_));
@@ -3076,8 +3080,8 @@
         }
 
         float eyeTarget = crouching ? 1.12f : 1.45f;
-        float configuredBob = std::min(settings_.headBobAmount, 0.075f);
-        float bobAmount = configuredBob * Lerp(0.045f, 0.22f, moveBlend) * (crouching ? 0.10f : 1.0f);
+        float configuredBob = std::min(settings_.headBobAmount, 0.10f);
+        float bobAmount = configuredBob * Lerp(0.045f, 0.22f, Clamp01(moveBlend * 0.55f + runBlend * 0.45f)) * (crouching ? 0.10f : 1.0f);
         float stepWave = std::sin(stepPhase_ * 2.0f);
         float verticalBob = stepWave * bobAmount;
         float sideBob = crouching ? 0.0f : stepWave * (0.00055f + runEffort_ * 0.0011f);

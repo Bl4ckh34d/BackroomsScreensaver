@@ -35,6 +35,19 @@
         return depth > -radius * 2.0f;
     }
 
+    bool DynamicBillboardVisible(const XMFLOAT3& pos, float radius, float maxDistance, float minProjectedPixels) const {
+        XMFLOAT3 to = Sub3(pos, camera_);
+        float distSq = Dot3(to, to);
+        float padded = std::max(0.1f, maxDistance + radius);
+        if (distSq > padded * padded) return false;
+        XMFLOAT3 forward = DirectionFromYawPitch(yaw_, lookPitch_);
+        float depth = Dot3(to, forward);
+        if (depth <= -radius * 2.0f) return false;
+        float projectedPixels = (radius / std::max(0.08f, std::abs(depth))) *
+            static_cast<float>(std::max<LONG>(1, height_)) * 0.72f;
+        return projectedPixels >= minProjectedPixels;
+    }
+
     void AppendDynamicBoxAxes(std::vector<Vertex>& verts, XMFLOAT3 center,
                               XMFLOAT3 right, XMFLOAT3 up, XMFLOAT3 forward,
                               XMFLOAT3 half, float material) {
@@ -216,13 +229,13 @@
         XMFLOAT3 inward = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
         XMFLOAT3 behind = Scale3(inward, -1.0f);
         XMFLOAT3 start = Add3(exitDoorCenter_, Add3(Scale3(behind, 0.12f), {0.0f, 0.12f, 0.0f}));
-        XMFLOAT3 room = Add3(exitDoorCenter_, Add3(Scale3(behind, 1.38f), {0.0f, 1.16f, 0.0f}));
-        float openMat = 19.72f + openT * 0.22f;
+        XMFLOAT3 room = Add3(exitDoorCenter_, Add3(Scale3(behind, 2.18f), {0.0f, 1.22f, 0.0f}));
+        float openMat = 19.66f + openT * 0.26f;
 
-        XMFLOAT3 nearSide = Scale3(right, 0.50f);
-        XMFLOAT3 farSide = Scale3(right, 0.42f);
-        XMFLOAT3 nearUp = Scale3(up, 0.98f);
-        XMFLOAT3 farUp = Scale3(up, 0.78f);
+        XMFLOAT3 nearSide = Scale3(right, 0.56f);
+        XMFLOAT3 farSide = Scale3(right, 0.86f);
+        XMFLOAT3 nearUp = Scale3(up, 1.08f);
+        XMFLOAT3 farUp = Scale3(up, 0.94f);
         XMFLOAT3 centerYNear = Add3(start, {0.0f, 1.16f, 0.0f});
         XMFLOAT3 centerYFar = Add3(room, {0.0f, 1.70f, 0.0f});
 
@@ -231,13 +244,13 @@
             Add3(centerYNear, Add3(nearSide, Scale3(nearUp, -1.0f))),
             Add3(centerYNear, Add3(nearSide, nearUp)),
             Add3(centerYNear, Add3(Scale3(nearSide, -1.0f), nearUp)),
-            inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.018f);
+            inward, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.035f);
         AppendDynamicQuadUV(transparentVerts,
             Add3(centerYNear, Add3(Scale3(nearSide, -0.72f), Scale3(up, 0.10f))),
             Add3(centerYNear, Add3(Scale3(nearSide, 0.72f), Scale3(up, 0.10f))),
-            Add3(centerYFar, Add3(Scale3(farSide, 0.92f), Scale3(farUp, -0.30f))),
-            Add3(centerYFar, Add3(Scale3(farSide, -0.92f), Scale3(farUp, -0.30f))),
-            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.012f);
+            Add3(centerYFar, Add3(Scale3(farSide, 1.0f), Scale3(farUp, -0.30f))),
+            Add3(centerYFar, Add3(Scale3(farSide, -1.0f), Scale3(farUp, -0.30f))),
+            up, right, {0, 1}, {1, 1}, {1, 0}, {0, 0}, openMat + 0.026f);
     }
 
     void AppendMenuButtonPlaques(std::vector<Vertex>& verts, std::vector<Vertex>& transparentVerts) {
@@ -274,12 +287,18 @@
         float modelY = std::clamp(settings_.monsterScale, 0.35f, 1.25f);
         float modelXZ = std::clamp(settings_.monsterScale, 0.35f, 1.35f);
         float dist = MonsterDistance();
-        bool canTrackPlayer = !monsterPreview_ && MonsterVisualEncounterPlayer();
         bool debugEffectMonster = runtimeMode_ == RendererRuntimeMode::DebugViewer && gDebugSliceEffect != DebugSliceEffect::Props;
         float tileScale = std::max(maze_.TileAverage(), 0.1f);
+        XMFLOAT3 toMonster = Sub3(monster_, camera_);
+        float planarMonsterDist = std::sqrt(toMonster.x * toMonster.x + toMonster.z * toMonster.z);
+        XMFLOAT3 cameraForward = Forward();
+        float forwardDot = planarMonsterDist > 0.001f
+            ? (toMonster.x * cameraForward.x + toMonster.z * cameraForward.z) / planarMonsterDist
+            : 1.0f;
+        bool monsterInFront = forwardDot > -0.10f;
+        bool canTrackPlayer = false;
         bool monsterTileVisible = monsterPreview_ || debugEffectMonster || deathActive_;
         bool monsterOccluded = false;
-        bool occludedContactProxy = false;
         if (!monsterPreview_ && !debugEffectMonster && !deathActive_) {
             Tile cameraTile = CameraTile();
             Tile monsterTile = MonsterTile();
@@ -287,25 +306,26 @@
                 maze_.IsOpen(monsterTile.x, monsterTile.y) &&
                 maze_.LineClear(cameraTile, monsterTile);
             monsterOccluded = !monsterTileVisible;
-            float monsterAudibleDistance = std::max(24.0f, tileScale * 14.0f);
-            bool outsideHearingAndOccluded = !monsterTileVisible && dist > monsterAudibleDistance;
-            if (outsideHearingAndOccluded && monsterHeadChaseBlend_ < 0.36f && !monsterHasLastKnown_ && !monsterHasSound_) {
+            if (monsterOccluded || !monsterInFront) {
                 monsterBodySmoothTime_ = -1000.0f;
                 monsterLimbAnchors_.clear();
                 return;
             }
-            occludedContactProxy = monsterOccluded &&
-                (dist < tileScale * 2.15f || monsterHeadChaseBlend_ > 0.36f || monsterHasLastKnown_ || monsterHasSound_);
-            if (monsterOccluded && !occludedContactProxy) {
-                monsterBodySmoothTime_ = -1000.0f;
-                return;
-            }
+            canTrackPlayer = MonsterVisualEncounterPlayer();
+        }
+        bool monsterViewRelevant = monsterPreview_ || debugEffectMonster || deathActive_ ||
+            (monsterTileVisible && monsterInFront);
+        if (!monsterViewRelevant) {
+            monsterBodySmoothTime_ = -1000.0f;
+            monsterLimbAnchors_.clear();
+            return;
         }
         bool highDetailMonster = monsterPreview_ || deathActive_ || canTrackPlayer ||
-            monsterHeadChaseBlend_ > 0.62f || (monsterTileVisible && dist < tileScale * 4.2f);
+            monsterHeadChaseBlend_ > 0.62f || (monsterTileVisible && monsterInFront && dist < tileScale * 4.2f);
         bool mediumDetailMonster = highDetailMonster || (!monsterOccluded && (monsterHasLastKnown_ || monsterHasSound_)) ||
-            monsterHeadChaseBlend_ > 0.18f || dist < tileScale * 8.5f || monsterTileVisible;
-        int monsterDetail = occludedContactProxy ? 0 : (debugEffectMonster ? 1 : (highDetailMonster ? 2 : (mediumDetailMonster ? 1 : 0)));
+            monsterHeadChaseBlend_ > 0.18f || (monsterInFront && dist < tileScale * 8.5f) ||
+            (monsterTileVisible && monsterInFront);
+        int monsterDetail = debugEffectMonster ? 1 : (highDetailMonster ? 2 : (mediumDetailMonster ? 1 : 0));
         float faceYaw = monsterYaw_;
         if (canTrackPlayer) {
             float cameraYaw = std::atan2(camera_.x - monster_.x, camera_.z - monster_.z);
@@ -754,6 +774,23 @@
                     clampBodyPoint(i - 1);
                     clampBodyPoint(i);
                 }
+                for (int i = 2; i < bodyCount; ++i) {
+                    XMFLOAT3 prev = Sub3(bodyPoints[static_cast<size_t>(i - 1)], bodyPoints[static_cast<size_t>(i - 2)]);
+                    XMFLOAT3 cur = Sub3(bodyPoints[static_cast<size_t>(i)], bodyPoints[static_cast<size_t>(i - 1)]);
+                    float prevLen = Length3(prev);
+                    float curLen = Length3(cur);
+                    if (prevLen <= 0.001f || curLen <= 0.001f) continue;
+                    XMFLOAT3 prevDir = Scale3(prev, 1.0f / prevLen);
+                    XMFLOAT3 curDir = Scale3(cur, 1.0f / curLen);
+                    constexpr float kMinSegmentDot = 0.42f;
+                    float bendDot = Dot3(prevDir, curDir);
+                    if (bendDot < kMinSegmentDot) {
+                        float correction = Clamp01((kMinSegmentDot - bendDot) / (1.0f + kMinSegmentDot));
+                        XMFLOAT3 softenedDir = Normalize3(Lerp3(curDir, prevDir, correction * 0.72f), prevDir);
+                        bodyPoints[static_cast<size_t>(i)] = Add3(bodyPoints[static_cast<size_t>(i - 1)], Scale3(softenedDir, curLen));
+                        clampBodyPoint(i);
+                    }
+                }
                 for (int i = 0; i < bodyCount; ++i) {
                     for (int j = i + 3; j < bodyCount; ++j) {
                         XMFLOAT3 delta = Sub3(bodyPoints[static_cast<size_t>(j)], bodyPoints[static_cast<size_t>(i)]);
@@ -849,7 +886,7 @@
             solidVerts.push_back({b.pos, b.normal, b.tangent, b.uv, material});
             solidVerts.push_back({c.pos, c.normal, c.tangent, c.uv, material});
         };
-        bool renderBodyMass = !occludedContactProxy;
+        bool renderBodyMass = true;
         if (renderBodyMass) {
             for (int i = 0; i + 1 < bodyCount; ++i) {
                 for (int r = 0; r < tubeSides; ++r) {
@@ -1192,7 +1229,8 @@
         XMFLOAT3 hRight{std::cos(headYaw), 0.0f, -std::sin(headYaw)};
         XMFLOAT3 hUp = bodyUps[0];
         XMFLOAT3 hForward{std::sin(headYaw), 0.0f, std::cos(headYaw)};
-        hUp = Normalize3(blobSurfaceUp, {0.0f, 1.0f, 0.0f});
+        float uprightBlend = blobSurfaceUp.y < 0.20f ? 0.82f : 0.58f;
+        hUp = Normalize3(Lerp3(blobSurfaceUp, {0.0f, 1.0f, 0.0f}, uprightBlend), {0.0f, 1.0f, 0.0f});
         hForward = Normalize3(Sub3(hForward, Scale3(hUp, Dot3(hForward, hUp))), monsterForward);
         if (Length3(hForward) < 0.001f) hForward = Normalize3(Cross3(hUp, monsterRight), monsterForward);
         hRight = Normalize3(Cross3(hUp, hForward), hRight);
@@ -1394,15 +1432,22 @@
     void AppendSparkBillboards(std::vector<Vertex>& verts) {
         XMVECTOR cam = XMLoadFloat3(&camera_);
         XMVECTOR up = XMVectorSet(0, 1, 0, 0);
-        float maxDist = std::max(6.0f, maze_.TileAverage() * 6.0f);
-        for (const SparkParticle& spark : sparks_) {
+        float maxDist = std::max(6.0f, std::min(settings_.fogEndMeters + maze_.TileAverage() * 2.0f, maze_.TileAverage() * 6.0f));
+        for (size_t i = 0; i < sparks_.size(); ++i) {
+            const SparkParticle& spark = sparks_[i];
             float lifeLeft = Clamp01(1.0f - spark.age / std::max(0.001f, spark.life));
             if (lifeLeft <= 0.0f) continue;
-            if (!DynamicVisualCandidate(spark.pos, spark.size * 2.2f, maxDist)) continue;
+            float radius = spark.size * (1.30f + lifeLeft * 2.35f);
+            if (!DynamicBillboardVisible(spark.pos, radius, maxDist, 0.34f)) continue;
+            XMFLOAT3 to = Sub3(spark.pos, camera_);
+            float distSq = Dot3(to, to);
+            float farT = Clamp01((std::sqrt(distSq) - maxDist * 0.48f) / std::max(0.1f, maxDist * 0.42f));
+            if (farT > 0.35f && ((i + static_cast<size_t>(static_cast<int>(time_ * 18.0f))) & 1u) != 0u) continue;
             XMVECTOR pos = XMLoadFloat3(&spark.pos);
             XMVECTOR toCam = XMVector3Normalize(cam - pos);
             XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, toCam));
             float size = spark.size * (0.55f + lifeLeft * lifeLeft * 1.35f);
+            if (size * lifeLeft < 0.004f) continue;
             XMVECTOR halfW = right * size;
             XMVECTOR halfH = up * size;
             XMFLOAT3 n, t, a, b, c, d;
@@ -1425,7 +1470,7 @@
         float coneHalf = std::clamp(settings_.flashlightConeDegrees, 20.0f, 140.0f) * 0.5f * kPi / 180.0f;
         float coneOuter = std::cos(coneHalf);
         float coneInner = std::cos(std::max(3.0f * kPi / 180.0f, coneHalf * 0.50f));
-        int maxParticles = std::min<int>(static_cast<int>(airParticles_.size()), std::clamp(static_cast<int>(3400.0f * std::clamp(settings_.airParticleDensity, 0.0f, 4.0f)), 0, 11000));
+        int maxParticles = std::min<int>(static_cast<int>(airParticles_.size()), std::clamp(static_cast<int>(2600.0f * std::clamp(settings_.airParticleDensity, 0.0f, 4.0f)), 0, 7200));
         int emitted = 0;
         XMFLOAT3 worldUp{0.0f, 1.0f, 0.0f};
         float maxDistSq = maxDist * maxDist;
@@ -1452,7 +1497,8 @@
             }
             float size = p.size * distanceScale * (1.0f + focusBlur * 0.24f);
             float projectedPixels = (size / std::max(0.06f, cameraDepth)) * static_cast<float>(std::max<LONG>(1, height_)) * 0.72f;
-            if (p.nearLayer < 0.5f && projectedPixels < 0.22f) continue;
+            if (projectedPixels < (p.nearLayer < 0.5f ? 0.34f : 0.20f)) continue;
+            if (distanceT > 0.72f && ((emitted + static_cast<int>(time_ * 11.0f)) & 1) != 0) continue;
             float lifeFade = SmoothStep(0.0f, 2.8f, p.age) * (1.0f - SmoothStep(p.life - 5.2f, p.life, p.age));
             if (lifeFade <= 0.01f) continue;
             size *= Lerp(0.18f, 1.0f, lifeFade);
@@ -1482,15 +1528,22 @@
     void AppendSteamBillboards(std::vector<Vertex>& verts) {
         XMVECTOR cam = XMLoadFloat3(&camera_);
         XMVECTOR up = XMVectorSet(0, 1, 0, 0);
-        float maxDist = std::max(7.0f, maze_.TileAverage() * 5.5f);
-        for (const SteamParticle& sp : steam_) {
+        float maxDist = std::max(7.0f, std::min(settings_.fogEndMeters + maze_.TileAverage() * 2.0f, maze_.TileAverage() * 5.5f));
+        for (size_t i = 0; i < steam_.size(); ++i) {
+            const SteamParticle& sp = steam_[i];
             float lifeLeft = Clamp01(1.0f - sp.age / std::max(0.001f, sp.life));
             if (lifeLeft <= 0.0f) continue;
-            if (!DynamicVisualCandidate(sp.pos, sp.size * 2.6f, maxDist)) continue;
+            float radius = sp.size * (1.60f + (1.0f - lifeLeft) * 2.2f);
+            if (!DynamicBillboardVisible(sp.pos, radius, maxDist, 0.40f)) continue;
+            XMFLOAT3 to = Sub3(sp.pos, camera_);
+            float dist = std::sqrt(Dot3(to, to));
+            float farT = Clamp01((dist - maxDist * 0.45f) / std::max(0.1f, maxDist * 0.45f));
+            if (farT > 0.30f && ((i + static_cast<size_t>(static_cast<int>(time_ * 9.0f))) & 1u) != 0u) continue;
             XMVECTOR pos = XMLoadFloat3(&sp.pos);
             XMVECTOR toCam = XMVector3Normalize(cam - pos);
             XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, toCam));
             float size = sp.size * (0.65f + (1.0f - lifeLeft) * 1.55f);
+            if (size * lifeLeft < 0.006f) continue;
             XMVECTOR halfW = right * size;
             XMVECTOR halfH = up * (size * 0.78f);
             XMFLOAT3 n, t, a, b, c, d;

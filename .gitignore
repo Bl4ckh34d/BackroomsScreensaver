@@ -4,6 +4,7 @@ dist/
 artifacts/
 debug-captures/
 tmp-ini-current/
+perf_runs/
 
 # Visual Studio / CMake user files
 .vs/

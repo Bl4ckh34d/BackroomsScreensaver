@@ -125,13 +125,32 @@
         float y = static_cast<float>(height_) - 58.0f;
         float w = std::clamp(static_cast<float>(width_) * 0.22f, 180.0f, 290.0f);
         pushBar(x, y, w, 14.0f, playerHealth_ / 100.0f, {0.72f, 0.05f, 0.045f, 0.92f});
-        pushBar(x, y + 24.0f, w, 10.0f, playerStamina_ / 100.0f, {0.88f, 0.72f, 0.23f, 0.88f});
+        float staminaFill = playerStamina_ / 100.0f;
+        float fatigue = 1.0f - SmoothStep(0.06f, 0.34f, staminaFill);
+        XMFLOAT4 staminaColor{
+            Lerp(0.88f, 0.92f, fatigue),
+            Lerp(0.72f, 0.36f, fatigue),
+            Lerp(0.23f, 0.08f, fatigue),
+            0.88f
+        };
+        pushBar(x, y + 24.0f, w, 10.0f, staminaFill, staminaColor);
         DrawOverlayVertices(verts);
     }
 
     void DrawMapOverlay() {
         if ((!settings_.mapOverlay && !settings_.debugAiMapOverlay) || !overlayBuffer_ || !overlayVertexShader_ || !overlayPixelShader_ ||
             width_ <= 0 || height_ <= 0 || maze_.w <= 0 || maze_.h <= 0 || maze_.open.empty()) {
+            return;
+        }
+
+        bool cacheValid = !mapOverlayCachedVerts_.empty() &&
+            mapOverlayCacheWidth_ == width_ &&
+            mapOverlayCacheHeight_ == height_ &&
+            mapOverlayCacheMazeW_ == maze_.w &&
+            mapOverlayCacheMazeH_ == maze_.h &&
+            mapOverlayCacheMode_ == runtimeMode_;
+        if (cacheValid && time_ < mapOverlayNextUpdateTime_) {
+            DrawOverlayVertices(mapOverlayCachedVerts_);
             return;
         }
 
@@ -229,7 +248,9 @@
         if (drawAiDebug) {
             bool alertPath = monsterHasSound_ || monsterHasLastKnown_ || monsterChasingVisible_;
             XMFLOAT4 pathColor = alertPath ? XMFLOAT4{1.0f, 0.12f, 0.04f, 0.72f} : XMFLOAT4{1.0f, 0.56f, 0.10f, 0.52f};
-            for (size_t i = monsterPathIndex_; i < monsterPath_.size(); ++i) {
+            size_t pathRemaining = monsterPath_.size() > monsterPathIndex_ ? monsterPath_.size() - monsterPathIndex_ : 0;
+            size_t pathStep = std::max<size_t>(1, (pathRemaining + 95) / 96);
+            for (size_t i = monsterPathIndex_; i < monsterPath_.size(); i += pathStep) {
                 float t = monsterPath_.size() > monsterPathIndex_
                     ? static_cast<float>(i - monsterPathIndex_) / static_cast<float>(std::max<size_t>(1, monsterPath_.size() - monsterPathIndex_))
                     : 0.0f;
@@ -252,5 +273,12 @@
 
         markTile(cameraTile, {0.20f, 0.72f, 1.0f, 0.82f}, 1.70f);
 
+        mapOverlayCachedVerts_ = verts;
+        mapOverlayCacheWidth_ = width_;
+        mapOverlayCacheHeight_ = height_;
+        mapOverlayCacheMazeW_ = maze_.w;
+        mapOverlayCacheMazeH_ = maze_.h;
+        mapOverlayCacheMode_ = runtimeMode_;
+        mapOverlayNextUpdateTime_ = time_ + (settings_.debugAiMapOverlay ? 0.085f : 0.16f);
         DrawOverlayVertices(verts);
     }
