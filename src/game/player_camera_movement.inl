@@ -1,6 +1,117 @@
 // Player/camera movement, navigation, attention, chase, and camera-state helpers.
 // Included inside Renderer's private section from main.cpp.
 
+    void GenerateCollectiblePages() {
+        collectiblePagesCollected_ = 0;
+        for (CollectiblePage& page : collectiblePages_) {
+            page = {};
+            page.collected = true;
+        }
+        if (!IsPlayableSimulationMode(runtimeMode_) || maze_.open.empty()) return;
+
+        std::vector<Tile> openTiles;
+        openTiles.reserve(static_cast<size_t>(maze_.w * maze_.h));
+        for (int y = 1; y < maze_.h - 1; ++y) {
+            for (int x = 1; x < maze_.w - 1; ++x) {
+                Tile t{x, y};
+                if (!maze_.IsOpen(x, y) || t == maze_.start || t == maze_.exit) continue;
+                if (std::abs(x - maze_.start.x) + std::abs(y - maze_.start.y) < 4) continue;
+                openTiles.push_back(t);
+            }
+        }
+        if (openTiles.empty()) return;
+
+        std::array<Tile, 8> usedTiles{};
+        int usedCount = 0;
+        auto tileUsed = [&](Tile t) {
+            for (int i = 0; i < usedCount; ++i) {
+                if (usedTiles[static_cast<size_t>(i)] == t) return true;
+            }
+            return false;
+        };
+        auto rememberTile = [&](Tile t) {
+            if (usedCount < static_cast<int>(usedTiles.size())) {
+                usedTiles[static_cast<size_t>(usedCount++)] = t;
+            }
+        };
+
+        constexpr float pageW = 0.210f;
+        constexpr float pageH = 0.297f;
+        const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int pageIndex = 0; pageIndex < 8; ++pageIndex) {
+            bool placed = false;
+            for (int attempt = 0; attempt < 220 && !placed; ++attempt) {
+                Tile t = openTiles[static_cast<size_t>(rng_() % openTiles.size())];
+                if (tileUsed(t) && attempt < 96) continue;
+                XMFLOAT3 tileCenter = maze_.WorldCenter(t, 0.0f);
+                bool preferWall = RandRange(0.0f, 1.0f) < 0.68f;
+                if (preferWall) {
+                    std::array<int, 4> order{{0, 1, 2, 3}};
+                    std::shuffle(order.begin(), order.end(), rng_);
+                    for (int ord : order) {
+                        int dx = dirs[ord][0];
+                        int dy = dirs[ord][1];
+                        if (maze_.IsOpen(t.x + dx, t.y + dy)) continue;
+                        XMFLOAT3 normal{static_cast<float>(-dx), 0.0f, static_cast<float>(-dy)};
+                        normal = Normalize3(normal, {0.0f, 0.0f, 1.0f});
+                        XMFLOAT3 right = Normalize3(Cross3({0.0f, 1.0f, 0.0f}, normal), {1.0f, 0.0f, 0.0f});
+                        float lateral = RandRange(-0.36f, 0.36f) * ((dx != 0) ? maze_.tileD : maze_.tileW);
+                        XMFLOAT3 wallCenter = tileCenter;
+                        wallCenter.x += static_cast<float>(dx) * maze_.tileW * 0.5f;
+                        wallCenter.z += static_cast<float>(dy) * maze_.tileD * 0.5f;
+                        wallCenter = Add3(wallCenter, Scale3(normal, 0.010f));
+                        wallCenter = Add3(wallCenter, Scale3(right, lateral));
+                        wallCenter.y = std::clamp(1.38f + RandRange(-0.22f, 0.20f), pageH * 0.5f + 0.08f, settings_.wallHeightMeters - pageH * 0.5f - 0.05f);
+                        collectiblePages_[static_cast<size_t>(pageIndex)] = {wallCenter, right, {0.0f, 1.0f, 0.0f}, normal, pageIndex, false};
+                        rememberTile(t);
+                        placed = true;
+                        break;
+                    }
+                }
+                if (!placed) {
+                    float px = tileCenter.x + RandRange(-0.32f, 0.32f) * std::max(0.1f, maze_.tileW - pageH);
+                    float pz = tileCenter.z + RandRange(-0.32f, 0.32f) * std::max(0.1f, maze_.tileD - pageH);
+                    float yaw = RandRange(0.0f, kPi * 2.0f);
+                    XMFLOAT3 right{std::cos(yaw), 0.0f, -std::sin(yaw)};
+                    XMFLOAT3 up{std::sin(yaw), 0.0f, std::cos(yaw)};
+                    collectiblePages_[static_cast<size_t>(pageIndex)] = {{px, 0.056f + pageIndex * 0.0004f, pz}, right, up, {0.0f, 1.0f, 0.0f}, pageIndex, false};
+                    rememberTile(t);
+                    placed = true;
+                }
+            }
+        }
+    }
+
+    bool TryCollectiblePagePickup() {
+        if (!IsPlayableSimulationMode(runtimeMode_)) return false;
+        XMFLOAT3 origin{camera_.x, camera_.y, camera_.z};
+        XMFLOAT3 dir = Normalize3(DirectionFromYawPitch(yaw_, lookPitch_), {0.0f, 0.0f, 1.0f});
+        float bestT = 2.05f;
+        int best = -1;
+        for (size_t i = 0; i < collectiblePages_.size(); ++i) {
+            const CollectiblePage& page = collectiblePages_[i];
+            if (page.collected) continue;
+            float denom = Dot3(dir, page.normal);
+            if (std::abs(denom) < 0.08f) continue;
+            float t = Dot3(Sub3(page.center, origin), page.normal) / denom;
+            if (t <= 0.05f || t >= bestT) continue;
+            XMFLOAT3 hit = Add3(origin, Scale3(dir, t));
+            XMFLOAT3 local = Sub3(hit, page.center);
+            float u = Dot3(local, page.right);
+            float v = Dot3(local, page.up);
+            if (std::abs(u) > 0.115f || std::abs(v) > 0.160f) continue;
+            Tile pageTile = maze_.TileFromWorld(page.center.x, page.center.z);
+            if (!maze_.LineClear(CameraTile(), pageTile)) continue;
+            bestT = t;
+            best = static_cast<int>(i);
+        }
+        if (best < 0) return false;
+        CollectiblePage& page = collectiblePages_[static_cast<size_t>(best)];
+        page.collected = true;
+        collectiblePagesCollected_ = std::clamp(collectiblePagesCollected_ + 1, 0, 8);
+        return true;
+    }
+
     void ResetSimulation() {
         XMFLOAT3 start = maze_.WorldCenter(maze_.start, 1.45f);
         camera_ = start;
@@ -164,6 +275,8 @@
         playerStaminaRegenDelay_ = 0.0f;
         playerNoiseRadiusMeters_ = 0.0f;
         sprintStaminaLocked_ = false;
+        previousInteractInput_ = false;
+        GenerateCollectiblePages();
         playerAudibleSoundPulses_.clear();
         monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
         monsterPath_.clear();
@@ -3054,13 +3167,18 @@
                 moveDistance, std::max(0.1f, smoothedMoveSpeed_), CameraTile(), true);
         }
 
-        if (gameInput_.interact && !exitTransitionActive_) {
+        bool interactPressed = gameInput_.interact && !previousInteractInput_;
+        if (interactPressed && !exitTransitionActive_ && TryCollectiblePagePickup()) {
+            interactPressed = false;
+        }
+        if (interactPressed && !exitTransitionActive_) {
             Tile cur = CameraTile();
             float exitDistSq = TileDistanceSq(cur, maze_.exit);
             if (exitDistSq <= 2.0f && VisibleInFront(maze_.exit)) {
                 BeginExitTransition();
             }
         }
+        previousInteractInput_ = gameInput_.interact;
 
         float moveBlend = Clamp01(smoothedMoveSpeed_ / std::max(0.1f, sprintSpeed));
         float runBlend = Clamp01((smoothedMoveSpeed_ - walkSpeed) / std::max(0.1f, sprintSpeed - walkSpeed));

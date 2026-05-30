@@ -31,6 +31,15 @@ struct MonsterHandprint {
     float createdAt = 0.0f;
 };
 
+struct CollectiblePage {
+    XMFLOAT3 center{};
+    XMFLOAT3 right{1.0f, 0.0f, 0.0f};
+    XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+    XMFLOAT3 normal{0.0f, 0.0f, 1.0f};
+    int pageIndex = 0;
+    bool collected = false;
+};
+
 #pragma pack(push, 1)
 struct PackedStaticPropVertexV2 {
     uint16_t px;

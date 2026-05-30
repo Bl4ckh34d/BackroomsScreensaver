@@ -164,6 +164,9 @@
         float playerStaminaRegenDelay = 0.0f;
         float playerNoiseRadiusMeters = 0.0f;
         bool sprintStaminaLocked = false;
+        bool previousInteractInput = false;
+        std::array<CollectiblePage, 8> collectiblePages{};
+        int collectiblePagesCollected = 0;
         XMFLOAT3 monster{};
         std::vector<Tile> monsterPath;
         std::vector<XMFLOAT3> monsterTrail;
@@ -369,6 +372,9 @@
         s->playerStaminaRegenDelay = playerStaminaRegenDelay_;
         s->playerNoiseRadiusMeters = playerNoiseRadiusMeters_;
         s->sprintStaminaLocked = sprintStaminaLocked_;
+        s->previousInteractInput = previousInteractInput_;
+        s->collectiblePages = collectiblePages_;
+        s->collectiblePagesCollected = collectiblePagesCollected_;
         s->monster = monster_;
         s->monsterPath = monsterPath_;
         s->monsterTrail = monsterTrail_;
@@ -581,6 +587,9 @@
         playerStaminaRegenDelay_ = s.playerStaminaRegenDelay;
         playerNoiseRadiusMeters_ = s.playerNoiseRadiusMeters;
         sprintStaminaLocked_ = s.sprintStaminaLocked;
+        previousInteractInput_ = s.previousInteractInput;
+        collectiblePages_ = s.collectiblePages;
+        collectiblePagesCollected_ = s.collectiblePagesCollected;
         monster_ = s.monster;
         monsterPath_ = std::move(s.monsterPath);
         monsterTrail_ = std::move(s.monsterTrail);

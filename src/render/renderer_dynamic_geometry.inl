@@ -1554,6 +1554,28 @@
         }
     }
 
+    void AppendCollectiblePages(std::vector<Vertex>& verts) {
+        if (!IsPlayableSimulationMode(runtimeMode_)) return;
+        constexpr float halfW = 0.210f * 0.5f;
+        constexpr float halfH = 0.297f * 0.5f;
+        for (const CollectiblePage& page : collectiblePages_) {
+            if (page.collected || page.pageIndex < 0 || page.pageIndex >= 8) continue;
+            if (!DynamicVisualCandidate(page.center, 0.24f, std::max(8.0f, maze_.TileAverage() * 7.0f))) continue;
+            XMFLOAT3 right = Normalize3(page.right, {1.0f, 0.0f, 0.0f});
+            XMFLOAT3 up = Normalize3(page.up, {0.0f, 1.0f, 0.0f});
+            XMFLOAT3 normal = Normalize3(page.normal, Normalize3(Cross3(right, up), {0.0f, 1.0f, 0.0f}));
+            XMFLOAT3 hw = Scale3(right, halfW);
+            XMFLOAT3 hh = Scale3(up, halfH);
+            XMFLOAT3 a = Add3(page.center, Add3(Scale3(hw, -1.0f), Scale3(hh, -1.0f)));
+            XMFLOAT3 b = Add3(page.center, Add3(hw, Scale3(hh, -1.0f)));
+            XMFLOAT3 c = Add3(page.center, Add3(hw, hh));
+            XMFLOAT3 d = Add3(page.center, Add3(Scale3(hw, -1.0f), hh));
+            AppendDynamicQuadUV(verts, a, b, c, d, normal, right,
+                {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 0.0f},
+                27.0f + static_cast<float>(page.pageIndex));
+        }
+    }
+
     void UpdateDynamicGeometry() {
         StartupProfile dynamicProfile(L"UpdateDynamicGeometryBreakdown");
         monsterEyeWorldCount_ = 0;
@@ -1571,6 +1593,7 @@
             dynamicProfile.Mark(L"MenuGeometry");
         } else {
             AppendVentDrops(opaqueVerts);
+            AppendCollectiblePages(opaqueVerts);
             AppendMonsterBillboard(opaqueVerts, transparentVerts);
             dynamicProfile.Mark(L"MonsterAndVentDrops");
         }

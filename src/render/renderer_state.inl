@@ -156,6 +156,9 @@
     float playerStaminaRegenDelay_ = 0.0f;
     float playerNoiseRadiusMeters_ = 0.0f;
     bool sprintStaminaLocked_ = false;
+    bool previousInteractInput_ = false;
+    std::array<CollectiblePage, 8> collectiblePages_{};
+    int collectiblePagesCollected_ = 0;
     bool monsterPreview_ = false;
     MonsterPreviewView monsterPreviewView_ = MonsterPreviewView::Orbit;
     bool monsterPreviewManualOrbit_ = false;

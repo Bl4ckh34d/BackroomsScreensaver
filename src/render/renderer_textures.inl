@@ -527,6 +527,10 @@
                 loadRuntimeAlbedo(26, L"assets\\models\\monster_face_mask\\horror_mask_baseColor.png");
                 loadRuntimeNormal(26, L"assets\\models\\monster_face_mask\\horror_mask_normal.png");
                 loadRuntimeRoughnessFromGreen(26, L"assets\\models\\monster_face_mask\\horror_mask_metallicRoughness.png");
+                for (int page = 0; page < 8; ++page) {
+                    std::wstring path = L"assets\\images\\8pages\\page" + std::to_wstring(page + 1) + L".jpg";
+                    loadRuntimeAlbedo(27 + page, path.c_str());
+                }
                 darkenWhiteChairPlastic(16);
                 darkenWhiteChairPlastic(20);
                 toneTaskChairFabric(22);

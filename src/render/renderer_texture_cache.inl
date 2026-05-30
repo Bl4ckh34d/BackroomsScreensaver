@@ -33,7 +33,7 @@
 
     uint64_t TextureCacheHash() const {
         uint64_t hash = 1469598103934665603ull;
-        const char* version = "BackroomsMazeTextureCacheV16";
+        const char* version = "BackroomsMazeTextureCacheV17";
         hash = Fnv1aAppend(hash, version, std::strlen(version));
         hash = Fnv1aAppend(hash, &kTextureSize, sizeof(kTextureSize));
         hash = Fnv1aAppend(hash, &kMaterialCount, sizeof(kMaterialCount));
@@ -81,7 +81,15 @@
             L"assets\\models\\runtime\\textures\\office_chair_task_diffuse.png",
             L"assets\\models\\monster_face_mask\\horror_mask_baseColor.png",
             L"assets\\models\\monster_face_mask\\horror_mask_normal.png",
-            L"assets\\models\\monster_face_mask\\horror_mask_metallicRoughness.png"
+            L"assets\\models\\monster_face_mask\\horror_mask_metallicRoughness.png",
+            L"assets\\images\\8pages\\page1.jpg",
+            L"assets\\images\\8pages\\page2.jpg",
+            L"assets\\images\\8pages\\page3.jpg",
+            L"assets\\images\\8pages\\page4.jpg",
+            L"assets\\images\\8pages\\page5.jpg",
+            L"assets\\images\\8pages\\page6.jpg",
+            L"assets\\images\\8pages\\page7.jpg",
+            L"assets\\images\\8pages\\page8.jpg"
         };
         for (const wchar_t* texture : runtimeTextures) {
             addResolvedAsset(texture, ResolveConfiguredAssetPath(texture));

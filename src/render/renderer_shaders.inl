@@ -146,7 +146,7 @@ VSOut VSMain(VSIn input)
 
 float MaterialId(float material)
 {
-    return clamp(floor(material), 0.0, 26.0);
+    return clamp(floor(material), 0.0, 34.0);
 }
 
 void ShadowPS(VSOut input)
