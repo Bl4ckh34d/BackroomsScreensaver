@@ -78,6 +78,22 @@ function Copy-RuntimeFile {
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
+function Copy-RuntimeDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath
+    )
+
+    $source = Join-Path $root $RelativePath
+    if (-not (Test-Path -LiteralPath $source -PathType Container)) {
+        throw "Required runtime directory is missing: $RelativePath"
+    }
+
+    $destination = Join-Path $stageDir $RelativePath
+    $destinationParent = Split-Path -Parent $destination
+    New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+    Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force
+}
+
 function Invoke-StageSelfTest {
     param(
         [Parameter(Mandatory = $true)][string]$ExePath,
@@ -256,6 +272,7 @@ $runtimeFiles = @(
     "assets\images\8pages\page6.jpg",
     "assets\images\8pages\page7.jpg",
     "assets\images\8pages\page8.jpg",
+    "assets\images\title.png",
     "assets\models\monster_face_mask\horror_mask.obj",
     "assets\models\monster_face_mask\horror_mask.mtl",
     "assets\models\monster_face_mask\horror_mask_baseColor.png",
@@ -284,6 +301,8 @@ $runtimeFiles = @(
 foreach ($relativePath in $runtimeFiles) {
     Copy-RuntimeFile -RelativePath $relativePath
 }
+
+Copy-RuntimeDirectory -RelativePath "assets\images\randomPages"
 
 $installCmd = @'
 @echo off

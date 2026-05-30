@@ -77,6 +77,11 @@ foreach(target BackroomsMaze BackroomsMazeGame)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/assets/branding"
             "$<TARGET_FILE_DIR:${target}>/assets/branding"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:${target}>/assets/images"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target}>/assets/images"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/images"
+            "$<TARGET_FILE_DIR:${target}>/assets/images"
         COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:${target}>/assets/sounds"
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target}>/assets/sounds"
         COMMAND ${CMAKE_COMMAND} -E copy_directory

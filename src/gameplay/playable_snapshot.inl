@@ -165,7 +165,7 @@
         float playerNoiseRadiusMeters = 0.0f;
         bool sprintStaminaLocked = false;
         bool previousInteractInput = false;
-        std::array<CollectiblePage, 8> collectiblePages{};
+        std::array<CollectiblePage, kCollectiblePageMaterialCount> collectiblePages{};
         int collectiblePagesCollected = 0;
         XMFLOAT3 monster{};
         std::vector<Tile> monsterPath;

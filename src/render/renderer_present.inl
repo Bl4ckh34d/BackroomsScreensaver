@@ -107,12 +107,57 @@
         SceneConstants cb{};
         XMStoreFloat4x4(&cb.viewProj, view * proj);
         XMStoreFloat4x4(&cb.lightViewProj, lightViewProj);
+        XMStoreFloat4x4(&cb.fixtureLightViewProj, XMMatrixIdentity());
         XMStoreFloat4x4(&cb.monsterEyeViewProj0, XMMatrixIdentity());
         XMStoreFloat4x4(&cb.monsterEyeViewProj1, XMMatrixIdentity());
         XMFLOAT3 eyePos{};
         XMStoreFloat3(&eyePos, eye);
         XMFLOAT3 viewDirFloat{};
         XMStoreFloat3(&viewDirFloat, viewDir);
+
+        bool fixtureShadowActive = false;
+        XMFLOAT3 fixtureShadowPos{0.0f, 0.0f, 0.0f};
+        XMFLOAT3 fixtureShadowDir{0.0f, -1.0f, 0.0f};
+        float fixtureShadowRange = std::max(settings_.wallHeightMeters + 0.75f, maze_.TileAverage() * 1.70f);
+        XMMATRIX fixtureLightViewProj = XMMatrixIdentity();
+        if (!monsterPreview_ && IsPlayableSimulationMode(runtimeMode_) && fixtureShadowDsv_ && fixtureShadowSrv_ &&
+            settings_.lampIntensity > 0.001f && settings_.lampOnRatio > 0.001f && !runtimeLamps_.empty()) {
+            Tile cameraTile = CameraTile();
+            float maxCandidateDistance = std::clamp(maze_.TileAverage() * 3.2f, 5.5f, 10.5f);
+            float maxCandidateDistanceSq = maxCandidateDistance * maxCandidateDistance;
+            float bestScore = std::numeric_limits<float>::infinity();
+            const RuntimeLampState* bestLamp = nullptr;
+            for (const RuntimeLampState& lamp : runtimeLamps_) {
+                if (lamp.broken || !maze_.InBounds(lamp.tile.x, lamp.tile.y) || !maze_.LineClear(cameraTile, lamp.tile)) continue;
+                float dx = lamp.pos.x - eyePos.x;
+                float dy = lamp.pos.y - eyePos.y;
+                float dz = lamp.pos.z - eyePos.z;
+                float distSq = dx * dx + dy * dy + dz * dz;
+                if (distSq > maxCandidateDistanceSq) continue;
+                float dist = std::sqrt(std::max(0.0001f, distSq));
+                float viewFacing = (dx * viewDirFloat.x + dy * viewDirFloat.y + dz * viewDirFloat.z) / dist;
+                if (dist > maze_.TileAverage() * 1.25f && viewFacing < -0.18f) continue;
+                float screenBias = 1.0f - std::clamp((viewFacing + 0.18f) / 1.18f, 0.0f, 1.0f);
+                float score = distSq * (0.62f + screenBias * 1.25f);
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestLamp = &lamp;
+                }
+            }
+            if (bestLamp) {
+                fixtureShadowActive = true;
+                fixtureShadowPos = bestLamp->pos;
+                fixtureShadowPos.y -= 0.015f;
+                XMVECTOR fixturePos = XMLoadFloat3(&fixtureShadowPos);
+                XMVECTOR fixtureDir = XMLoadFloat3(&fixtureShadowDir);
+                XMVECTOR fixtureUp = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+                XMMATRIX fixtureView = XMMatrixLookAtLH(fixturePos, fixturePos + fixtureDir, fixtureUp);
+                XMMATRIX fixtureProj = XMMatrixPerspectiveFovLH(116.0f * kPi / 180.0f, 1.0f, 0.035f, fixtureShadowRange);
+                fixtureLightViewProj = fixtureView * fixtureProj;
+                XMStoreFloat4x4(&cb.fixtureLightViewProj, fixtureLightViewProj);
+            }
+        }
+
         float flashlightIntensity = settings_.flashlightIntensity * DreadFlashlightMultiplier();
         if (runtimeMode_ == RendererRuntimeMode::PlayableGame && !flashlightEnabled_) flashlightIntensity = 0.0f;
         if (monsterPreview_) flashlightIntensity = 1.45f;
@@ -126,7 +171,7 @@
         };
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
             float menuDoorAmbient = SmoothStep(0.04f, 0.78f, exitDoorAngle_ / 1.38f);
-            cb.lighting0.z = Lerp(0.012f, 0.235f, menuDoorAmbient);
+            cb.lighting0.z = Lerp(0.010f, 0.135f, menuDoorAmbient);
         }
         if (monsterPreview_) {
             cb.lighting0.y = 0.030f;
@@ -190,9 +235,9 @@
         };
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
             float menuDoorGlow = SmoothStep(0.08f, 0.82f, exitDoorAngle_ / 1.38f);
-            cb.post0.x = Lerp(cb.post0.x, std::max(cb.post0.x, 1.12f), menuDoorGlow);
-            cb.post1.z = Lerp(cb.post1.z, std::max(cb.post1.z, 0.62f), menuDoorGlow);
-            cb.post1.w = Lerp(cb.post1.w, std::max(cb.post1.w, 0.32f), menuDoorGlow);
+            cb.post0.x = Lerp(cb.post0.x, std::max(cb.post0.x, 1.03f), menuDoorGlow);
+            cb.post1.z = Lerp(cb.post1.z, std::max(cb.post1.z, 0.34f), menuDoorGlow);
+            cb.post1.w = Lerp(cb.post1.w, std::max(cb.post1.w, 0.22f), menuDoorGlow);
         }
         float visionFlashT = visionFlashDuration_ > 0.001f ? Clamp01(visionFlashTimer_ / visionFlashDuration_) : 0.0f;
         cb.post2 = {
@@ -224,6 +269,21 @@
             coneOuter,
             coneInner
         };
+        cb.fixtureShadow0 = {
+            fixtureShadowPos.x,
+            fixtureShadowPos.y,
+            fixtureShadowPos.z,
+            fixtureShadowActive ? std::clamp(settings_.flashlightShadowStrength * 0.72f, 0.0f, 0.62f) : 0.0f
+        };
+        cb.fixtureShadow1 = {
+            std::max(settings_.flashlightShadowBias * 1.35f, 0.00062f),
+            fixtureShadowRange,
+            1.0f / static_cast<float>(std::max<UINT>(1, fixtureShadowMapSize_)),
+            0.0f
+        };
+        currentFixtureShadowActive_ = fixtureShadowActive;
+        currentFixtureShadowPos_ = fixtureShadowPos;
+        currentFixtureShadowRange_ = fixtureShadowRange;
         cb.maze0 = {
             -static_cast<float>(maze_.w) * maze_.tileW * 0.5f,
             -static_cast<float>(maze_.h) * maze_.tileD * 0.5f,
@@ -400,7 +460,7 @@
             XMFLOAT3 stairSource = Scale3(exitDoorNormal_, -2.65f);
             doorwayLightPos = Add3(exitDoorCenter_, stairSource);
             doorwayLightPos.y = exitDoorCenter_.y + 4.35f;
-            doorwayLightStrength = doorwayLightOpen * 15.0f;
+            doorwayLightStrength = doorwayLightOpen * 5.8f;
             exitLightDir = Normalize3(exitDoorNormal_, exitDoorNormal_);
             doorwayPortalPos = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.04f));
             doorwayPortalHalfWidth = 0.56f;
@@ -629,9 +689,9 @@
         auto renderDepthShadow = [&](ID3D11DepthStencilView* shadowDsv, UINT shadowSize, const XMMATRIX& shadowViewProj,
                                      XMFLOAT3 shadowOrigin, XMFLOAT3 shadowDirection, float shadowRange, float shadowConeCos) {
             if (!shadowDsv) return;
-            ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-            context_->PSSetShaderResources(0, 9, nullSrvs);
-            context_->DSSetShaderResources(0, 9, nullSrvs);
+            ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+            context_->PSSetShaderResources(0, 11, nullSrvs);
+            context_->DSSetShaderResources(0, 11, nullSrvs);
             context_->ClearDepthStencilView(shadowDsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
             context_->OMSetRenderTargets(0, nullptr, shadowDsv);
 
@@ -713,6 +773,11 @@
             renderDepthShadow(shadowDsv_.Get(), shadowMapSize_, lightViewProj,
                 lightPosFloat, lightDirFloat, shadowDistance, std::cos(shadowFov * 0.5f));
         }
+        if (fixtureShadowActive && settings_.flashlightShadowStrength > 0.001f && transitionFade < 0.995f) {
+            renderProfile.Mark(L"BeginFixtureShadow");
+            renderDepthShadow(fixtureShadowDsv_.Get(), fixtureShadowMapSize_, fixtureLightViewProj,
+                fixtureShadowPos, fixtureShadowDir, fixtureShadowRange, std::cos(116.0f * 0.5f * kPi / 180.0f));
+        }
         if (monsterEyeStrength > 0.001f) {
             for (int eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
                 if (monsterEyeShadowDsv_[static_cast<size_t>(eyeIndex)]) {
@@ -743,7 +808,9 @@
             flashlightPatternSrv_.Get(),
             lampDamageSrv_.Get(),
             monsterEyeShadowSrv_[0].Get(),
-            monsterEyeShadowSrv_[1].Get()
+            monsterEyeShadowSrv_[1].Get(),
+            loosePagesSrv_.Get(),
+            fixtureShadowSrv_.Get()
         };
         ID3D11SamplerState* samplers[] = {sampler_.Get(), shadowSampler_.Get()};
         context_->OMSetRenderTargets(1, &sceneTarget, dsv_.Get());
@@ -760,9 +827,9 @@
         context_->HSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
         context_->DSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
         context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
-        context_->PSSetShaderResources(0, 9, srvs);
+        context_->PSSetShaderResources(0, 11, srvs);
         if (useFleshTessellation) {
-            context_->DSSetShaderResources(0, 9, srvs);
+            context_->DSSetShaderResources(0, 11, srvs);
             context_->DSSetSamplers(0, 1, sampler_.GetAddressOf());
         }
         context_->PSSetSamplers(0, 2, samplers);
@@ -784,9 +851,9 @@
             context_->HSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
             context_->DSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
             context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
-            context_->PSSetShaderResources(0, 9, srvs);
+            context_->PSSetShaderResources(0, 11, srvs);
             if (useFleshTessellation) {
-                context_->DSSetShaderResources(0, 9, srvs);
+                context_->DSSetShaderResources(0, 11, srvs);
                 context_->DSSetSamplers(0, 1, sampler_.GetAddressOf());
             }
             context_->PSSetSamplers(0, 2, samplers);
@@ -802,7 +869,7 @@
             context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
             context_->VSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
             context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
-            context_->PSSetShaderResources(0, 9, srvs);
+            context_->PSSetShaderResources(0, 11, srvs);
             context_->PSSetSamplers(0, 2, samplers);
         };
 
@@ -876,9 +943,9 @@
             renderProfile.Mark(L"DynamicTransparent");
         }
 
-        ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-        context_->PSSetShaderResources(0, 9, nullSrvs);
-        context_->DSSetShaderResources(0, 9, nullSrvs);
+        ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+        context_->PSSetShaderResources(0, 11, nullSrvs);
+        context_->DSSetShaderResources(0, 11, nullSrvs);
         context_->HSSetShader(nullptr, nullptr, 0);
         context_->DSSetShader(nullptr, nullptr, 0);
         if (postAvailable) {
@@ -899,8 +966,8 @@
             renderProfile.Mark(L"GameHudOverlay");
         }
 
-        context_->PSSetShaderResources(0, 9, nullSrvs);
-        context_->DSSetShaderResources(0, 9, nullSrvs);
+        context_->PSSetShaderResources(0, 11, nullSrvs);
+        context_->DSSetShaderResources(0, 11, nullSrvs);
         context_->HSSetShader(nullptr, nullptr, 0);
         context_->DSSetShader(nullptr, nullptr, 0);
         StartupProfileLine(L"Render before Present");

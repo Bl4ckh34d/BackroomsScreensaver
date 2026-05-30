@@ -20,6 +20,7 @@
         startupShaderTotal_ = 0;
         startupShaderCompiled_ = 0;
         startupShaderCached_ = 0;
+        lastInitializeError_.clear();
         ReportStartupActivity(L"Starting renderer", L"Reading settings and preparing Direct3D.");
 
         StartupProfile profile(L"Initialize");
@@ -68,34 +69,62 @@
                 levels, ARRAYSIZE(levels), D3D11_SDK_VERSION,
                 &scd, &swapChain_, &device_, &featureLevel_, &context_);
         }
-        if (FAILED(hr)) return false;
+        if (FAILED(hr)) {
+            lastInitializeError_ = L"CreateDeviceAndSwapChain failed: HRESULT 0x" + [&]() {
+                std::wstringstream ss;
+                ss << std::hex << static_cast<unsigned long>(hr);
+                return ss.str();
+            }();
+            return false;
+        }
         profile.Mark(L"CreateDeviceAndSwapChain");
         startupShaderTotal_ = featureLevel_ >= D3D_FEATURE_LEVEL_11_0 ? 9 : 7;
         startupProgressTotal_ = kStartupProgressPreShaderSteps + startupShaderTotal_ + kStartupProgressPostShaderSteps;
         startupProgressFineTotal_ = startupProgressTotal_ * kStartupProgressUnitsPerStep;
         ReportStartupStep(L"Direct3D device ready", L"Creating render targets.");
 
-        if (!CreateBackBuffer()) return false;
+        if (!CreateBackBuffer()) {
+            lastInitializeError_ = L"CreateBackBuffer failed.";
+            return false;
+        }
         profile.Mark(L"CreateBackBuffer");
         ReportStartupStep(L"Back buffer ready", L"Checking shader cache.");
         ReportStartupActivity(L"Loading shaders", ShaderProgressDetail(L"Checking shader cache", nullptr, nullptr, false));
-        if (!CreateShaders()) return false;
+        if (!CreateShaders()) {
+            lastInitializeError_ = L"CreateShaders failed.";
+            return false;
+        }
         profile.Mark(L"CreateShaders");
         ReportStartupActivity(L"Shaders ready", L"Creating render states.");
-        if (!CreateStates()) return false;
+        if (!CreateStates()) {
+            lastInitializeError_ = L"CreateStates failed.";
+            return false;
+        }
         profile.Mark(L"CreateStates");
         ReportStartupStep(L"Render states ready", L"Allocating shadow map.");
-        if (!CreateShadowResources()) return false;
+        if (!CreateShadowResources()) {
+            lastInitializeError_ = L"CreateShadowResources failed.";
+            return false;
+        }
         profile.Mark(L"CreateShadowResources");
         ReportStartupStep(L"Shadow resources ready", L"Building material textures.");
         ReportStartupActivity(L"Loading textures", L"Checking texture cache.");
-        if (!CreateTextures()) return false;
+        if (!CreateTextures()) {
+            lastInitializeError_ = L"CreateTextures failed.";
+            return false;
+        }
         profile.Mark(L"CreateTextures");
         ReportStartupStep(L"Textures ready", L"Loading flashlight pattern.");
-        if (!CreateFlashlightPatternTexture()) return false;
+        if (!CreateFlashlightPatternTexture()) {
+            lastInitializeError_ = L"CreateFlashlightPatternTexture failed.";
+            return false;
+        }
         profile.Mark(L"CreateFlashlightPatternTexture");
         ReportStartupStep(L"Flashlight pattern ready", L"Creating constant buffers.");
-        if (!CreateConstantBuffer()) return false;
+        if (!CreateConstantBuffer()) {
+            lastInitializeError_ = L"CreateConstantBuffer failed.";
+            return false;
+        }
         profile.Mark(L"CreateConstantBuffer");
         ReportStartupStep(L"GPU buffers ready", runtimeMode_ == RendererRuntimeMode::MainMenu
             ? L"Loading menu meshes."
@@ -135,7 +164,10 @@
         }
         profile.Mark(L"GenerateMaze");
         ReportStartupStep(L"Maze generated", L"Uploading maze mask.");
-        if (!CreateMazeMaskTexture()) return false;
+        if (!CreateMazeMaskTexture()) {
+            lastInitializeError_ = L"CreateMazeMaskTexture failed.";
+            return false;
+        }
         profile.Mark(L"CreateMazeMaskTexture");
         ReportStartupStep(L"Maze mask ready", L"Building maze geometry.");
         ResetSimulation();
@@ -148,6 +180,10 @@
         lastTicks_ = GetTickCount64();
         bloodDebugStartTicks_ = lastTicks_;
         return true;
+    }
+
+    const std::wstring& LastInitializeError() const {
+        return lastInitializeError_;
     }
 
     bool PrepareAudio(const Settings& settings) {
@@ -313,6 +349,13 @@
 
     void SetGameInput(const GameInputSnapshot& input) {
         gameInput_ = input;
+    }
+
+    void ShowGameNotification(const std::wstring& text, float durationSeconds = 4.2f) {
+        hudNotificationText_ = text;
+        hudNotificationStartTime_ = time_;
+        hudNotificationDuration_ = std::max(0.25f, durationSeconds);
+        hudNotificationTextureDirty_ = true;
     }
 
     void ApplyGameSettings(const Settings& settings) {

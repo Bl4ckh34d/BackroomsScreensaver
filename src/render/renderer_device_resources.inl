@@ -75,6 +75,7 @@
 
     bool CreateShadowResources() {
         shadowMapSize_ = static_cast<UINT>(std::clamp(settings_.flashlightShadowMapSize, 512, 4096));
+        fixtureShadowMapSize_ = static_cast<UINT>(std::clamp(settings_.flashlightShadowMapSize / 4, 512, 1024));
         monsterEyeShadowMapSize_ = static_cast<UINT>(std::clamp(settings_.flashlightShadowMapSize / 2, 512, 2048));
 
         D3D11_TEXTURE2D_DESC td{};
@@ -98,6 +99,20 @@
         srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = 1;
         if (FAILED(device_->CreateShaderResourceView(shadowDepth_.Get(), &srvDesc, &shadowSrv_))) return false;
+
+        td.Width = fixtureShadowMapSize_;
+        td.Height = fixtureShadowMapSize_;
+        fixtureShadowDepth_.Reset();
+        fixtureShadowDsv_.Reset();
+        fixtureShadowSrv_.Reset();
+        if (FAILED(device_->CreateTexture2D(&td, nullptr, &fixtureShadowDepth_)) ||
+            FAILED(device_->CreateDepthStencilView(fixtureShadowDepth_.Get(), &dsvDesc, &fixtureShadowDsv_)) ||
+            FAILED(device_->CreateShaderResourceView(fixtureShadowDepth_.Get(), &srvDesc, &fixtureShadowSrv_))) {
+            fixtureShadowDepth_.Reset();
+            fixtureShadowDsv_.Reset();
+            fixtureShadowSrv_.Reset();
+            StartupProfileLine(L"Fixture shadow resources unavailable; continuing without fixture-cast shadows.");
+        }
 
         td.Width = monsterEyeShadowMapSize_;
         td.Height = monsterEyeShadowMapSize_;

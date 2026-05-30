@@ -35,6 +35,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 gApp->renderer.Resize(w, h);
 #if defined(BACKROOMS_GAME_EXE)
                 if (gApp->gameShell) {
+                    if (wParam == SIZE_MINIMIZED) {
+                        gApp->gameWindowActive = false;
+                        gApp->gameMouseDeltaX = 0.0f;
+                        gApp->gameMouseDeltaY = 0.0f;
+                        gApp->renderer.SetGameInput(GameInputSnapshot{});
+                        ReleaseGameMouse();
+                        if (gApp->gameState == GameState::PlayGame || gApp->gameState == GameState::DebugScene) {
+                            EnterGameMainMenu(hwnd);
+                        }
+                        return 0;
+                    }
+                    gApp->gameWindowActive = true;
                     LayoutGameControls(hwnd);
                     if (gApp->gameMouseCaptured) CaptureGameMouse(hwnd);
                     if (gApp->gameState == GameState::MainMenu) InvalidateRect(hwnd, nullptr, TRUE);
@@ -241,9 +253,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_ACTIVATEAPP:
 #if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell) {
-            if (wParam == FALSE) ReleaseGameMouse();
-            else if (gApp->gameState == GameState::PlayGame) CaptureGameMouse(gApp->hwnd);
-            else if (gApp->gameState == GameState::MainMenu) SetGameCursorVisible(false);
+            bool active = wParam != FALSE;
+            gApp->gameWindowActive = active;
+            if (!active) {
+                gApp->gameMouseDeltaX = 0.0f;
+                gApp->gameMouseDeltaY = 0.0f;
+                gApp->renderer.SetGameInput(GameInputSnapshot{});
+                ReleaseGameMouse();
+                if (gApp->gameState == GameState::PlayGame || gApp->gameState == GameState::DebugScene) {
+                    EnterGameMainMenu(gApp->hwnd);
+                }
+            } else if (!IsIconic(gApp->hwnd)) {
+                if (gApp->gameState == GameState::PlayGame) CaptureGameMouse(gApp->hwnd);
+                else if (gApp->gameState == GameState::MainMenu) SetGameCursorVisible(false);
+            }
             return 0;
         }
 #endif

@@ -79,6 +79,12 @@ struct OverlayVertex {
     XMFLOAT4 color;
 };
 
+struct TexturedOverlayVertex {
+    XMFLOAT2 pos;
+    XMFLOAT2 uv;
+    XMFLOAT4 color;
+};
+
 struct StaticIndexChunk {
     UINT startIndex = 0;
     UINT indexCount = 0;
@@ -118,6 +124,7 @@ struct GameInputSnapshot {
 struct SceneConstants {
     XMFLOAT4X4 viewProj;
     XMFLOAT4X4 lightViewProj;
+    XMFLOAT4X4 fixtureLightViewProj;
     XMFLOAT4X4 monsterEyeViewProj0;
     XMFLOAT4X4 monsterEyeViewProj1;
     XMFLOAT4 cameraPosTime;
@@ -132,6 +139,8 @@ struct SceneConstants {
     XMFLOAT4 shadow0;
     XMFLOAT4 shadow1;
     XMFLOAT4 shadow2;
+    XMFLOAT4 fixtureShadow0;
+    XMFLOAT4 fixtureShadow1;
     XMFLOAT4 maze0;
     XMFLOAT4 maze1;
     XMFLOAT4 texture0;

@@ -31,6 +31,7 @@ struct App {
     bool rendererInitialized = false;
     bool gameRunStarted = false;
     bool gameDebugActive = false;
+    bool gameWindowActive = true;
     HINSTANCE gameInstance = nullptr;
     GameState gameState = GameState::MainMenu;
     bool gameMouseCaptured = false;

@@ -232,11 +232,11 @@
     }
 
     XMFLOAT2 WallUvX(float x, float y) const {
-        return {x / settings_.wallTextureMeters, y / settings_.wallTextureMeters};
+        return {-x / settings_.wallTextureMeters, -y / settings_.wallTextureMeters};
     }
 
     XMFLOAT2 WallUvZ(float z, float y) const {
-        return {z / settings_.wallTextureMeters, y / settings_.wallTextureMeters};
+        return {-z / settings_.wallTextureMeters, -y / settings_.wallTextureMeters};
     }
 
     void AppendStaticIndexChunks(const std::vector<Vertex>& vertices,
@@ -1156,7 +1156,7 @@
         auto addTrashBin = [&](float px, float pz, float yaw, bool tipped, float seed) {
             if (trashBinPropMesh_.vertices.empty()) return false;
             seed = std::clamp(seed, 0.0f, 1.0f);
-            float targetHeight = 0.40f + seed * 0.14f;
+            constexpr float targetHeight = 0.48f;
             float scale = targetHeight / propSpan(trashBinPropMesh_, 1);
             float diameter = std::max(propSpan(trashBinPropMesh_, 0), propSpan(trashBinPropMesh_, 2)) * scale;
             float footprintW = diameter + 0.08f;
@@ -1180,7 +1180,7 @@
             float ox = (seed - 0.5f) * tableWidth * 0.34f;
             float oz = (LampHash(px + seed * 7.1f, pz - seed * 5.3f) - 0.5f) * tableDepth * 0.30f;
             XMFLOAT3 p = Add3({px, 0.0f, pz}, Add3(Scale3(right, ox), Scale3(forward, oz)));
-            float targetHeight = 0.38f + LampHash(px - seed * 3.1f, pz + seed * 4.7f) * 0.09f;
+            constexpr float targetHeight = 0.42f;
             float scale = targetHeight / propSpan(deskLampPropMesh_, 1);
             AppendStaticPropMeshGrounded(vertices, indices, deskLampPropMesh_, {p.x, surfaceY + 0.012f, p.z},
                 tableYaw + (seed - 0.5f) * 0.85f, scale, scale, scale, 0.0f, -1.0f, &propShadowIndices);
@@ -1457,9 +1457,19 @@
 
         constexpr float kA4PaperShortMeters = 0.210f;
         constexpr float kA4PaperLongMeters = 0.297f;
-        auto addPaperAt = [&](float px, float pz, float yaw, float lift) {
+        auto loosePaperMaterial = [&](float seed, float variantSeed) {
+            if (seed < 0.50f) {
+                int slot = std::clamp(static_cast<int>(variantSeed * static_cast<float>(kRandomLoosePageAtlasSlots)), 0, kRandomLoosePageAtlasSlots - 1);
+                float encodedSlot = (static_cast<float>(slot) + 0.5f) / static_cast<float>(kRandomLoosePageAtlasSlots);
+                return static_cast<float>(kRandomLoosePageMaterial) + encodedSlot;
+            }
+            return 9.54f + std::min(0.34f, variantSeed * 0.34f);
+        };
+
+        auto addPaperAt = [&](float px, float pz, float yaw, float lift, float material) {
             if (!floorFootprintClear(px, pz, kA4PaperShortMeters, kA4PaperLongMeters, yaw)) return false;
-            AddFloorCard(vertices, indices, {px, 0.0f, pz}, kA4PaperShortMeters, kA4PaperLongMeters, yaw, lift, 9.0f);
+            float paperY = std::clamp(lift, 0.0025f, 0.0105f);
+            AddFloorCard(vertices, indices, {px, 0.0f, pz}, kA4PaperShortMeters, kA4PaperLongMeters, yaw, paperY, material);
             return true;
         };
 
@@ -1471,8 +1481,9 @@
                 float px = c.x + (tileHash(t.x, t.y, 5.0f + p * 1.71f) - 0.5f) * spreadX;
                 float pz = c.z + (tileHash(t.x, t.y, 7.0f + p * 1.93f) - 0.5f) * spreadZ;
                 float yaw = tileHash(t.x, t.y, 9.0f + p * 2.11f) * kPi * 2.0f;
-                float lift = 0.040f + p * 0.0016f + tileHash(t.x, t.y, 17.0f + p) * 0.006f;
-                if (addPaperAt(px, pz, yaw, lift) &&
+                float lift = 0.0030f + p * 0.00012f + tileHash(t.x, t.y, 17.0f + p) * 0.0014f;
+                float material = loosePaperMaterial(tileHash(t.x, t.y, 23.0f + p * 2.19f), tileHash(t.x, t.y, 25.0f + p * 2.31f));
+                if (addPaperAt(px, pz, yaw, lift, material) &&
                     tileHash(t.x, t.y, 31.0f + p * 2.37f) < 0.010f) {
                     addCassetteAt(px, pz, yaw, lift + 0.003f, tileHash(t.x, t.y, 37.0f + p));
                 }
@@ -4156,8 +4167,9 @@
                 float px = c.x + (Rand01(i, 37, scatterSeed) - 0.5f) * std::max(0.10f, tileW - kA4PaperLongMeters - 0.10f);
                 float pz = c.z + (Rand01(i, 41, scatterSeed) - 0.5f) * std::max(0.10f, tileD - kA4PaperLongMeters - 0.10f);
                 float yaw = Rand01(i, 43, scatterSeed) * kPi * 2.0f;
-                float lift = 0.039f + Rand01(i, 47, scatterSeed) * 0.010f;
-                if (addPaperAt(px, pz, yaw, lift)) {
+                float lift = 0.0030f + Rand01(i, 47, scatterSeed) * 0.0015f;
+                float material = loosePaperMaterial(Rand01(i, 52, scatterSeed), Rand01(i, 54, scatterSeed));
+                if (addPaperAt(px, pz, yaw, lift, material)) {
                     if (Rand01(i, 49, scatterSeed) < 0.010f) {
                         addCassetteAt(px, pz, yaw, lift + 0.003f, Rand01(i, 51, scatterSeed));
                     }
@@ -4184,8 +4196,9 @@
                     float px = c.x + (useEW ? along : cross);
                     float pz = c.z + (useEW ? cross : along);
                     float yaw = Rand01(run * 97 + p, 97, scatterSeed) * kPi * 2.0f;
-                    float lift = 0.052f + p * 0.0011f + Rand01(run * 97 + p, 101, scatterSeed) * 0.008f;
-                    if (addPaperAt(px, pz, yaw, lift) &&
+                    float lift = 0.0032f + p * 0.00010f + Rand01(run * 97 + p, 101, scatterSeed) * 0.0014f;
+                    float material = loosePaperMaterial(Rand01(run * 97 + p, 109, scatterSeed), Rand01(run * 97 + p, 113, scatterSeed));
+                    if (addPaperAt(px, pz, yaw, lift, material) &&
                         Rand01(run * 97 + p, 103, scatterSeed) < 0.010f) {
                         addCassetteAt(px, pz, yaw, lift + 0.003f, Rand01(run * 97 + p, 107, scatterSeed));
                     }

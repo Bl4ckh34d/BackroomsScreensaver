@@ -8,6 +8,7 @@ cbuffer SceneConstants : register(b0)
 {
     row_major float4x4 gViewProj;
     row_major float4x4 gLightViewProj;
+    row_major float4x4 gFixtureLightViewProj;
     row_major float4x4 gMonsterEyeViewProj0;
     row_major float4x4 gMonsterEyeViewProj1;
     float4 gCameraPosTime;
@@ -19,10 +20,12 @@ float4 gAO0;
 float4 gPost0;
 float4 gPost1;
 float4 gPost2;
-float4 gShadow0;
-float4 gShadow1;
-float4 gShadow2;
-float4 gMaze0;
+    float4 gShadow0;
+    float4 gShadow1;
+    float4 gShadow2;
+    float4 gFixtureShadow0;
+    float4 gFixtureShadow1;
+    float4 gMaze0;
 float4 gMaze1;
 float4 gTexture0;
 float4 gTransition0;
@@ -59,6 +62,8 @@ Texture2D gFlashlightPattern : register(t5);
 Texture2D gLampDamage : register(t6);
 Texture2D gMonsterEyeShadow0 : register(t7);
 Texture2D gMonsterEyeShadow1 : register(t8);
+Texture2DArray gLoosePages : register(t9);
+Texture2D gFixtureShadowMap : register(t10);
 SamplerState gSampler : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 
@@ -146,15 +151,17 @@ VSOut VSMain(VSIn input)
 
 float MaterialId(float material)
 {
-    return clamp(floor(material), 0.0, 34.0);
+    return clamp(floor(material), 0.0, 35.0);
 }
 
 void ShadowPS(VSOut input)
 {
     float materialId = MaterialId(input.material);
     bool transparentPaper = materialId > 8.5 && materialId < 9.5 && frac(input.material) < 0.5;
+    bool randomLoosePage = materialId > 34.5 && materialId < 35.5;
     if ((materialId > 0.5 && materialId < 2.5) ||
         transparentPaper ||
+        randomLoosePage ||
         (materialId > 10.5 && materialId < 11.5) ||
         (materialId > 11.5 && materialId < 12.5) ||
         (materialId > 12.5 && materialId < 13.5) ||
@@ -217,12 +224,12 @@ void UnderlyingSurface(float3 worldPos, float3 normal, out float materialId, out
     else if (abs(normal.z) >= abs(normal.x))
     {
         materialId = 0.0;
-        uv = float2(worldPos.x, worldPos.y) / wallScale;
+        uv = -float2(worldPos.x, worldPos.y) / wallScale;
     }
     else
     {
         materialId = 0.0;
-        uv = float2(worldPos.z, worldPos.y) / wallScale;
+        uv = -float2(worldPos.z, worldPos.y) / wallScale;
     }
 }
 
@@ -828,59 +835,6 @@ float LampRayClear(float2 startXZ, float2 endXZ)
 }
 
 )" R"(
-float LocalLampLight(float3 worldPos, float3 worldN, float time)
-{
-    float2 stride = gMaze0.zw;
-    float spacing = gMaze1.w;
-    float2 lampOrigin = gMaze0.xy + gMaze0.zw * 0.5;
-    float2 baseCell = floor((worldPos.xz - lampOrigin) / stride + 0.5);
-    float light = 0.0;
-
-    [loop]
-    for (int yy = -2; yy <= 2; ++yy)
-    {
-        [loop]
-        for (int xx = -2; xx <= 2; ++xx)
-        {
-            float2 cell = baseCell + float2(xx, yy);
-            float2 lampXZ = lampOrigin + cell * stride;
-            if (MazeOpenAt((int2)MazeTile(lampXZ)) < 0.5)
-            {
-                continue;
-            }
-            float3 lampPos = float3(lampXZ.x, gMaze1.z - 0.09, lampXZ.y);
-            float3 L = lampPos - worldPos;
-            float d2 = dot(L, L);
-            float distXZ = length(lampPos.xz - worldPos.xz);
-            float reach = spacing * 1.18 + gMaze1.w * 0.75;
-            float roomFootprint = 1.0 - smoothstep(reach * 0.48, reach, distXZ);
-            float power = FixturePower(lampPos, time);
-            if (roomFootprint <= 0.002 || power <= 0.002)
-            {
-                continue;
-            }
-            float visibility = LampVisibility(worldPos.xz, worldN, lampPos.xz);
-            float3 Ln = normalize(L);
-            float diffuse = saturate(dot(worldN, Ln) * 0.65 + 0.35);
-            float falloff = visibility * roomFootprint / (1.0 + d2 * 0.035);
-            light += power * falloff * diffuse;
-        }
-    }
-
-    return light;
-}
-
-float CornerAO(float3 worldPos, float3 normal)
-{
-    float radius = max(0.02, gAO0.y);
-    float floorContact = 1.0 - smoothstep(0.0, radius * 1.20, worldPos.y);
-    float ceilingContact = 1.0 - smoothstep(0.0, radius * 1.20, gMaze1.z - worldPos.y);
-    float verticalContact = max(floorContact, ceilingContact);
-    float wallMask = saturate(1.0 - abs(normal.y));
-    float ao = wallMask * verticalContact * gAO0.z;
-    return saturate(ao * gAO0.x);
-}
-
 float ShadowVisibility(float3 worldPos, float3 normal)
 {
     if (gShadow0.w <= 0.001)
@@ -933,6 +887,117 @@ float ShadowVisibility(float3 worldPos, float3 normal)
     visible = saturate(visible + (1.0 - visible) * penumbra * 0.035);
     float strength = gShadow0.w * lerp(1.0, 0.74, penumbra);
     return lerp(1.0 - strength, 1.0, visible);
+}
+
+float FixtureShadowVisibility(float3 worldPos, float3 normal, float3 lampPos)
+{
+    if (gFixtureShadow0.w <= 0.001)
+    {
+        return 1.0;
+    }
+
+    float dist = length(worldPos - lampPos);
+    if (dist > gFixtureShadow1.y)
+    {
+        return 1.0;
+    }
+
+    float3 samplePos = worldPos + normalize(normal) * 0.012;
+    float4 lightPos = mul(float4(samplePos, 1.0), gFixtureLightViewProj);
+    if (lightPos.w <= 0.0001)
+    {
+        return 1.0;
+    }
+
+    float3 ndc = lightPos.xyz / lightPos.w;
+    float2 uv = float2(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
+    if (uv.x <= 0.001 || uv.x >= 0.999 || uv.y <= 0.001 || uv.y >= 0.999 || ndc.z <= 0.0 || ndc.z >= 1.0)
+    {
+        return 1.0;
+    }
+
+    float3 toLight = normalize(lampPos - samplePos);
+    float slope = 1.0 - saturate(dot(normalize(normal), toLight));
+    float compareDepth = ndc.z - max(gFixtureShadow1.x * (1.0 + slope * 2.0), 0.00036);
+    float texel = max(gFixtureShadow1.z, 0.0001);
+    float receiver = saturate(dist / max(gFixtureShadow1.y, 0.01));
+    float filterRadius = lerp(0.85, 3.40, pow(receiver, 0.70));
+    float visible = 0.0;
+    float weightSum = 0.0;
+
+    [loop]
+    for (int y = -1; y <= 1; ++y)
+    {
+        [loop]
+        for (int x = -1; x <= 1; ++x)
+        {
+            float weight = 2.0 - max(abs((float)x), abs((float)y));
+            visible += gFixtureShadowMap.SampleCmpLevelZero(gShadowSampler, uv + float2(x, y) * texel * filterRadius, compareDepth) * weight;
+            weightSum += weight;
+        }
+    }
+
+    visible = saturate(visible / max(weightSum, 0.001));
+    float strength = gFixtureShadow0.w * lerp(1.0, 0.70, receiver);
+    return lerp(1.0 - strength, 1.0, visible);
+}
+
+float LocalLampLight(float3 worldPos, float3 worldN, float time)
+{
+    float2 stride = gMaze0.zw;
+    float spacing = gMaze1.w;
+    float2 lampOrigin = gMaze0.xy + gMaze0.zw * 0.5;
+    float2 baseCell = floor((worldPos.xz - lampOrigin) / stride + 0.5);
+    float light = 0.0;
+
+    [loop]
+    for (int yy = -2; yy <= 2; ++yy)
+    {
+        [loop]
+        for (int xx = -2; xx <= 2; ++xx)
+        {
+            float2 cell = baseCell + float2(xx, yy);
+            float2 lampXZ = lampOrigin + cell * stride;
+            if (MazeOpenAt((int2)MazeTile(lampXZ)) < 0.5)
+            {
+                continue;
+            }
+            float3 lampPos = float3(lampXZ.x, gMaze1.z - 0.09, lampXZ.y);
+            float3 L = lampPos - worldPos;
+            float d2 = dot(L, L);
+            float distXZ = length(lampPos.xz - worldPos.xz);
+            float reach = spacing * 1.18 + gMaze1.w * 0.75;
+            float roomFootprint = 1.0 - smoothstep(reach * 0.48, reach, distXZ);
+            float power = FixturePower(lampPos, time);
+            if (roomFootprint <= 0.002 || power <= 0.002)
+            {
+                continue;
+            }
+            float visibility = LampVisibility(worldPos.xz, worldN, lampPos.xz);
+            float3 Ln = normalize(L);
+            float diffuse = saturate(dot(worldN, Ln) * 0.65 + 0.35);
+            float falloff = visibility * roomFootprint / (1.0 + d2 * 0.035);
+            float selectedShadowLamp = 1.0 - smoothstep(0.05, 0.42, length(lampPos.xz - gFixtureShadow0.xz));
+            if (selectedShadowLamp > 0.001)
+            {
+                falloff *= lerp(1.0, FixtureShadowVisibility(worldPos, worldN, lampPos), selectedShadowLamp);
+            }
+            light += power * falloff * diffuse;
+        }
+    }
+
+    return light;
+}
+
+float CornerAO(float3 worldPos, float3 normal)
+{
+    float radius = max(0.02, gAO0.y);
+    float floorContact = 1.0 - smoothstep(0.0, radius * 1.20, worldPos.y);
+    float ceilingContact = 1.0 - smoothstep(0.0, radius * 1.20, gMaze1.z - worldPos.y);
+    float verticalContact = max(floorContact, ceilingContact);
+    float wallMask = saturate(1.0 - abs(normal.y));
+    float ao = wallMask * verticalContact * gAO0.z;
+    return saturate(ao * gAO0.x);
 }
 
 float FlashlightAmount(float3 worldPos, float3 worldN)
@@ -2914,6 +2979,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         if (shape < 0.018) discard;
 
         float flashlight = FlashlightAmount(input.worldPos, N);
+        float overhead = LocalLampLight(input.worldPos, N, time) * gLighting1.x;
         float monsterEyeLight = MonsterEyeLight(input.worldPos, N);
         float3 doorwayDustLight = ExitSignLight(input.worldPos, N, materialId);
         float doorwayDust = saturate(max(doorwayDustLight.r, max(doorwayDustLight.g, doorwayDustLight.b)) * 0.20);
@@ -2928,10 +2994,11 @@ float4 PSMain(VSOut input) : SV_TARGET
         float lightFade = smoothstep(0.35, 1.10, lightDist) * (1.0 - smoothstep(gShadow2.y * 0.46, gShadow2.y * 0.82, lightDist));
         float depthFade = 1.0 - smoothstep(gFog0.y * 0.72, gFog0.y, length(input.worldPos - cam));
         float focusAlpha = lerp(1.0, 0.46, blur);
-        float particleLight = saturate(flashlight * centerBoost * lightFade + doorwayDust * 0.92 + monsterEyeLight * 0.58);
+        float particleLight = saturate(flashlight * centerBoost * lightFade + overhead * 0.42 + doorwayDust * 0.92 + monsterEyeLight * 0.58);
         float alpha = shape * particleLight * depthFade * focusAlpha * (0.20 + variant * 0.12) * particleFade * (1.0 - saturate(gTransition0.z));
         if (alpha < 0.010) discard;
         float3 color = float3(0.72, 0.78, 0.72) * (0.20 + flashlight * (1.08 + centerLine * 0.82));
+        color += float3(0.98, 0.90, 0.62) * overhead * (0.50 + shell * 0.18);
         color += float3(1.0, 0.03, 0.015) * monsterEyeLight * 1.35;
         color += float3(0.91, 0.965, 1.0) * doorwayDust * (1.45 + shell * 0.55);
         color += float3(0.42, 0.48, 0.44) * shell * (0.08 + blur * 0.08 + centerLine * 0.08) * flashlightScale;
@@ -2964,10 +3031,10 @@ float4 PSMain(VSOut input) : SV_TARGET
         float streak = smoothstep(1.02, 0.16, abs(p.x + (haze - 0.5) * 0.34));
         float dist = length(input.worldPos - cam);
         float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.22), 1.12);
-        float alpha = edge * lerp(0.058, 0.24, strength) * (0.54 + streak * 0.44) * fogVisibility;
+        float alpha = edge * lerp(0.030, 0.125, strength) * (0.50 + streak * 0.36) * fogVisibility;
         if (alpha < 0.008) discard;
-        float3 color = float3(0.88, 0.95, 1.0) * (4.8 + strength * 11.0) * (0.76 + haze * 0.30);
-        return float4(saturate(ApplyPost(color) + color * 0.20), saturate(alpha));
+        float3 color = float3(0.88, 0.95, 1.0) * (2.15 + strength * 4.8) * (0.72 + haze * 0.24);
+        return float4(saturate(ApplyPost(color) + color * 0.10), saturate(alpha));
     }
 
 )" R"(
@@ -3045,6 +3112,7 @@ float4 PSMain(VSOut input) : SV_TARGET
 )" R"(
     if (materialId > 8.5 && materialId < 9.5 && frac(input.material) > 0.5)
     {
+        float seed = frac(input.material * 13.17);
         float grain = Fbm3(input.worldPos * float3(12.0, 18.0, 12.0) + 2.3);
         float stain = Fbm3(input.worldPos * float3(4.0, 7.0, 4.0) + 18.0);
         float ridge = Fbm3(input.worldPos * float3(38.0, 24.0, 38.0) + 41.0);
@@ -3055,12 +3123,52 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 bone = float3(0.82, 0.80, 0.72);
         bone += (grain - 0.5) * float3(0.085, 0.078, 0.060);
         bone -= smoothstep(0.54, 0.88, stain) * float3(0.10, 0.095, 0.075);
+        float floorFacing = saturate(abs(N.y));
+        float greyish = smoothstep(0.08, 0.34, seed) * (1.0 - smoothstep(0.34, 0.46, seed));
+        float yellowed = smoothstep(0.62, 0.90, seed);
+        bone = lerp(bone, bone * float3(0.84, 0.86, 0.84), greyish * 0.32 * floorFacing);
+        bone = lerp(bone, bone * float3(1.06, 0.96, 0.78), yellowed * 0.42 * floorFacing);
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);
         float facing = saturate(dot(reflect(-toLight, worldN), V));
         float spec = pow(facing, 34.0) * 0.22 * (flashlight + sparkLight * 0.45);
         float dist = length(input.worldPos - cam);
         float3 color = bone * (gLighting0.z * 0.34 + flashlight * 1.12 + overhead * 0.26 + sparkLight * 0.80);
         color += float3(0.92, 0.86, 0.70) * spec;
+        color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, 1.0));
+        return float4(ApplyPost(color), 1.0);
+    }
+
+    if (materialId > 34.5 && materialId < 35.5)
+    {
+        float slot = min(127.0, floor(saturate(frac(input.material)) * 128.0));
+        float2 pageUv = saturate(rawUv);
+        float4 base = gLoosePages.SampleBias(gSampler, float3(pageUv, slot), -0.35);
+        float grain = Fbm3(input.worldPos * float3(14.0, 20.0, 14.0) + slot * 0.37);
+        float ridge = Fbm3(input.worldPos * float3(36.0, 22.0, 36.0) + slot * 1.7);
+        float edge = max(max(1.0 - smoothstep(0.0, 0.045, rawUv.x), 1.0 - smoothstep(0.0, 0.045, 1.0 - rawUv.x)),
+                         max(1.0 - smoothstep(0.0, 0.045, rawUv.y), 1.0 - smoothstep(0.0, 0.045, 1.0 - rawUv.y)));
+        float3 paperN = normalize(N + T * (grain - 0.5) * 0.018 + B * (ridge - 0.5) * 0.010);
+        float3 worldN = normalize(lerp(N, paperN, 0.42));
+        float flashlight = FlashlightAmount(input.worldPos, worldN);
+        float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
+        float sparkLight = SparkLight(input.worldPos, worldN);
+        float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
+        float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
+        float3 paperLift = float3(0.84, 0.82, 0.72) * (0.030 + grain * 0.014);
+        float3 imageColor = saturate(lerp(base.rgb, base.rgb * (0.96 + grain * 0.035) + paperLift, 0.035));
+        imageColor = lerp(imageColor, imageColor * float3(0.86, 0.83, 0.75), edge * 0.10);
+        float3 toLight = normalize(gShadow0.xyz - input.worldPos);
+        float facing = saturate(dot(reflect(-toLight, worldN), V));
+        float hi = max(base.r, max(base.g, base.b));
+        float lo = min(base.r, min(base.g, base.b));
+        float chroma = hi - lo;
+        float glossyCover = smoothstep(0.18, 0.38, chroma) * step(0.72, Hash21(float2(slot, 7.7)));
+        float spec = (pow(facing, 34.0) * 0.08 + pow(facing, 120.0) * 0.30 * glossyCover) *
+            (flashlight + sparkLight * 0.45 + exitGlow * 0.62);
+        float dist = length(input.worldPos - cam);
+        float3 color = imageColor * (gLighting0.z * 0.52 + flashlight * 1.08 + overhead * 0.38 + sparkLight * 0.78);
+        color += imageColor * exitGreen * 1.18;
+        color += float3(0.96, 0.90, 0.76) * spec;
         color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, 1.0));
         return float4(ApplyPost(color), 1.0);
     }
@@ -3307,11 +3415,45 @@ float4 OverlayPS(OverlayVSOut input) : SV_TARGET
     return input.color;
 }
 )";
+        static const char* texturedOverlayShader = R"(
+Texture2D gOverlayTexture : register(t0);
+SamplerState gOverlaySampler : register(s0);
+
+struct TexturedOverlayVSIn
+{
+    float2 pos : POSITION;
+    float2 uv : TEXCOORD0;
+    float4 color : COLOR0;
+};
+
+struct TexturedOverlayVSOut
+{
+    float4 pos : SV_POSITION;
+    float2 uv : TEXCOORD0;
+    float4 color : COLOR0;
+};
+
+TexturedOverlayVSOut TexturedOverlayVS(TexturedOverlayVSIn input)
+{
+    TexturedOverlayVSOut o;
+    o.pos = float4(input.pos, 0.0, 1.0);
+    o.uv = input.uv;
+    o.color = input.color;
+    return o;
+}
+
+float4 TexturedOverlayPS(TexturedOverlayVSOut input) : SV_TARGET
+{
+    float4 texel = gOverlayTexture.Sample(gOverlaySampler, input.uv);
+    return texel * input.color;
+}
+)";
         static const char* postShader = R"(
 cbuffer SceneConstants : register(b0)
 {
     row_major float4x4 gViewProj;
     row_major float4x4 gLightViewProj;
+    row_major float4x4 gFixtureLightViewProj;
     row_major float4x4 gMonsterEyeViewProj0;
     row_major float4x4 gMonsterEyeViewProj1;
     float4 gCameraPosTime;
@@ -3505,6 +3647,8 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             L" bytes, liquid=" + std::to_wstring(liquidShader.size()) + L" bytes");
         ComPtr<ID3DBlob> overlayVs;
         ComPtr<ID3DBlob> overlayPs;
+        ComPtr<ID3DBlob> texturedOverlayVs;
+        ComPtr<ID3DBlob> texturedOverlayPs;
         ComPtr<ID3DBlob> postVs;
         ComPtr<ID3DBlob> postPs;
         ComPtr<ID3DBlob> liquidPs;
@@ -3519,6 +3663,8 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         if (!CompileShader(generalShader.c_str(), "ShadowPS", "ps_4_0", shadowPs)) return false;
         if (!CompileShader(overlayShader, "OverlayVS", "vs_4_0", overlayVs)) return false;
         if (!CompileShader(overlayShader, "OverlayPS", "ps_4_0", overlayPs)) return false;
+        if (!CompileShader(texturedOverlayShader, "TexturedOverlayVS", "vs_4_0", texturedOverlayVs)) return false;
+        if (!CompileShader(texturedOverlayShader, "TexturedOverlayPS", "ps_4_0", texturedOverlayPs)) return false;
         if (!CompileShader(postShader, "PostVS", "vs_4_0", postVs)) return false;
         if (!CompileShader(postShader, "PostPS", "ps_4_0", postPs)) return false;
         HRESULT hr = device_->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &vertexShader_);
@@ -3539,6 +3685,10 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         if (FAILED(hr)) return false;
         hr = device_->CreatePixelShader(overlayPs->GetBufferPointer(), overlayPs->GetBufferSize(), nullptr, &overlayPixelShader_);
         if (FAILED(hr)) return false;
+        hr = device_->CreateVertexShader(texturedOverlayVs->GetBufferPointer(), texturedOverlayVs->GetBufferSize(), nullptr, &texturedOverlayVertexShader_);
+        if (FAILED(hr)) return false;
+        hr = device_->CreatePixelShader(texturedOverlayPs->GetBufferPointer(), texturedOverlayPs->GetBufferSize(), nullptr, &texturedOverlayPixelShader_);
+        if (FAILED(hr)) return false;
         hr = device_->CreateVertexShader(postVs->GetBufferPointer(), postVs->GetBufferSize(), nullptr, &postVertexShader_);
         if (FAILED(hr)) return false;
         hr = device_->CreatePixelShader(postPs->GetBufferPointer(), postPs->GetBufferSize(), nullptr, &postPixelShader_);
@@ -3558,5 +3708,13 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(OverlayVertex, color), D3D11_INPUT_PER_VERTEX_DATA, 0}
         };
         hr = device_->CreateInputLayout(overlayDesc, ARRAYSIZE(overlayDesc), overlayVs->GetBufferPointer(), overlayVs->GetBufferSize(), &overlayInputLayout_);
+        if (FAILED(hr)) return false;
+        D3D11_INPUT_ELEMENT_DESC texturedOverlayDesc[] = {
+            {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(TexturedOverlayVertex, pos), D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(TexturedOverlayVertex, uv), D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(TexturedOverlayVertex, color), D3D11_INPUT_PER_VERTEX_DATA, 0}
+        };
+        hr = device_->CreateInputLayout(texturedOverlayDesc, ARRAYSIZE(texturedOverlayDesc),
+            texturedOverlayVs->GetBufferPointer(), texturedOverlayVs->GetBufferSize(), &texturedOverlayInputLayout_);
         return SUCCEEDED(hr);
     }

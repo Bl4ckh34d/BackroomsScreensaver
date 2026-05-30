@@ -310,6 +310,17 @@ void ReleaseGameMouse() {
     gApp->gameMouseCaptured = false;
 }
 
+bool GameWindowAcceptsInput(HWND hwnd) {
+    if (!gApp || hwnd == nullptr || !gApp->gameWindowActive || IsIconic(hwnd)) return false;
+    HWND foreground = GetForegroundWindow();
+    if (foreground == hwnd) return true;
+    if (!foreground) return false;
+    if (IsChild(hwnd, foreground)) return true;
+    HWND root = GetAncestor(foreground, GA_ROOT);
+    HWND rootOwner = GetAncestor(foreground, GA_ROOTOWNER);
+    return root == hwnd || rootOwner == hwnd;
+}
+
 void CaptureGameMouse(HWND hwnd) {
     if (!gApp || !gApp->gameShell || !hwnd) return;
     RECT rc{};
@@ -374,7 +385,11 @@ bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
             CloseLoadingOverlayWindow(gApp->loadingOverlay);
             gApp->loadingOverlay = nullptr;
         }
-        MessageBoxW(hwnd, L"Direct3D initialization failed.", L"Backrooms Maze Game", MB_OK | MB_ICONERROR);
+        std::wstring detail = gApp->renderer.LastInitializeError();
+        std::wstring message = detail.empty()
+            ? L"Direct3D initialization failed."
+            : L"Direct3D initialization failed.\r\n\r\n" + detail;
+        MessageBoxW(hwnd, message.c_str(), L"Backrooms Maze Game", MB_OK | MB_ICONERROR);
         return false;
     }
     gApp->rendererInitialized = true;
@@ -453,9 +468,16 @@ void EnterGamePlay(HWND hwnd) {
     }
     gApp->gameState = GameState::PlayGame;
     gApp->gameDebugActive = false;
+    gApp->gameWindowActive = !IsIconic(hwnd);
+    gApp->gameMouseDeltaX = 0.0f;
+    gApp->gameMouseDeltaY = 0.0f;
     SetGameMenuVisible(false);
     SetDebugControlsVisible(false);
     if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
+    ShowWindow(hwnd, SW_SHOWNORMAL);
+    SetActiveWindow(hwnd);
+    SetForegroundWindow(hwnd);
+    SetFocus(hwnd);
     CaptureGameMouse(hwnd);
     SetWindowTextW(hwnd, L"Backrooms Maze - Single Player");
 }
@@ -510,6 +532,11 @@ void EnterGameSettings(HWND hwnd, ConfigDialogMode mode, GameState returnState) 
 GameInputSnapshot CollectGameInput() {
     GameInputSnapshot input{};
     if (!gApp || gApp->gameState != GameState::PlayGame) return input;
+    if (!GameWindowAcceptsInput(gApp->hwnd)) {
+        gApp->gameMouseDeltaX = 0.0f;
+        gApp->gameMouseDeltaY = 0.0f;
+        return input;
+    }
     auto down = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
     const Settings& settings = gApp->gameInputSettings;
     input.moveX =

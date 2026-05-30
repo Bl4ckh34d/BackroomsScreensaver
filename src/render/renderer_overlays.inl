@@ -21,6 +21,149 @@
         context_->Draw(static_cast<UINT>(count), 0);
     }
 
+    bool UpdateHudNotificationTexture() {
+        if (!hudNotificationTextureDirty_) return hudNotificationSrv_ != nullptr;
+        hudNotificationTextureDirty_ = false;
+        hudNotificationTexture_.Reset();
+        hudNotificationSrv_.Reset();
+        if (hudNotificationText_.empty() || !device_) return false;
+
+        HDC dc = CreateCompatibleDC(nullptr);
+        if (!dc) {
+            if (dc) DeleteDC(dc);
+            return false;
+        }
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, RGB(255, 255, 255));
+        const int fontPx = 34;
+        HFONT font = CreateFontW(-fontPx, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+        HGDIOBJ oldFont = SelectObject(dc, font);
+
+        constexpr int paddingX = 34;
+        constexpr int paddingY = 16;
+        constexpr int maxTextW = 760;
+        RECT measure{0, 0, maxTextW, 0};
+        DrawTextW(dc, hudNotificationText_.c_str(), -1, &measure,
+            DT_LEFT | DT_SINGLELINE | DT_CALCRECT);
+        bool wrap = (measure.right - measure.left) > maxTextW;
+        if (wrap) {
+            measure = {0, 0, maxTextW, 0};
+            DrawTextW(dc, hudNotificationText_.c_str(), -1, &measure,
+                DT_LEFT | DT_WORDBREAK | DT_CALCRECT);
+        }
+        int measuredW = static_cast<int>(measure.right - measure.left);
+        int measuredH = static_cast<int>(measure.bottom - measure.top);
+        int texW = std::clamp(measuredW + paddingX * 2, 220, maxTextW + paddingX * 2);
+        int texH = std::clamp(measuredH + paddingY * 2, 58, 160);
+        hudNotificationTextureWidth_ = texW;
+        hudNotificationTextureHeight_ = texH;
+
+        std::vector<uint8_t> pixels(static_cast<size_t>(texW) * static_cast<size_t>(texH) * 4, 0);
+        BITMAPINFO bmi{};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = texW;
+        bmi.bmiHeader.biHeight = -texH;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        HBITMAP bmp = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (!bmp || !bits) {
+            SelectObject(dc, oldFont);
+            DeleteObject(font);
+            DeleteDC(dc);
+            return false;
+        }
+        HGDIOBJ oldBmp = SelectObject(dc, bmp);
+        std::memset(bits, 0, pixels.size());
+
+        RECT textRect{paddingX, paddingY / 2, texW - paddingX, texH - paddingY / 2};
+        UINT textFlags = wrap
+            ? (DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS)
+            : (DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextW(dc, hudNotificationText_.c_str(), -1, &textRect, textFlags);
+        SelectObject(dc, oldFont);
+        DeleteObject(font);
+        SelectObject(dc, oldBmp);
+
+        const uint8_t* src = static_cast<const uint8_t*>(bits);
+        for (int y = 0; y < texH; ++y) {
+            for (int x = 0; x < texW; ++x) {
+                size_t i = static_cast<size_t>((y * texW + x) * 4);
+                uint8_t a = std::max(src[i + 0], std::max(src[i + 1], src[i + 2]));
+                if (a == 0) continue;
+                pixels[i + 0] = 218;
+                pixels[i + 1] = 230;
+                pixels[i + 2] = 246;
+                pixels[i + 3] = a;
+            }
+        }
+        DeleteObject(bmp);
+        DeleteDC(dc);
+
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = texW;
+        td.Height = texH;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA init{pixels.data(), static_cast<UINT>(texW * 4), 0};
+        if (FAILED(device_->CreateTexture2D(&td, &init, &hudNotificationTexture_))) return false;
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = td.Format;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        sd.Texture2D.MipLevels = 1;
+        return SUCCEEDED(device_->CreateShaderResourceView(hudNotificationTexture_.Get(), &sd, &hudNotificationSrv_));
+    }
+
+    void DrawHudNotificationText(float x, float y, float w, float h, float alpha) {
+        if (alpha <= 0.002f || !UpdateHudNotificationTexture() || !hudNotificationSrv_ ||
+            !overlayBuffer_ || !texturedOverlayVertexShader_ || !texturedOverlayPixelShader_ ||
+            !texturedOverlayInputLayout_ || !postSampler_) {
+            return;
+        }
+        auto ndcX = [&](float px) { return px / static_cast<float>(width_) * 2.0f - 1.0f; };
+        auto ndcY = [&](float py) { return 1.0f - py / static_cast<float>(height_) * 2.0f; };
+        TexturedOverlayVertex verts[6] = {
+            {{ndcX(x), ndcY(y + h)}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f, alpha}},
+            {{ndcX(x), ndcY(y)}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f, alpha}},
+            {{ndcX(x + w), ndcY(y)}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f, alpha}},
+            {{ndcX(x), ndcY(y + h)}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f, alpha}},
+            {{ndcX(x + w), ndcY(y)}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f, alpha}},
+            {{ndcX(x + w), ndcY(y + h)}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, alpha}}
+        };
+
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (FAILED(context_->Map(overlayBuffer_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
+        std::memcpy(mapped.pData, verts, sizeof(verts));
+        context_->Unmap(overlayBuffer_.Get(), 0);
+
+        UINT stride = sizeof(TexturedOverlayVertex);
+        UINT offset = 0;
+        float blendFactor[4] = {};
+        context_->IASetInputLayout(texturedOverlayInputLayout_.Get());
+        context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        context_->IASetVertexBuffers(0, 1, overlayBuffer_.GetAddressOf(), &stride, &offset);
+        context_->VSSetShader(texturedOverlayVertexShader_.Get(), nullptr, 0);
+        context_->HSSetShader(nullptr, nullptr, 0);
+        context_->DSSetShader(nullptr, nullptr, 0);
+        context_->PSSetShader(texturedOverlayPixelShader_.Get(), nullptr, 0);
+        context_->OMSetDepthStencilState(depthDisabledState_.Get(), 0);
+        context_->OMSetBlendState(alphaBlend_.Get(), blendFactor, 0xffffffff);
+        ID3D11ShaderResourceView* srv = hudNotificationSrv_.Get();
+        ID3D11SamplerState* sampler = postSampler_.Get();
+        context_->PSSetShaderResources(0, 1, &srv);
+        context_->PSSetSamplers(0, 1, &sampler);
+        context_->Draw(6, 0);
+        ID3D11ShaderResourceView* nullSrv = nullptr;
+        context_->PSSetShaderResources(0, 1, &nullSrv);
+    }
+
     void DrawPostProcess() {
         if (!sceneColorSrv_ || !postVertexShader_ || !postPixelShader_ || !postSampler_ || !rtv_) return;
         float blendFactor[4] = {};
@@ -134,7 +277,32 @@
             0.88f
         };
         pushBar(x, y + 24.0f, w, 10.0f, staminaFill, staminaColor);
+        float notificationAge = time_ - hudNotificationStartTime_;
+        float notificationAlpha = 0.0f;
+        float notificationX = 0.0f;
+        float notificationY = 0.0f;
+        float notificationW = 0.0f;
+        float notificationH = 0.0f;
+        if (!hudNotificationText_.empty() && notificationAge >= 0.0f && notificationAge < hudNotificationDuration_) {
+            float inT = SmoothStep(0.0f, 0.22f, notificationAge);
+            float outT = 1.0f - SmoothStep(std::max(0.0f, hudNotificationDuration_ - 0.65f), hudNotificationDuration_, notificationAge);
+            notificationAlpha = Clamp01(inT * outT);
+            float uiScale = std::clamp(static_cast<float>(height_) / 900.0f, 0.86f, 1.16f);
+            notificationW = std::min(static_cast<float>(hudNotificationTextureWidth_) * uiScale, static_cast<float>(width_) - 84.0f);
+            notificationH = static_cast<float>(hudNotificationTextureHeight_) * uiScale;
+            notificationX = (static_cast<float>(width_) - notificationW) * 0.5f;
+            notificationY = std::clamp(static_cast<float>(height_) * 0.145f, 64.0f, 150.0f);
+            pushRect(notificationX - 14.0f, notificationY - 7.0f, notificationW + 28.0f, notificationH + 14.0f,
+                {0.010f, 0.012f, 0.011f, 0.58f * notificationAlpha});
+            pushRect(notificationX - 14.0f, notificationY - 7.0f, notificationW + 28.0f, 1.0f,
+                {0.64f, 0.58f, 0.38f, 0.34f * notificationAlpha});
+            pushRect(notificationX - 14.0f, notificationY + notificationH + 6.0f, notificationW + 28.0f, 1.0f,
+                {0.64f, 0.58f, 0.38f, 0.22f * notificationAlpha});
+        }
         DrawOverlayVertices(verts);
+        if (notificationAlpha > 0.002f) {
+            DrawHudNotificationText(notificationX, notificationY, notificationW, notificationH, notificationAlpha);
+        }
     }
 
     void DrawMapOverlay() {

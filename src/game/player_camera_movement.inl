@@ -21,7 +21,7 @@
         }
         if (openTiles.empty()) return;
 
-        std::array<Tile, 8> usedTiles{};
+        std::array<Tile, kCollectiblePageMaterialCount> usedTiles{};
         int usedCount = 0;
         auto tileUsed = [&](Tile t) {
             for (int i = 0; i < usedCount; ++i) {
@@ -38,7 +38,7 @@
         constexpr float pageW = 0.210f;
         constexpr float pageH = 0.297f;
         const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        for (int pageIndex = 0; pageIndex < 8; ++pageIndex) {
+        for (int pageIndex = 0; pageIndex < kCollectiblePageMaterialCount; ++pageIndex) {
             bool placed = false;
             for (int attempt = 0; attempt < 220 && !placed; ++attempt) {
                 Tile t = openTiles[static_cast<size_t>(rng_() % openTiles.size())];
@@ -62,7 +62,14 @@
                         wallCenter = Add3(wallCenter, Scale3(normal, 0.010f));
                         wallCenter = Add3(wallCenter, Scale3(right, lateral));
                         wallCenter.y = std::clamp(1.38f + RandRange(-0.22f, 0.20f), pageH * 0.5f + 0.08f, settings_.wallHeightMeters - pageH * 0.5f - 0.05f);
-                        collectiblePages_[static_cast<size_t>(pageIndex)] = {wallCenter, right, {0.0f, 1.0f, 0.0f}, normal, pageIndex, false};
+                        XMFLOAT3 baseRight = right;
+                        XMFLOAT3 baseUp{0.0f, 1.0f, 0.0f};
+                        float roll = RandRange(-0.115f, 0.115f);
+                        float cr = std::cos(roll);
+                        float sr = std::sin(roll);
+                        right = Normalize3(Add3(Scale3(baseRight, cr), Scale3(baseUp, sr)), baseRight);
+                        XMFLOAT3 pageUp = Normalize3(Add3(Scale3(baseUp, cr), Scale3(baseRight, -sr)), baseUp);
+                        collectiblePages_[static_cast<size_t>(pageIndex)] = {wallCenter, right, pageUp, normal, pageIndex, false};
                         rememberTile(t);
                         placed = true;
                         break;
@@ -74,7 +81,7 @@
                     float yaw = RandRange(0.0f, kPi * 2.0f);
                     XMFLOAT3 right{std::cos(yaw), 0.0f, -std::sin(yaw)};
                     XMFLOAT3 up{std::sin(yaw), 0.0f, std::cos(yaw)};
-                    collectiblePages_[static_cast<size_t>(pageIndex)] = {{px, 0.056f + pageIndex * 0.0004f, pz}, right, up, {0.0f, 1.0f, 0.0f}, pageIndex, false};
+                    collectiblePages_[static_cast<size_t>(pageIndex)] = {{px, 0.006f + pageIndex * 0.00015f, pz}, right, up, {0.0f, 1.0f, 0.0f}, pageIndex, false};
                     rememberTile(t);
                     placed = true;
                 }
@@ -108,7 +115,10 @@
         if (best < 0) return false;
         CollectiblePage& page = collectiblePages_[static_cast<size_t>(best)];
         page.collected = true;
-        collectiblePagesCollected_ = std::clamp(collectiblePagesCollected_ + 1, 0, 8);
+        collectiblePagesCollected_ = std::clamp(collectiblePagesCollected_ + 1, 0, kCollectiblePageMaterialCount);
+        std::wostringstream notice;
+        notice << L"Page collected  " << collectiblePagesCollected_ << L"/" << kCollectiblePageMaterialCount;
+        ShowGameNotification(notice.str(), 4.2f);
         return true;
     }
 

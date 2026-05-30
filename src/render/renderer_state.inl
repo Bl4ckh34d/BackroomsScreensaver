@@ -19,6 +19,7 @@
     ULONGLONG bloodDebugStartTicks_ = 0;
     int debugSliceLoopCycle_ = -1;
     const StartupProgressSink* startupProgress_ = nullptr;
+    std::wstring lastInitializeError_;
     int startupProgressStep_ = 0;
     int startupProgressTotal_ = 1;
     int startupProgressFineCurrent_ = 0;
@@ -43,10 +44,13 @@
     ComPtr<ID3D11PixelShader> pixelShader_;
     ComPtr<ID3D11VertexShader> overlayVertexShader_;
     ComPtr<ID3D11PixelShader> overlayPixelShader_;
+    ComPtr<ID3D11VertexShader> texturedOverlayVertexShader_;
+    ComPtr<ID3D11PixelShader> texturedOverlayPixelShader_;
     ComPtr<ID3D11VertexShader> postVertexShader_;
     ComPtr<ID3D11PixelShader> postPixelShader_;
     ComPtr<ID3D11InputLayout> inputLayout_;
     ComPtr<ID3D11InputLayout> overlayInputLayout_;
+    ComPtr<ID3D11InputLayout> texturedOverlayInputLayout_;
     ComPtr<ID3D11Buffer> vertexBuffer_;
     ComPtr<ID3D11Buffer> indexBuffer_;
     ComPtr<ID3D11Buffer> monsterBuffer_;
@@ -56,6 +60,7 @@
     ComPtr<ID3D11ShaderResourceView> albedoSrv_;
     ComPtr<ID3D11ShaderResourceView> normalSrv_;
     ComPtr<ID3D11ShaderResourceView> materialPropsSrv_;
+    ComPtr<ID3D11ShaderResourceView> loosePagesSrv_;
     ComPtr<ID3D11ShaderResourceView> flashlightPatternSrv_;
     ComPtr<ID3D11ShaderResourceView> mazeSrv_;
     ComPtr<ID3D11Texture2D> lampDamageTexture_;
@@ -73,6 +78,9 @@
     ComPtr<ID3D11Texture2D> shadowDepth_;
     ComPtr<ID3D11DepthStencilView> shadowDsv_;
     ComPtr<ID3D11ShaderResourceView> shadowSrv_;
+    ComPtr<ID3D11Texture2D> fixtureShadowDepth_;
+    ComPtr<ID3D11DepthStencilView> fixtureShadowDsv_;
+    ComPtr<ID3D11ShaderResourceView> fixtureShadowSrv_;
     std::array<ComPtr<ID3D11Texture2D>, 2> monsterEyeShadowDepth_;
     std::array<ComPtr<ID3D11DepthStencilView>, 2> monsterEyeShadowDsv_;
     std::array<ComPtr<ID3D11ShaderResourceView>, 2> monsterEyeShadowSrv_;
@@ -81,6 +89,7 @@
     ComPtr<ID3D11RasterizerState> shadowRasterState_;
     D3D_FEATURE_LEVEL featureLevel_ = D3D_FEATURE_LEVEL_10_0;
     UINT shadowMapSize_ = 2048;
+    UINT fixtureShadowMapSize_ = 1024;
     UINT monsterEyeShadowMapSize_ = 1024;
     UINT presentSyncInterval_ = 1;
     UINT presentFlags_ = 0;
@@ -157,8 +166,19 @@
     float playerNoiseRadiusMeters_ = 0.0f;
     bool sprintStaminaLocked_ = false;
     bool previousInteractInput_ = false;
-    std::array<CollectiblePage, 8> collectiblePages_{};
+    std::array<CollectiblePage, kCollectiblePageMaterialCount> collectiblePages_{};
     int collectiblePagesCollected_ = 0;
+    std::wstring hudNotificationText_;
+    float hudNotificationStartTime_ = -1000.0f;
+    float hudNotificationDuration_ = 0.0f;
+    bool hudNotificationTextureDirty_ = false;
+    int hudNotificationTextureWidth_ = 1024;
+    int hudNotificationTextureHeight_ = 160;
+    ComPtr<ID3D11Texture2D> hudNotificationTexture_;
+    ComPtr<ID3D11ShaderResourceView> hudNotificationSrv_;
+    bool currentFixtureShadowActive_ = false;
+    XMFLOAT3 currentFixtureShadowPos_{0.0f, 0.0f, 0.0f};
+    float currentFixtureShadowRange_ = 0.0f;
     bool monsterPreview_ = false;
     MonsterPreviewView monsterPreviewView_ = MonsterPreviewView::Orbit;
     bool monsterPreviewManualOrbit_ = false;

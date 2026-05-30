@@ -227,7 +227,7 @@
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
         XMFLOAT3 right = Normalize3(exitDoorRight_, {1.0f, 0.0f, 0.0f});
         XMFLOAT3 inward = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
-        float openMat = 19.58f + openT * 0.18f;
+        float openMat = 19.54f + openT * 0.12f;
 
         XMFLOAT3 aperture = Add3(exitDoorCenter_, Add3(Scale3(inward, 0.66f), {0.0f, -0.46f, 0.0f}));
         XMFLOAT3 floorHit = Add3(exitDoorCenter_, Add3(Scale3(inward, 2.95f), {0.0f, -0.92f, 0.0f}));
@@ -1450,20 +1450,31 @@
         for (const AirParticle& p : airParticles_) {
             if (emitted >= maxParticles) break;
             XMFLOAT3 pos = p.pos;
-            XMFLOAT3 fromLight = Sub3(pos, lightOrigin);
-            float lightDistSq = Dot3(fromLight, fromLight);
-            if (lightDistSq < 0.09f || lightDistSq > maxDistSq) continue;
-            float lightDist = std::sqrt(lightDistSq);
-            if (lightDist < 0.30f || lightDist > maxDist) continue;
-            XMFLOAT3 ray = Scale3(fromLight, 1.0f / std::max(0.001f, lightDist));
-            float cone = SmoothStep(coneOuter, coneInner, Dot3(ray, lightDir));
-            if (cone <= 0.018f) continue;
             XMFLOAT3 fromCamera = Sub3(pos, camera_);
             float cameraDepth = Dot3(fromCamera, cameraForward);
             if (cameraDepth <= 0.035f) continue;
-            float focusBlur = Clamp01(Clamp01(std::abs(lightDist - airFocusDistance_) / (0.62f + lightDist * 0.18f)) *
+
+            XMFLOAT3 fromLight = Sub3(pos, lightOrigin);
+            float lightDistSq = Dot3(fromLight, fromLight);
+            float lightDist = std::sqrt(std::max(0.0001f, lightDistSq));
+            bool flashlightLit = false;
+            if (lightDistSq >= 0.09f && lightDistSq <= maxDistSq && lightDist >= 0.30f && lightDist <= maxDist) {
+                XMFLOAT3 ray = Scale3(fromLight, 1.0f / std::max(0.001f, lightDist));
+                flashlightLit = SmoothStep(coneOuter, coneInner, Dot3(ray, lightDir)) > 0.018f;
+            }
+            float fixtureDist = std::numeric_limits<float>::infinity();
+            bool fixtureLit = false;
+            if (currentFixtureShadowActive_) {
+                XMFLOAT3 fromFixture = Sub3(pos, currentFixtureShadowPos_);
+                fixtureDist = std::sqrt(std::max(0.0001f, Dot3(fromFixture, fromFixture)));
+                fixtureLit = fixtureDist <= currentFixtureShadowRange_ * 0.92f && pos.y < currentFixtureShadowPos_.y + 0.05f;
+            }
+            if (!flashlightLit && !fixtureLit) continue;
+            float lightingDist = flashlightLit ? lightDist : fixtureDist;
+            if (fixtureLit && fixtureDist < lightingDist) lightingDist = fixtureDist;
+            float focusBlur = Clamp01(Clamp01(std::abs(lightingDist - airFocusDistance_) / (0.62f + lightingDist * 0.18f)) *
                 std::clamp(settings_.airParticleBlur, 0.0f, 3.0f));
-            float distanceT = Clamp01(lightDist / maxDist);
+            float distanceT = Clamp01(lightingDist / maxDist);
             float distanceScale = Lerp(0.52f, 0.085f, distanceT);
             if (p.nearLayer > 0.5f) {
                 distanceScale = std::max(distanceScale, p.nearLayer > 1.5f ? 0.92f : 0.72f);
@@ -1559,7 +1570,7 @@
         constexpr float halfW = 0.210f * 0.5f;
         constexpr float halfH = 0.297f * 0.5f;
         for (const CollectiblePage& page : collectiblePages_) {
-            if (page.collected || page.pageIndex < 0 || page.pageIndex >= 8) continue;
+            if (page.collected || page.pageIndex < 0 || page.pageIndex >= kCollectiblePageMaterialCount) continue;
             if (!DynamicVisualCandidate(page.center, 0.24f, std::max(8.0f, maze_.TileAverage() * 7.0f))) continue;
             XMFLOAT3 right = Normalize3(page.right, {1.0f, 0.0f, 0.0f});
             XMFLOAT3 up = Normalize3(page.up, {0.0f, 1.0f, 0.0f});
@@ -1572,7 +1583,7 @@
             XMFLOAT3 d = Add3(page.center, Add3(Scale3(hw, -1.0f), hh));
             AppendDynamicQuadUV(verts, a, b, c, d, normal, right,
                 {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 0.0f},
-                27.0f + static_cast<float>(page.pageIndex));
+                static_cast<float>(kCollectiblePageMaterialFirst + page.pageIndex));
         }
     }
 

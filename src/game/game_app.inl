@@ -113,9 +113,10 @@ int RunGame(HINSTANCE hInstance) {
         float dt = std::min(0.05f, static_cast<float>(now - lastTicks) / 1000.0f);
         lastTicks = now;
 
+        bool inputWindowActive = GameWindowAcceptsInput(hwnd);
         int pauseVk = GameActionKey(app.gameInputSettings, GameInputAction::Pause);
-        bool escapeDown = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
-        bool pauseDown = (GetAsyncKeyState(pauseVk) & 0x8000) != 0;
+        bool escapeDown = inputWindowActive && ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0);
+        bool pauseDown = inputWindowActive && ((GetAsyncKeyState(pauseVk) & 0x8000) != 0);
         if (!escapeDown) app.gameSettingsEscapeConsumed = false;
         if (pauseDown && !escapeWasDown) {
             if (app.gameState == GameState::PlayGame || app.gameState == GameState::DebugScene) {
