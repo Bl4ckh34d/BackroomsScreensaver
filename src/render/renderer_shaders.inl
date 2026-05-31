@@ -182,6 +182,33 @@ float3 MaterialUV(float2 uv, float material)
     return float3(uv, slice);
 }
 
+float2 ReliefParallaxUv(float2 rawUv, float material, float3 viewTS, float scale, float maxLayers)
+{
+    if (scale <= 0.0001)
+    {
+        return rawUv;
+    }
+    viewTS.z = max(viewTS.z, 0.16);
+    float layers = lerp(maxLayers, maxLayers * 0.45, saturate(viewTS.z));
+    float2 stepUv = (viewTS.xy / viewTS.z) * (scale / max(layers, 1.0));
+    float2 uv = rawUv;
+    float layerDepth = 1.0 / max(layers, 1.0);
+    float currentDepth = 0.0;
+    float mapDepth = 1.0 - gNormalHeight.Sample(gSampler, MaterialUV(uv, material)).a;
+    [loop]
+    for (int i = 0; i < 12; ++i)
+    {
+        if ((float)i >= layers || currentDepth >= mapDepth)
+        {
+            break;
+        }
+        uv -= stepUv;
+        currentDepth += layerDepth;
+        mapDepth = 1.0 - gNormalHeight.Sample(gSampler, MaterialUV(uv, material)).a;
+    }
+    return uv;
+}
+
 float3 BackroomsBaseColor(float3 base, float materialId)
 {
     float luma = dot(base, float3(0.299, 0.587, 0.114));
@@ -210,7 +237,7 @@ void UnderlyingSurface(float3 worldPos, float3 normal, out float materialId, out
     float explicitCeilingScale = gTexture0.z;
     float2 ceilingScale = explicitCeilingScale > 0.001
         ? max(float2(explicitCeilingScale, explicitCeilingScale), float2(0.20, 0.20))
-        : max(gMaze0.zw, float2(0.20, 0.20));
+        : max(gMaze0.zw * 2.0, float2(0.20, 0.20));
     if (normal.y > 0.55)
     {
         materialId = 1.0;
@@ -340,6 +367,93 @@ float Fbm3(float3 p)
         a *= 0.50;
     }
     return v;
+}
+
+float2 WorldDirtUv(float3 worldPos, float3 normal)
+{
+    float3 an = abs(normal);
+    if (an.y >= max(an.x, an.z))
+    {
+        return worldPos.xz - gMaze0.xy;
+    }
+    if (an.z >= an.x)
+    {
+        return float2(worldPos.x - gMaze0.x, worldPos.y * 1.16);
+    }
+    return float2(worldPos.z - gMaze0.y, worldPos.y * 1.16);
+}
+
+void ApplyWorldDirtOverlay(inout float3 base, inout float roughness, inout float aoMap, float materialId, float3 worldPos, float3 normal)
+{
+    if (materialId >= 2.5)
+    {
+        return;
+    }
+
+    float2 p = WorldDirtUv(worldPos, normal);
+    float materialSalt = materialId * 37.0 + 11.0;
+    float levelDirt = saturate(gTexture0.w);
+    float2 tileP = (worldPos.xz - gMaze0.xy) / max(gMaze0.zw, float2(0.20, 0.20));
+    float surfaceVar = saturate(Fbm3(float3(p * 0.115 + gMaze1.xy * 0.021, materialSalt + 7.0)) * 1.18 - 0.08);
+    float macroNoise = Fbm3(float3(tileP * 0.055 + gMaze1.xy * 0.071, materialSalt + 121.0));
+    float hotspot = smoothstep(0.48, 0.88, macroNoise) * lerp(0.20, 0.58, levelDirt);
+    [unroll]
+    for (int i = 0; i < 5; ++i)
+    {
+        float fi = (float)i;
+        float centerSeed = materialSalt + fi * 19.37 + gMaze1.x * 0.23 + gMaze1.y * 0.41;
+        float enabled = step((fi + 0.45) / 5.0, 0.22 + levelDirt * 0.86);
+        float2 center = float2(Hash21(float2(centerSeed, 3.1)), Hash21(float2(centerSeed, 9.7))) * gMaze1.xy;
+        float2 radius = lerp(float2(3.2, 3.8), float2(8.5, 10.5), Hash21(float2(centerSeed, 17.3))) *
+            lerp(0.72, 1.32, levelDirt);
+        float d = length((tileP - center) / max(radius, float2(0.50, 0.50)));
+        float core = 1.0 - smoothstep(0.22, 1.08, d + (Fbm3(float3(tileP * 0.18 + fi, materialSalt + 141.0)) - 0.5) * 0.24);
+        hotspot = max(hotspot, core * enabled);
+    }
+    float hotspotGain = lerp(0.58, 1.12, levelDirt) + hotspot * lerp(0.45, 1.75, levelDirt);
+
+    float warp = Fbm3(float3(p * 0.055 + surfaceVar * 2.1, materialSalt));
+    float2 warped = p + (float2(warp, Noise3(float3(p.yx * 0.071 - surfaceVar * 1.7, materialSalt + 19.0))) - 0.5) *
+        (1.6 + surfaceVar * 1.8);
+    float2 dirtDx = ddx(warped);
+    float2 dirtDy = ddy(warped);
+    float pixelFootprint = max(length(dirtDx), length(dirtDy));
+    float screenDetail = 1.0 - smoothstep(0.018, 0.105, pixelFootprint);
+    float distanceDetail = 1.0 - smoothstep(8.0, 22.0, length(worldPos - gCameraPosTime.xyz));
+    float detailFade = saturate(screenDetail * distanceDetail);
+
+    float broad = Fbm3(float3(warped * 0.16 + surfaceVar * 3.0, materialSalt + 31.0));
+    float mid = Fbm3(float3(warped * 0.84 + 17.0, materialSalt + 47.0));
+    float fine = lerp(0.5, Noise3(float3(warped * 8.5 + surfaceVar * 13.0, materialSalt + 59.0)), detailFade);
+    float pepper = lerp(0.5, Noise3(float3(warped * 22.0 + 31.0, materialSalt + 71.0)), detailFade);
+    float stain = smoothstep(0.43, 0.78, broad + (mid - 0.5) * 0.38);
+    float grime = smoothstep(0.28, 0.68, mid + (fine - 0.5) * 0.25);
+    float speckle = smoothstep(0.70, 0.965, pepper) * (0.36 + grime * 0.64) * detailFade;
+
+    float3 an = abs(normal);
+    float isWall = 1.0 - step(max(an.x, an.z), an.y);
+    float isFloor = step(max(an.x, an.z), normal.y);
+    float isCeiling = step(max(an.x, an.z), -normal.y);
+    float wallStreak = isWall *
+        smoothstep(0.54, 0.84, Fbm3(float3(warped.x * 1.35 + materialSalt, worldPos.y * 0.20, materialSalt + 83.0))) *
+        smoothstep(0.16, 0.82, worldPos.y) * (1.0 - smoothstep(2.40, 3.20, worldPos.y));
+    float floorWear = isFloor * smoothstep(0.46, 0.82,
+        Fbm3(float3(warped * 0.52 + float2(5.0, 19.0), materialSalt + 97.0)) + (fine - 0.5) * (0.06 + 0.10 * detailFade));
+    float ceilingBloom = isCeiling * smoothstep(0.38, 0.76,
+        Fbm3(float3(warped * 0.36 + float2(29.0, 7.0), materialSalt + 109.0)) + (broad - 0.5) * 0.20);
+
+    float alpha = saturate(stain * 0.115 + grime * 0.078 + speckle * 0.052 + wallStreak * 0.105 + floorWear * 0.050 + ceilingBloom * 0.070);
+    alpha = min(alpha * lerp(0.96, 1.26, surfaceVar) * hotspotGain, lerp(0.14, 0.25, levelDirt));
+    float influence = saturate((stain * 0.88 + grime * 0.56 + speckle * 0.62 + wallStreak * 0.90 + floorWear * 0.52 + ceilingBloom * 0.74) *
+        (0.82 + hotspot * 0.70 + levelDirt * 0.32));
+    float3 wallTint = float3(0.145, 0.115, 0.045);
+    float3 floorTint = float3(0.055, 0.044, 0.028);
+    float3 ceilingTint = float3(0.17, 0.15, 0.075);
+    float3 dirtTint = materialId < 0.5 ? wallTint : (materialId < 1.5 ? floorTint : ceilingTint);
+    float3 dirtColor = base * (1.0 - (0.24 + influence * 0.48)) + dirtTint * (0.20 + influence * 0.24);
+    base = lerp(base, dirtColor, alpha);
+    roughness = saturate(roughness + alpha * (0.10 + influence * 0.08));
+    aoMap = saturate(aoMap - alpha * (0.09 + influence * 0.05));
 }
 
 float SmokeFbm(float3 p, float seed, float time)
@@ -601,13 +715,19 @@ HSConstData HSPatchConstants(InputPatch<VSOut, 3> patch, uint patchId : SV_Primi
     HSConstData o;
     float materialId = MaterialId(patch[0].material);
     float eligible = FleshMaterialEligible(materialId);
-    float maxTess = lerp(10.0, 24.0, saturate(gHorror0.w / 0.22));
-    float tess = eligible > 0.5 ? floor(maxTess * saturate(gHorror0.x) + 0.5) : 1.0;
-    tess = max(tess, 1.0);
-    o.edges[0] = tess;
-    o.edges[1] = tess;
-    o.edges[2] = tess;
-    o.inside = tess;
+    float maxTess = lerp(28.0, 64.0, saturate(gHorror0.w / 0.22));
+    float farTess = lerp(6.0, 18.0, saturate(gHorror0.w / 0.22));
+    float flesh = saturate(gHorror0.x);
+    float e01Dist = length((patch[0].worldPos + patch[1].worldPos) * 0.5 - gCameraPosTime.xyz);
+    float e12Dist = length((patch[1].worldPos + patch[2].worldPos) * 0.5 - gCameraPosTime.xyz);
+    float e20Dist = length((patch[2].worldPos + patch[0].worldPos) * 0.5 - gCameraPosTime.xyz);
+    float e01 = max(1.0, floor(lerp(farTess, maxTess, 1.0 - smoothstep(10.0, 30.0, e01Dist)) * flesh + 0.5));
+    float e12 = max(1.0, floor(lerp(farTess, maxTess, 1.0 - smoothstep(10.0, 30.0, e12Dist)) * flesh + 0.5));
+    float e20 = max(1.0, floor(lerp(farTess, maxTess, 1.0 - smoothstep(10.0, 30.0, e20Dist)) * flesh + 0.5));
+    o.edges[0] = eligible > 0.5 ? e12 : 1.0;
+    o.edges[1] = eligible > 0.5 ? e20 : 1.0;
+    o.edges[2] = eligible > 0.5 ? e01 : 1.0;
+    o.inside = eligible > 0.5 ? max(o.edges[0], max(o.edges[1], o.edges[2])) : 1.0;
     return o;
 }
 
@@ -634,18 +754,33 @@ VSOut DSMain(HSConstData input, const OutputPatch<VSOut, 3> patch, float3 bary :
     float eligible = FleshMaterialEligible(materialId);
     if (eligible > 0.5)
     {
+        float time = gCameraPosTime.w;
+        float flesh = saturate(gHorror0.x);
         float2 fleshUv = rawUv * 0.72 + float2(Hash21(floor(worldPos.xz * 0.27)), Hash21(floor(worldPos.zx * 0.31))) * 0.23;
+        fleshUv += float2(sin(time * 0.18 + worldPos.z * 0.19), cos(time * 0.14 + worldPos.x * 0.17)) * 0.012 * flesh;
         float height = gNormalHeight.SampleLevel(gSampler, float3(fleshUv, 15.0), 0).a;
         float lowHeight = gNormalHeight.SampleLevel(gSampler, float3(fleshUv, 15.0), 4).a;
-        float foldRelief = (height - lowHeight) * 2.15 + (lowHeight - 0.50) * 0.42;
+        float ridge = (height - lowHeight) * 2.65;
+        float foldRelief = ridge + (lowHeight - 0.50) * 0.70;
+        float pulse = 0.78 + 0.22 * sin(time * 3.2 + dot(worldPos, float3(0.73, 1.31, 0.51)));
+        float crawl = sin(time * 2.1 + rawUv.x * 9.0 + rawUv.y * 6.0 + Hash21(floor(worldPos.xz * 0.5)) * 6.2831853) * 0.10;
+        float suction = smoothstep(0.34, 0.02, height) * -0.16;
         float wallEdgeFade = 1.0;
         if (abs(normal.y) < 0.35)
         {
             wallEdgeFade = smoothstep(0.035, 0.24, worldPos.y) * smoothstep(0.035, 0.24, gMaze1.z - worldPos.y);
         }
-        float displacement = foldRelief * gHorror0.w * (1.35 + gHorror0.x * 0.95) * wallEdgeFade;
-        displacement = clamp(displacement, -0.13, 0.22);
+        float floorCeilingFade = lerp(1.0, 0.88, smoothstep(0.55, 0.95, abs(normal.y)));
+        float displacement = (foldRelief * pulse + crawl + suction) * gHorror0.w * (2.35 + flesh * 1.40) * wallEdgeFade * floorCeilingFade;
+        displacement = clamp(displacement, -0.24, 0.42);
         worldPos += normal * displacement;
+        float texel = 1.0 / 512.0;
+        float hU = gNormalHeight.SampleLevel(gSampler, float3(fleshUv + float2(texel, 0.0), 15.0), 0).a;
+        float hV = gNormalHeight.SampleLevel(gSampler, float3(fleshUv + float2(0.0, texel), 15.0), 0).a;
+        float3 bitangent = normalize(cross(normal, tangent));
+        float slopeScale = gHorror0.w * (1.9 + flesh * 0.9) * wallEdgeFade;
+        float3 displacedNormal = normalize(normal - tangent * ((hU - height) * slopeScale * 10.0) - bitangent * ((hV - height) * slopeScale * 10.0));
+        normal = normalize(lerp(normal, displacedNormal, saturate(flesh * 0.95)));
     }
     o.worldPos = worldPos;
     o.normal = normal;
@@ -958,7 +1093,7 @@ float LocalLampLight(float3 worldPos, float3 worldN, float time)
         {
             float2 cell = baseCell + float2(xx, yy);
             float2 lampXZ = lampOrigin + cell * stride;
-            if (MazeOpenAt((int2)MazeTile(lampXZ)) < 0.5)
+            if (MazeOpenAt((int2)MazeTile(lampXZ)) < 0.75)
             {
                 continue;
             }
@@ -1135,6 +1270,7 @@ float MonsterEyeLight(float3 worldPos, float3 worldN)
         MonsterEyeOne(gMonsterEye1, gMonsterEye2, gMonsterEyeShadow1, gMonsterEyeViewProj1, worldPos, worldN, 2.1);
 }
 
+)" R"(
 float3 ExitSignLight(float3 worldPos, float3 worldN, float materialId)
 {
     float strength = gExitLight0.w * (1.0 - saturate(gTransition0.z));
@@ -1144,16 +1280,40 @@ float3 ExitSignLight(float3 worldPos, float3 worldN, float materialId)
         float3 L = gExitLight0.xyz - worldPos;
         float d = length(L);
         float signMaterial = step(6.5, materialId) * (1.0 - step(7.5, materialId));
-        float signReach = lerp(1.18, 3.65, signMaterial);
+        float signReach = lerp(2.40, 4.25, signMaterial);
         if (d > 0.001 && d <= signReach)
         {
             float visibility = LampRayClear(worldPos.xz + worldN.xz * 0.035, gExitLight0.xz);
             float3 Ln = L / d;
             float diffuse = saturate(dot(worldN, Ln) * 0.72 + 0.28);
-            float falloff = pow(saturate(1.0 - d / signReach), 2.0) / (1.0 + d * d * 0.86);
-            float surfaceSpill = lerp(0.12, 1.0, signMaterial);
+            float falloff = pow(saturate(1.0 - d / signReach), 1.65) / (1.0 + d * d * 0.46);
+            float surfaceSpill = lerp(0.44, 1.35, signMaterial);
             result += float3(0.045, 0.92, 0.34) * strength * falloff * diffuse * visibility * surfaceSpill;
         }
+    }
+
+    float portalEnabled = step(0.001, strength) * step(0.001, gExitLight3.w);
+    if (portalEnabled > 0.001)
+    {
+        float3 portalDir = normalize(gExitLight1.xyz + float3(0.0001, 0.0, 0.0001));
+        float3 portalRight = normalize(float3(portalDir.z, 0.0, -portalDir.x) + float3(0.0001, 0.0, 0.0001));
+        float3 rel = worldPos - gExitLight3.xyz;
+        float axial = dot(rel, portalDir);
+        float lateral = abs(dot(rel, portalRight));
+        float doorHalfW = max(0.12, gExitLight3.w);
+        float roomDepth = smoothstep(-0.08, 0.16, axial) * (1.0 - smoothstep(2.80, 4.20, axial));
+        float width = smoothstep(doorHalfW * 3.45, doorHalfW * 0.42, lateral);
+        float height = smoothstep(0.05, 0.32, worldPos.y) * (1.0 - smoothstep(2.72, 3.08, worldPos.y));
+        float floorReceiver = smoothstep(0.42, 0.82, worldN.y);
+        float ceilingReceiver = smoothstep(0.42, 0.82, -worldN.y);
+        float verticalReceiver = (1.0 - floorReceiver) * (1.0 - ceilingReceiver);
+        float wallFacing = smoothstep(-0.18, 0.54, max(dot(worldN, portalDir) * 0.88, abs(dot(worldN, portalRight)) * 0.86));
+        float receiver = saturate(floorReceiver * 0.42 + ceilingReceiver * 0.28 + verticalReceiver * wallFacing);
+        float signNear = 1.0 - smoothstep(0.40, 3.20, length(worldPos - gExitLight0.xyz));
+        float doorOrTrim = saturate(step(5.5, materialId) * (1.0 - step(6.5, materialId)) +
+            step(9.5, materialId) * (1.0 - step(10.5, materialId)));
+        float spill = portalEnabled * roomDepth * width * height * receiver;
+        result += float3(0.035, 0.32, 0.13) * strength * spill * (0.08 + signNear * 0.12) * (0.84 + doorOrTrim * 0.50);
     }
 
     float doorStrength = gExitLight2.w * (1.0 - saturate(gTransition0.z));
@@ -2932,6 +3092,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         return float4(saturate(ApplyPost(color) + color * 0.18), saturate(alpha));
     }
 
+)" R"(
     if (materialId > 14.5 && materialId < 15.5)
     {
         float variant = frac(input.material);
@@ -2941,7 +3102,6 @@ float4 PSMain(VSOut input) : SV_TARGET
         float focus = max(0.45, gAir0.x);
         float blur = saturate(abs(lightDist - focus) / (0.62 + lightDist * 0.18)) * saturate(gAir0.y);
         float2 p = uv * 2.0 - 1.0;
-        float angle = atan2(p.y, p.x);
         float3 stable = floor(input.worldPos * 2.7 + variant * 31.0);
         float h0 = Hash31(stable + 3.0);
         float h1 = Hash31(stable.yzx + 17.0);
@@ -2960,22 +3120,33 @@ float4 PSMain(VSOut input) : SV_TARGET
             (1.0 - smoothstep(0.18 + h0 * 0.22, 0.86, abs(strandX - 0.10)));
         float clumpBreak = smoothstep(0.18, 0.72, Fbm3(float3(p * (8.0 + h2 * 7.0) + variant * 17.0, variant * 53.0)));
         float hairClump = max(hairA, max(hairB * 0.76, hairC * 0.62)) * lerp(0.54, 1.0, clumpBreak);
-        float2 q = p + strandPerp * waviness * 0.45;
-        float lobesA = sin(angle * (5.0 + floor(h0 * 4.0)) + variant * 38.0 + time * 0.035);
-        float lobesB = sin(angle * (9.0 + floor(h1 * 5.0)) + variant * 71.0 - time * 0.026);
-        float corner = sin(angle * (13.0 + floor(h2 * 4.0)) + h1 * 19.0);
+        float2 q = p + strandPerp * waviness * 0.45 + strandDir * ((h1 - 0.5) * 0.18) + strandPerp * ((h2 - 0.5) * 0.13);
+        float angle = atan2(q.y, q.x);
+        float lobesA = sin(angle * (3.0 + floor(h0 * 5.0)) + variant * 38.0 + time * 0.035);
+        float lobesB = sin(angle * (7.0 + floor(h1 * 6.0)) + variant * 71.0 - time * 0.026);
+        float corner = sin(angle * (11.0 + floor(h2 * 5.0)) + h1 * 19.0);
         float sides = 5.0 + floor(h0 * 6.0);
         float sector = floor((angle + 3.14159265 + variant * 6.2831853) / (6.2831853 / sides));
-        float faceted = (Hash21(float2(sector, variant * 43.0)) - 0.5) * 0.22;
-        float edge = 0.58 + faceted + lobesA * 0.13 + lobesB * 0.08 + corner * 0.045;
+        float faceted = (Hash21(float2(sector, variant * 43.0)) - 0.5) * 0.34;
+        float edge = clamp(0.47 + faceted + lobesA * 0.18 + lobesB * 0.11 + corner * 0.075 + (h1 - 0.5) * 0.16, 0.22, 0.82);
         float r = length(q);
-        float blob = smoothstep(edge + 0.13 + blur * 0.24, edge - 0.06 - blur * 0.10, r);
-        float shell = smoothstep(edge + 0.24 + blur * 0.26, edge + 0.02, r) * (1.0 - blob);
+        float blob = smoothstep(edge + 0.08 + blur * 0.19, edge - 0.035 - blur * 0.06, r);
+        float biteA = smoothstep(0.18, 0.72, dot(q, strandDir) + h0 * 0.36) *
+            smoothstep(0.82, 0.14, abs(dot(q, strandPerp) - (h2 - 0.5) * 0.22));
+        float biteB = smoothstep(0.20, 0.78, -dot(q, strandPerp) + h1 * 0.28) *
+            smoothstep(0.76, 0.10, abs(dot(q, strandDir) + (h0 - 0.5) * 0.30));
+        blob *= 1.0 - saturate(max(biteA * 0.72, biteB * 0.55) * (1.0 - blur * 0.35));
+        float raggedEdge = smoothstep(edge + 0.18 + blur * 0.18, edge - 0.02, r) * (1.0 - blob);
+        raggedEdge *= smoothstep(0.30, 0.82, Fbm3(float3(q * (11.0 + h2 * 9.0), variant * 61.0)));
         float holes = step(0.60 + blur * 0.18, Hash21(floor((q + variant) * (7.0 + h0 * 8.0))));
         blob *= lerp(1.0, 0.52, holes * (1.0 - blur * 0.45));
-        float shape = max(blob * 0.82, max(shell * 0.24, hairClump * (0.46 + h1 * 0.42)));
+        float smear = exp(-pow(abs(dot(q, strandPerp) + (h2 - 0.5) * 0.16), 1.18) * (30.0 + h0 * 48.0)) *
+            (1.0 - smoothstep(0.28 + h1 * 0.18, 0.98, abs(dot(q, strandDir) - 0.10)));
+        float shell = saturate(max(blob, raggedEdge) + smear * 0.72 + hairClump * 0.46);
+        float shape = max(blob * 0.48, max(raggedEdge * 0.20, max(smear * 0.38, hairClump * (0.58 + h1 * 0.48))));
         float flecks = lerp(0.78, 1.10, Hash21(floor(q * (10.0 + h1 * 9.0)) + variant * 23.0));
-        shape *= flecks * smoothstep(1.22, 0.35, length(p));
+        float asymmetricFalloff = smoothstep(1.20, 0.30, max(abs(p.x) * lerp(0.86, 1.22, h0), abs(p.y) * lerp(0.88, 1.28, h2)));
+        shape *= flecks * asymmetricFalloff;
         if (shape < 0.018) discard;
 
         float flashlight = FlashlightAmount(input.worldPos, N);
@@ -3140,13 +3311,23 @@ float4 PSMain(VSOut input) : SV_TARGET
 
     if (materialId > 34.5 && materialId < 35.5)
     {
-        float slot = min(127.0, floor(saturate(frac(input.material)) * 128.0));
+        float pageCode = frac(input.material);
+        float blankPage = 1.0 - step(0.001, pageCode);
+        float slot = min(127.0, floor(saturate(pageCode) * 128.0));
         float2 pageUv = saturate(rawUv);
         float4 base = gLoosePages.SampleBias(gSampler, float3(pageUv, slot), -0.35);
         float grain = Fbm3(input.worldPos * float3(14.0, 20.0, 14.0) + slot * 0.37);
         float ridge = Fbm3(input.worldPos * float3(36.0, 22.0, 36.0) + slot * 1.7);
         float edge = max(max(1.0 - smoothstep(0.0, 0.045, rawUv.x), 1.0 - smoothstep(0.0, 0.045, 1.0 - rawUv.x)),
                          max(1.0 - smoothstep(0.0, 0.045, rawUv.y), 1.0 - smoothstep(0.0, 0.045, 1.0 - rawUv.y)));
+        float ruleLine = (1.0 - smoothstep(0.006, 0.020, abs(frac(pageUv.y * 28.0 + 0.08) - 0.08))) *
+            smoothstep(0.05, 0.14, pageUv.x) * (1.0 - smoothstep(0.86, 0.98, pageUv.x));
+        float margin = (1.0 - smoothstep(0.004, 0.018, abs(pageUv.x - 0.175))) *
+            smoothstep(0.05, 0.20, pageUv.y) * (1.0 - smoothstep(0.88, 0.98, pageUv.y));
+        float3 blankColor = float3(0.88, 0.865, 0.79) + (grain - 0.5) * float3(0.060, 0.055, 0.042);
+        blankColor = lerp(blankColor, blankColor * float3(0.77, 0.80, 0.86), ruleLine * 0.34);
+        blankColor = lerp(blankColor, blankColor * float3(0.82, 0.78, 0.74), margin * 0.24);
+        base = lerp(base, float4(saturate(blankColor), 1.0), blankPage);
         float3 paperN = normalize(N + T * (grain - 0.5) * 0.018 + B * (ridge - 0.5) * 0.010);
         float3 worldN = normalize(lerp(N, paperN, 0.42));
         float flashlight = FlashlightAmount(input.worldPos, worldN);
@@ -3173,6 +3354,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         return float4(ApplyPost(color), 1.0);
     }
 
+)" R"(
     if (materialId > 23.5 && materialId < 24.5)
     {
         float softness = saturate(frac(input.material));
@@ -3194,14 +3376,18 @@ float4 PSMain(VSOut input) : SV_TARGET
     if ((materialId > 0.5 && materialId < 1.5) || (materialId > 1.5 && materialId < 2.5))
     {
         float floorMaterial = materialId < 1.5;
-        float mipBias = floorMaterial > 0.5 ? 1.15 : 0.75;
-        float3 materialUv = MaterialUV(rawUv, input.material);
+        float3 viewTS = float3(dot(V, T), dot(V, B), max(dot(V, N), 0.16));
+        float parallaxScale = floorMaterial > 0.5 ? 0.012 : 0.005;
+        float parallaxLayers = floorMaterial > 0.5 ? 8.0 : 5.0;
+        float2 sampledRawUv = ReliefParallaxUv(rawUv, input.material, viewTS, parallaxScale, parallaxLayers);
+        float mipBias = floorMaterial > 0.5 ? 0.30 : 0.78;
+        float3 materialUv = MaterialUV(sampledRawUv, input.material);
         float4 base = gAlbedo.SampleBias(gSampler, materialUv, mipBias);
         base.rgb = BackroomsBaseColor(base.rgb, materialId);
         float4 pbr = gMaterialProps.SampleBias(gSampler, materialUv, mipBias);
-        float4 nh = gNormalHeight.SampleBias(gSampler, materialUv, mipBias + 0.55);
+        float4 nh = gNormalHeight.SampleBias(gSampler, materialUv, mipBias + (floorMaterial > 0.5 ? 0.15 : 0.72));
         float3 nTex = normalize(nh.xyz * 2.0 - 1.0);
-        float normalStrength = floorMaterial > 0.5 ? 0.055 : 0.135;
+        float normalStrength = floorMaterial > 0.5 ? 0.48 : 0.22;
         nTex = normalize(float3(nTex.xy * normalStrength, nTex.z));
         float3 worldN = normalize(nTex.x * T + nTex.y * B + nTex.z * N);
         float dist = length(input.worldPos - cam);
@@ -3213,20 +3399,27 @@ float4 PSMain(VSOut input) : SV_TARGET
         float lift = gLighting0.z * (floorMaterial > 0.5 ? 0.018 : 0.040) * (1.0 - saturate(gTransition0.z));
         float aoMap = saturate(pbr.r);
         float roughness = saturate(pbr.g);
-        float3 color = base.rgb * (gLighting0.z + overhead + flashlight + sparkLight + lift) * lerp(0.55, 1.0, aoMap);
-        color += base.rgb * exitGreen * lerp(0.55, 1.0, aoMap);
+        float metallic = floorMaterial > 0.5 ? 0.0 : saturate(pbr.b);
+        float3 dirtBase = base.rgb;
+        ApplyWorldDirtOverlay(dirtBase, roughness, aoMap, materialId, input.worldPos, N);
+        base.rgb = dirtBase;
+        float3 diffuseColor = base.rgb * (1.0 - metallic);
+        float3 specColor = lerp(float3(0.035, 0.035, 0.035), base.rgb, metallic);
+        float ao = lerp(0.50, 1.0, aoMap);
+        float3 color = diffuseColor * (gLighting0.z + overhead + flashlight + sparkLight + lift) * ao;
+        color += diffuseColor * exitGreen * ao;
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);
         float specFacing = saturate(dot(reflect(-toLight, worldN), V));
         float gloss = 1.0 - roughness;
-        float specSharpness = lerp(12.0, 92.0, gloss);
-        float specLight = flashlight + sparkLight * 0.55 + exitGlow * 0.42 + overhead * (floorMaterial > 0.5 ? 0.18 : 0.62);
-        float ceilingSheen = floorMaterial > 0.5 ? 0.16 : 0.54;
-        float surfaceSpec = pow(specFacing, specSharpness) * gloss * gloss * ceilingSheen * specLight;
-        color += float3(1.0, 0.92, 0.76) * surfaceSpec * lerp(0.72, 1.0, aoMap);
+        float specSharpness = lerp(10.0, 180.0, gloss);
+        float specLight = flashlight + sparkLight * 0.58 + exitGlow * 0.46 + overhead * (floorMaterial > 0.5 ? 0.22 : 0.72);
+        float fresnel = pow(1.0 - saturate(dot(worldN, V)), 5.0);
+        float surfaceSpec = (pow(specFacing, specSharpness) * (0.08 + gloss * 0.82) +
+            fresnel * (0.018 + gloss * 0.090)) * specLight;
+        color += specColor * surfaceSpec * lerp(0.66, 1.0, aoMap);
         color *= 1.0 - CornerAO(input.worldPos, N);
-        float fog = saturate((dist - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
-        fog = 1.0 - exp(-fog * fog * 3.2);
-        color = lerp(color, float3(0.0, 0.0, 0.0), fog * gFog0.z);
+        float fogScale = floorMaterial > 0.5 ? 1.22 : 1.34;
+        color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, fogScale));
         return float4(ApplyPost(color), 1.0);
     }
 
@@ -3256,6 +3449,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
         float3 color = base * (gLighting0.z + overhead * 0.88 + flashlight + sparkLight);
         color += base * exitGreen * 0.55;
+        color += exitGreen * 0.040;
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);
         float facing = saturate(dot(reflect(-toLight, worldN), V));
         color += float3(0.75, 0.56, 0.34) * pow(facing, 54.0) * 0.075 * (flashlight + sparkLight * 0.45);
@@ -3266,17 +3460,15 @@ float4 PSMain(VSOut input) : SV_TARGET
 
     float3 viewTS = float3(dot(V, T), dot(V, B), max(dot(V, N), 0.18));
     float parallaxScale = 0.0;
-    if (materialId < 0.5) parallaxScale = 0.018;
-    else if (materialId < 1.5) parallaxScale = 0.0;
-    else if (materialId < 2.5) parallaxScale = 0.003;
+    if (materialId < 0.5) parallaxScale = 0.022;
+    else if (materialId < 1.5) parallaxScale = 0.012;
+    else if (materialId < 2.5) parallaxScale = 0.005;
     float2 sampledRawUv = rawUv;
     if (materialId > 6.5 && materialId < 7.5)
     {
         sampledRawUv.y = 1.0 - sampledRawUv.y;
     }
-    float3 firstUv = MaterialUV(sampledRawUv, input.material);
-    float height = parallaxScale > 0.0 ? gNormalHeight.Sample(gSampler, firstUv).a : 0.48;
-    sampledRawUv += (height - 0.48) * parallaxScale * viewTS.xy / viewTS.z;
+    sampledRawUv = ReliefParallaxUv(sampledRawUv, input.material, viewTS, parallaxScale, materialId < 0.5 ? 10.0 : 8.0);
 
     float3 materialUv = MaterialUV(sampledRawUv, input.material);
     float floorMipBias = (materialId > 0.5 && materialId < 1.5) ? 1.75 : 0.0;
@@ -3306,8 +3498,9 @@ float4 PSMain(VSOut input) : SV_TARGET
     float4 nh = gNormalHeight.SampleBias(gSampler, materialUv, floorMipBias);
     float3 nTex = normalize(nh.xyz * 2.0 - 1.0);
     float normalStrength = 0.55;
-    if (materialId > 0.5 && materialId < 1.5) normalStrength = 0.0;
-    else if (materialId > 1.5 && materialId < 2.5) normalStrength = 0.35;
+    if (materialId < 0.5) normalStrength = 0.72;
+    else if (materialId > 0.5 && materialId < 1.5) normalStrength = 0.48;
+    else if (materialId > 1.5 && materialId < 2.5) normalStrength = 0.22;
     nTex = normalize(float3(nTex.xy * normalStrength, nTex.z));
     float3 worldN = normalize(nTex.x * T + nTex.y * B + nTex.z * N);
 
@@ -3326,27 +3519,39 @@ float4 PSMain(VSOut input) : SV_TARGET
     float ambient = gLighting0.z;
     float aoMap = saturate(pbr.r);
     float roughness = saturate(pbr.g);
+    float metallic = saturate(pbr.b);
     if (materialId > 25.5 && materialId < 26.5)
     {
         roughness = min(roughness, 0.34);
         aoMap = max(aoMap, 0.74);
     }
-    float3 color = base.rgb * (ambient + overhead + flashlight + sparkLight) * lerp(0.58, 1.0, aoMap);
-    color += base.rgb * exitGreen * lerp(0.58, 1.0, aoMap);
-    color = lerp(color, min(color, base.rgb * (ambient + overhead * 0.18 + flashlight * 0.10 + sparkLight * 0.12) * lerp(0.58, 1.0, aoMap)), doorLightBlock);
+    float3 dirtBase = base.rgb;
+    ApplyWorldDirtOverlay(dirtBase, roughness, aoMap, materialId, input.worldPos, N);
+    base.rgb = dirtBase;
+    float3 diffuseColor = base.rgb * (1.0 - metallic);
+    float3 specColor = lerp(float3(0.035, 0.035, 0.035), base.rgb, metallic);
+    float ao = lerp(0.58, 1.0, aoMap);
+    float3 color = diffuseColor * (ambient + overhead + flashlight + sparkLight) * ao;
+    color += diffuseColor * exitGreen * ao;
+    float exitDarkTrimReflect = step(9.5, materialId) * (1.0 - step(10.5, materialId));
+    color += exitGreen * exitDarkTrimReflect * 0.045 * ao;
+    color = lerp(color, min(color, diffuseColor * (ambient + overhead * 0.18 + flashlight * 0.10 + sparkLight * 0.12) * ao), doorLightBlock);
     color += float3(1.0, 0.025, 0.012) * monsterEyeLight * lerp(0.72, 1.22, aoMap);
     float3 toLight = normalize(gShadow0.xyz - input.worldPos);
     float specFacing = saturate(dot(reflect(-toLight, worldN), V));
     float gloss = 1.0 - roughness;
-    float surfaceSpec = pow(specFacing, lerp(18.0, 95.0, gloss)) * gloss * 0.18 * (flashlight + sparkLight * 0.5 + exitGlow * 0.45 + monsterEyeLight * 0.42);
+    float fresnelBase = pow(1.0 - saturate(dot(worldN, V)), 5.0);
+    float surfaceSpec = (pow(specFacing, lerp(16.0, 170.0, gloss)) * (0.06 + gloss * 0.74) +
+        fresnelBase * (0.016 + gloss * 0.075)) *
+        (flashlight + sparkLight * 0.5 + exitGlow * 0.45 + monsterEyeLight * 0.42);
     if (materialId > 25.5 && materialId < 26.5)
     {
         float fresnel = pow(1.0 - saturate(dot(worldN, V)), 2.0);
         surfaceSpec += (pow(specFacing, 120.0) * 0.34 + fresnel * 0.11) * (flashlight + sparkLight * 0.45 + monsterEyeLight * 0.62);
         color += base.rgb * (flashlight * 0.22 + monsterEyeLight * 0.075);
     }
-    color += float3(1.0, 0.92, 0.78) * surfaceSpec * (1.0 - doorLightBlock);
-    color = lerp(color, min(color, base.rgb * (ambient + overhead * 0.14 + flashlight * 0.08 + sparkLight * 0.08) * lerp(0.58, 1.0, aoMap)), doorLightBlock);
+    color += specColor * surfaceSpec * (1.0 - doorLightBlock) * lerp(0.70, 1.0, aoMap);
+    color = lerp(color, min(color, diffuseColor * (ambient + overhead * 0.14 + flashlight * 0.08 + sparkLight * 0.08) * ao), doorLightBlock);
     if (materialId > 1.5 && materialId < 2.5)
     {
         color += base.rgb * 0.035 * saturate(gLighting0.z * 12.0) * (1.0 - saturate(gTransition0.z));
@@ -3354,7 +3559,9 @@ float4 PSMain(VSOut input) : SV_TARGET
     if (materialId > 6.5 && materialId < 7.5)
     {
         float nonFleshLight = 1.0 - saturate(gTransition0.z);
-        color = base.rgb * ((0.28 + flashlight * 0.2) * nonFleshLight + flashlight * 0.12) + base.rgb * 1.7 * nonFleshLight;
+        float signPulse = 0.94 + 0.06 * sin(time * 5.7);
+        color = base.rgb * ((0.28 + flashlight * 0.2) * nonFleshLight + flashlight * 0.12) +
+            base.rgb * 2.8 * signPulse * nonFleshLight;
     }
     color *= 1.0 - CornerAO(input.worldPos, worldN);
     float eyeGlow = 0.0;
@@ -3525,23 +3732,27 @@ float4 PostPS(PostVSOut input) : SV_TARGET
     float2 motion = clamp(gPost1.xy, float2(-0.045, -0.045), float2(0.045, 0.045));
 
     float3 color = gSceneColor.Sample(gPostSampler, uv).rgb;
-    float3 blur = color * 0.36;
-    blur += gSceneColor.Sample(gPostSampler, saturate(uv - motion * 0.35)).rgb * 0.22;
-    blur += gSceneColor.Sample(gPostSampler, saturate(uv - motion * 0.72)).rgb * 0.17;
-    blur += gSceneColor.Sample(gPostSampler, saturate(uv - motion * 1.08)).rgb * 0.11;
-    blur += gSceneColor.Sample(gPostSampler, saturate(uv + motion * 0.30)).rgb * 0.14;
     float motionWeight = saturate(length(motion) * 42.0);
-    color = lerp(color, blur, motionWeight * (0.34 + danger * 0.22));
+    [branch]
+    if (motionWeight > 0.001)
+    {
+        float3 blur = color * 0.44;
+        blur += gSceneColor.Sample(gPostSampler, saturate(uv - motion * 0.56)).rgb * 0.30;
+        blur += gSceneColor.Sample(gPostSampler, saturate(uv + motion * 0.38)).rgb * 0.26;
+        color = lerp(color, blur, motionWeight * (0.30 + danger * 0.18));
+    }
 
-    float2 bloomStep = texel * (3.8 + danger * 2.6);
-    float3 bloom = BrightPart(color) * 0.50;
-    bloom += BrightPart(gSceneColor.Sample(gPostSampler, uv + bloomStep * float2( 1.0,  0.0)).rgb) * 0.125;
-    bloom += BrightPart(gSceneColor.Sample(gPostSampler, uv + bloomStep * float2(-1.0,  0.0)).rgb) * 0.125;
-    bloom += BrightPart(gSceneColor.Sample(gPostSampler, uv + bloomStep * float2( 0.0,  1.0)).rgb) * 0.125;
-    bloom += BrightPart(gSceneColor.Sample(gPostSampler, uv + bloomStep * float2( 0.0, -1.0)).rgb) * 0.125;
-    float dirt = LensDirt(uv) * dirtAmount;
-    color += bloom * bloomAmount * (0.12 + dirt * 0.55);
-    color += float3(1.0, 0.92, 0.72) * dirt * bloomAmount * 0.018;
+    [branch]
+    if (bloomAmount > 0.001)
+    {
+        float2 bloomStep = texel * (3.6 + danger * 2.4);
+        float3 bloom = BrightPart(color) * 0.60;
+        bloom += BrightPart(gSceneColor.Sample(gPostSampler, uv + bloomStep * float2( 0.85,  0.65)).rgb) * 0.20;
+        bloom += BrightPart(gSceneColor.Sample(gPostSampler, uv + bloomStep * float2(-0.85, -0.65)).rgb) * 0.20;
+        float dirt = dirtAmount > 0.001 ? LensDirt(uv) * dirtAmount : 0.0;
+        color += bloom * bloomAmount * (0.12 + dirt * 0.55);
+        color += float3(1.0, 0.92, 0.72) * dirt * bloomAmount * 0.018;
+    }
     color *= 1.0 - smoothstep(0.58, 1.04, length((uv - 0.5) * float2(gCameraDirAspect.w, 1.0))) * (0.055 + dirtAmount * 0.035);
     color = lerp(color, float3(1.0, 0.018, 0.0), visionFlash * 0.72);
     color += float3(0.42, 0.0, 0.0) * visionFlash;

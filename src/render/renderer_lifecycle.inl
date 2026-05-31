@@ -171,6 +171,9 @@
         profile.Mark(L"CreateMazeMaskTexture");
         ReportStartupStep(L"Maze mask ready", L"Building maze geometry.");
         ResetSimulation();
+        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            menuDarkLayerOneRun_ = false;
+        }
         CreateMazeMesh();
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) SetupMainMenuScene();
         SetupPersistentAudioEmitters();
@@ -224,6 +227,7 @@
 
     void TickFrame(float dt) {
         time_ += dt;
+        UpdatePlayableProgressionTimers(dt);
         UpdateAirParticlePerformanceBudget(dt);
         UpdateSimulation(dt);
         UpdateAudio(dt);
@@ -260,6 +264,7 @@
         gBloodDebugEveryWall = false;
         settings_ = gameplaySettings_;
         ApplyMainMenuSettings();
+        menuDarkLayerOneRun_ = false;
         maze_.w = settings_.mazeWidth;
         maze_.h = settings_.mazeHeight;
         maze_.tileW = settings_.tileWidthMeters;
@@ -301,6 +306,7 @@
     }
 
     void TriggerMainMenuLampBurst() {
+        if (!menuDarkLayerOneRun_) return;
         if (menuLampBurstPlayed_) return;
         menuLampBurstPending_ = true;
     }
@@ -317,7 +323,7 @@
         menuSinglePlayerHover_ = true;
         menuButtonHover_ = false;
         menuHoverButtonIndex_ = -1;
-        if (!menuLampBurstPlayed_) menuLampBurstPending_ = true;
+        if (menuDarkLayerOneRun_ && !menuLampBurstPlayed_) menuLampBurstPending_ = true;
     }
 
     bool MainMenuStartTransitionComplete() const {
@@ -347,8 +353,38 @@
         menuResumeLabel_ = resume;
     }
 
+    void SetMenuButtonLayout(bool canResumeCurrent, bool canResumeSaved) {
+        menuButtonCount_ = 0;
+        auto add = [&](int labelRow) {
+            if (menuButtonCount_ >= static_cast<int>(menuButtonLabelRows_.size())) return;
+            menuButtonLabelRows_[static_cast<size_t>(menuButtonCount_++)] = labelRow;
+        };
+        if (canResumeCurrent) add(1);
+        if (canResumeSaved) add(2);
+        add(0);
+        add(3);
+        add(4);
+        menuResumeLabel_ = canResumeCurrent;
+    }
+
     void SetGameInput(const GameInputSnapshot& input) {
         gameInput_ = input;
+    }
+
+    bool LoadSavedGameRun() {
+        return LoadSavedRunFromFile();
+    }
+
+    bool SavedGameRunExists() const {
+        return SavedRunExists();
+    }
+
+    bool PlayableRunFinished() const {
+        return runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.runFinished;
+    }
+
+    void DeleteSavedGameRun() {
+        DeleteSavedRun();
     }
 
     void ShowGameNotification(const std::wstring& text, float durationSeconds = 4.2f) {
@@ -394,7 +430,15 @@
     }
 
     bool MonsterIgnoresPlayer() const {
-        return settings_.monsterIgnorePlayer && IsPlayableSimulationMode(runtimeMode_);
+        return !MonsterActiveForCurrentMode() || (settings_.monsterIgnorePlayer && IsPlayableSimulationMode(runtimeMode_));
+    }
+
+    bool MonsterActiveForCurrentMode() const {
+        if (monsterPreview_ || gEffectDebugViewer) return true;
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame) {
+            return deathActive_ || (playableRun_.active && playableRun_.levelRunning && playableRun_.currentLevel.bossEncounter);
+        }
+        return true;
     }
 
     void RestartGameRun() {
@@ -409,27 +453,7 @@
         menuStartTransitionFade_ = 0.0f;
         flashlightEnabled_ = true;
         previousFlashlightInput_ = false;
-        auto randomOdd = [&](int minValue, int maxValue) {
-            minValue |= 1;
-            maxValue |= 1;
-            int slots = std::max(1, ((maxValue - minValue) / 2) + 1);
-            return minValue + static_cast<int>(rng_() % static_cast<uint32_t>(slots)) * 2;
-        };
-        settings_.mazeWidth = randomOdd(15, 75);
-        settings_.mazeHeight = randomOdd(15, 75);
-        settings_.roomCount = 1 + static_cast<int>(rng_() % 8u);
-        settings_.lampOnRatio = 1.0f;
-        settings_.brokenZoneRatio = 0.05f;
-        settings_.lampFlickerRatio = Lerp(0.05f, 0.10f,
-            static_cast<float>(rng_() & 0xffffu) / 65535.0f);
-        monsterKillCount_ = 0;
-        maze_.w = settings_.mazeWidth;
-        maze_.h = settings_.mazeHeight;
-        maze_.tileW = settings_.tileWidthMeters;
-        maze_.tileD = settings_.tileLengthMeters;
-        maze_.exit = {maze_.w - 2, maze_.h - 2};
-        RestartMaze();
-        SetupPersistentAudioEmitters();
+        BeginPlayableRun();
     }
 
     void EnterDebugViewer(DebugSliceEffect effect = DebugSliceEffect::Blood, int tiles = 3) {

@@ -50,7 +50,18 @@
         std::vector<uint8_t> mask(static_cast<size_t>(maze_.w * maze_.h), 0);
         for (int y = 0; y < maze_.h; ++y) {
             for (int x = 0; x < maze_.w; ++x) {
-                mask[static_cast<size_t>(y * maze_.w + x)] = maze_.IsOpen(x, y) ? 255 : 0;
+                uint8_t value = 0;
+                if (maze_.IsOpen(x, y)) {
+                    value = 255;
+                } else {
+                    MazeWallFeature feature = maze_.WallFeature(x, y);
+                    if (feature == MazeWallFeature::Window) {
+                        value = 255;
+                    } else if (feature == MazeWallFeature::Tunnel) {
+                        value = 128;
+                    }
+                }
+                mask[static_cast<size_t>(y * maze_.w + x)] = value;
             }
         }
 

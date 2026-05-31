@@ -89,8 +89,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_SETCURSOR:
 #if defined(BACKROOMS_GAME_EXE)
         if (gApp && gApp->gameShell &&
-            (gApp->gameState == GameState::PlayGame || gApp->gameState == GameState::MainMenu)) {
+            gApp->gameState == GameState::PlayGame) {
             SetCursor(nullptr);
+            return TRUE;
+        }
+        if (gApp && gApp->gameShell && gApp->gameState == GameState::MainMenu) {
+            SetCursor(LoadCursorW(nullptr, IDC_ARROW));
             return TRUE;
         }
         if (gApp && gApp->gameShell) {
@@ -265,7 +269,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 }
             } else if (!IsIconic(gApp->hwnd)) {
                 if (gApp->gameState == GameState::PlayGame) CaptureGameMouse(gApp->hwnd);
-                else if (gApp->gameState == GameState::MainMenu) SetGameCursorVisible(false);
+                else if (gApp->gameState == GameState::MainMenu) SetGameCursorVisible(true);
             }
             return 0;
         }

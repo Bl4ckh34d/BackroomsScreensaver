@@ -112,18 +112,19 @@
 
     void BreakRuntimeLamp(RuntimeLampState& lamp, bool emitPlayerNoise = true, bool playBreakSound = true) {
         if (lamp.broken) return;
+        (void)playBreakSound;
         lamp.broken = true;
         lamp.damage = 1.0f;
-        lamp.sparkTimer = RandRange(1.2f, 3.4f);
+        lamp.sparkTimer = RandRange(0.55f, 1.85f);
         MarkLampDamagePixel(lamp.tile, lamp.damage);
-        if (playBreakSound) {
-            PlayLightBulbBreakSoundAt(lamp.pos, 1.0f, emitPlayerNoise);
-        }
-        if (settings_.sparkParticles && LampCanEmitSparks(lamp)) {
-            float intensity = std::max(2.2f, PickBrokenLampSparkIntensity() * 1.18f);
+        PlayLightBulbBreakSoundAt(lamp.pos, 1.25f, emitPlayerNoise);
+        if (settings_.sparkParticles) {
+            float intensity = std::max(2.8f, PickBrokenLampSparkIntensity() * 1.45f);
             EmitSparkBurstAt(lamp.pos, intensity);
-            ScheduleSparkChain(lamp.pos, intensity * settings_.effectBrokenLampChainIntensityScale,
-                std::max(2, PickBrokenLampChainBursts() + 1));
+            if (LampCanEmitSparks(lamp) || RandRange(0.0f, 1.0f) < 0.35f) {
+                ScheduleSparkChain(lamp.pos, intensity * settings_.effectBrokenLampChainIntensityScale,
+                    std::max(3, PickBrokenLampChainBursts() + 2));
+            }
         }
     }
 
@@ -235,7 +236,7 @@
                 lamp.sparkTimer -= dt * Lerp(0.85f, affected ? 3.5f : 1.7f, fail);
                 if (lamp.sparkTimer <= 0.0f) {
                     if (settings_.sparkParticles && LampCanEmitSparks(lamp)) {
-                        float intensity = Lerp(0.42f, 2.55f, fail);
+                        float intensity = Lerp(0.68f, 3.20f, fail);
                         EmitSparkBurstAt(lamp.pos, intensity);
                         if (fail > 0.68f && RandRange(0.0f, 1.0f) < Lerp(0.16f, 0.62f, fail)) {
                             ScheduleSparkChain(lamp.pos, intensity * settings_.effectBrokenLampChainIntensityScale,
@@ -252,7 +253,8 @@
             }
 
             if (lamp.damage >= 0.995f) {
-                BreakRuntimeLamp(lamp, false, RandRange(0.0f, 1.0f) < 0.50f);
+                // Monster-caused fixture failures are audible ambience, not player noise.
+                BreakRuntimeLamp(lamp, false, true);
             }
         }
     }
@@ -405,8 +407,8 @@
             if (scareCooldown_ <= 0.0f && sensory > 0.0f) {
                 emitter.triggered = true;
                 float intensity = PickBrokenLampSparkIntensity();
-                EmitPlayerAudibleSound(emitter.pos, SparkHearingRadius(intensity), 1.18f);
-                if (!BreakNearestRuntimeLampAt(emitter.pos, maze_.TileMinimum() * 0.34f)) {
+                EmitPlayerAudibleSound(emitter.pos, SparkHearingRadius(intensity), 1.42f);
+                if (!BreakNearestRuntimeLampAt(emitter.pos, maze_.TileMinimum() * 0.46f)) {
                     SpawnSparkBurst(emitter, intensity);
                     ScheduleSparkChain(emitter.pos, intensity * settings_.effectBrokenLampChainIntensityScale, PickBrokenLampChainBursts());
                 }

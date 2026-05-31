@@ -263,8 +263,13 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.roomCountRange = std::clamp(ParseConfigInt(state, L"Maze", L"RoomCountRange", s.roomCountRange), 0, 80);
     s.roomMinRadiusRange = std::clamp(ParseConfigInt(state, L"Maze", L"RoomMinRadiusRange", s.roomMinRadiusRange), 0, 12);
     s.roomMaxRadiusRange = std::clamp(ParseConfigInt(state, L"Maze", L"RoomMaxRadiusRange", s.roomMaxRadiusRange), 0, 16);
-    s.extraConnectorMinRatio = std::clamp(ParseConfigFloat(state, L"Maze", L"ExtraConnectorMinRatio", s.extraConnectorMinRatio), 0.0f, 0.20f);
+    s.extraConnectorMinRatio = std::clamp(ParseConfigFloat(state, L"Maze", L"ExtraConnectorMinRatio", s.extraConnectorMinRatio), 0.015f, 0.20f);
     s.extraConnectorMaxRatio = std::clamp(ParseConfigFloat(state, L"Maze", L"ExtraConnectorMaxRatio", s.extraConnectorMaxRatio), s.extraConnectorMinRatio, 0.20f);
+    s.wallFeatureFrequency = std::clamp(ParseConfigInt(state, L"Maze", L"WallFeatureFrequency", s.wallFeatureFrequency), 1, 200);
+    s.wallFeatureFrequencySpread = std::clamp(ParseConfigFloat(state, L"Maze", L"WallFeatureFrequencySpread", s.wallFeatureFrequencySpread), 0.0f, 3.0f);
+    s.saveItemMinPerLayer = std::clamp(ParseConfigInt(state, L"Maze", L"SaveItemMinPerLayer", s.saveItemMinPerLayer), 0, 5);
+    s.saveItemMaxPerLayer = std::clamp(ParseConfigInt(state, L"Maze", L"SaveItemMaxPerLayer", s.saveItemMaxPerLayer), s.saveItemMinPerLayer, 5);
+    s.saveItemLevelChance = std::clamp(ParseConfigFloat(state, L"Maze", L"SaveItemLevelChance", s.saveItemLevelChance), 0.0f, 1.0f);
     s.mazeSeed = static_cast<uint32_t>(std::clamp(ParseConfigInt(state, L"Maze", L"RandomSeed", static_cast<int>(s.mazeSeed)), 0, std::numeric_limits<int>::max()));
     s.mapOverlay = ParseConfigInt(state, L"Maze", L"MapOverlay", s.mapOverlay ? 1 : 0) != 0;
     s.debugAiMapOverlay = ParseConfigInt(state, L"Debug", L"AiMapOverlay", s.debugAiMapOverlay ? 1 : 0) != 0;
@@ -378,7 +383,7 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.fleshFlicker = ParseConfigInt(state, L"Atmosphere", L"FleshFlicker", s.fleshFlicker ? 1 : 0) != 0;
     s.fleshAlwaysOn = ParseConfigInt(state, L"Atmosphere", L"FleshAlwaysOn", s.fleshAlwaysOn ? 1 : 0) != 0;
     s.fleshWetness = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshWetness", s.fleshWetness), 0.0f, 4.0f);
-    s.fleshParallaxScale = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshParallaxScale", s.fleshParallaxScale), 0.0f, 0.32f);
+    s.fleshParallaxScale = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshParallaxScale", s.fleshParallaxScale), 0.0f, 0.50f);
     s.fleshFlickerMinSeconds = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerMinSeconds", s.fleshFlickerMinSeconds), 60.0f, 7200.0f);
     s.fleshFlickerMaxSeconds = std::max(s.fleshFlickerMinSeconds, std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerMaxSeconds", s.fleshFlickerMaxSeconds), 60.0f, 7200.0f));
     s.fleshFlickerDuration = std::clamp(ParseConfigFloat(state, L"Atmosphere", L"FleshFlickerDuration", s.fleshFlickerDuration), 0.15f, 8.0f);

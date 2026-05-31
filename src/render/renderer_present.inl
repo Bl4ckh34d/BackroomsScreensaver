@@ -9,6 +9,7 @@
             return;
         }
         StartupProfile renderProfile(L"Render");
+        BeginGpuProfileFrame();
         bool postAvailable = sceneColorRtv_ && sceneColorSrv_ && postVertexShader_ && postPixelShader_ && postSampler_;
         ID3D11RenderTargetView* sceneTarget = postAvailable ? sceneColorRtv_.Get() : rtv_.Get();
 
@@ -26,6 +27,7 @@
         }
         context_->ClearDepthStencilView(dsv_.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
         renderProfile.Mark(L"ClearTargets");
+        MarkGpuProfile(GpuProfileMarker::ClearTargets);
 
         D3D11_VIEWPORT vp{};
         vp.Width = static_cast<float>(width_);
@@ -61,9 +63,10 @@
             viewDir = XMVector3Normalize(viewDir + viewRight * jitterX + worldUp * jitterY);
             viewRight = XMVector3Normalize(XMVector3Cross(worldUp, viewDir));
         }
+        float tunnelRoll = tunnelLeanSide_ * SmoothStep(0.0f, 1.0f, tunnelLeanAmount_) * 0.115f;
         float roll = deathActive_
             ? (std::sin(time_ * 18.0f) * 0.075f + std::sin(time_ * 37.0f) * 0.045f) * SmoothStep(0.06f, 0.42f, deathProgress)
-            : stumbleYawOffset_ * 0.12f * SmoothStep(0.0f, 0.35f, stumbleTimer_);
+            : stumbleYawOffset_ * 0.12f * SmoothStep(0.0f, 0.35f, stumbleTimer_) + tunnelRoll;
         XMVECTOR up = XMVector3Normalize(worldUp * std::cos(roll) + viewRight * std::sin(roll));
         XMVECTOR at = eye + viewDir;
         XMMATRIX view = XMMatrixLookAtLH(eye, at, up);
@@ -78,7 +81,7 @@
         if (deathActive_) {
             fovDegrees = Lerp(70.0f, 58.0f, SmoothStep(0.05f, 0.66f, deathProgress));
         }
-        float exitStepStart = std::max(0.05f, settings_.exitDoorOpenSeconds * 0.68f);
+        float exitStepStart = ExitAlignSeconds() + std::max(0.05f, settings_.exitDoorOpenSeconds * 0.68f);
         float exitStepEnd = exitStepStart + settings_.exitStepSeconds;
         float exitFade = exitTransitionActive_ ? SmoothStep(exitStepEnd - settings_.exitFadeSeconds * 0.64f, exitStepEnd + settings_.exitFadeSeconds * 0.36f, exitTransitionTimer_) : 0.0f;
         float fadeIn = (fadeInTimer_ > 0.0f && settings_.fadeInSeconds > 0.001f)
@@ -157,7 +160,6 @@
                 XMStoreFloat4x4(&cb.fixtureLightViewProj, fixtureLightViewProj);
             }
         }
-
         float flashlightIntensity = settings_.flashlightIntensity * DreadFlashlightMultiplier();
         if (runtimeMode_ == RendererRuntimeMode::PlayableGame && !flashlightEnabled_) flashlightIntensity = 0.0f;
         if (monsterPreview_) flashlightIntensity = 1.45f;
@@ -171,7 +173,7 @@
         };
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
             float menuDoorAmbient = SmoothStep(0.04f, 0.78f, exitDoorAngle_ / 1.38f);
-            cb.lighting0.z = Lerp(0.010f, 0.135f, menuDoorAmbient);
+            cb.lighting0.z = Lerp(std::max(settings_.ambientLight, 0.045f), 0.160f, menuDoorAmbient);
         }
         if (monsterPreview_) {
             cb.lighting0.y = 0.030f;
@@ -296,11 +298,29 @@
             settings_.wallHeightMeters,
             maze_.TileAverage()
         };
+        float dirtProgression = 0.48f;
+        if (IsPlayableSimulationMode(runtimeMode_) && playableRun_.active) {
+            float levelProgress = Clamp01((static_cast<float>(playableRun_.levelInLayer) - 1.0f) /
+                static_cast<float>(std::max(1, PlayableRunState::kLevelsPerLayer - 1)));
+            float layerProgress = Clamp01(static_cast<float>(std::max(0, playableRun_.layer - 1)) * 0.18f);
+            dirtProgression = Clamp01(levelProgress + layerProgress);
+        } else if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+            dirtProgression = menuDarkLayerOneRun_ ? 0.72f : 0.42f;
+        } else if (gEffectDebugViewer && DebugSliceEffectIsWater(gDebugSliceEffect)) {
+            dirtProgression = 0.90f;
+        } else {
+            float damagePressure = (settings_.waterDamageEnabled ? 0.24f : 0.0f) +
+                std::clamp(settings_.waterDamageDensity, 0.0f, 4.0f) * 0.16f +
+                std::clamp(settings_.bloodSplatterDensity, 0.0f, 4.0f) * 0.12f +
+                std::clamp(settings_.jumpscareFrequency, 0.0f, 1.0f) * 0.12f +
+                std::clamp(settings_.brokenZoneRatio, 0.0f, 1.0f) * 0.18f;
+            dirtProgression = Clamp01(0.34f + damagePressure);
+        }
         cb.texture0 = {
             settings_.wallTextureMeters,
             settings_.floorTextureMeters,
             settings_.ceilingTextureMeters,
-            0.0f
+            dirtProgression
         };
         cb.transition0 = {
             transitionFade,
@@ -326,7 +346,7 @@
             Clamp01(fleshAmount),
             std::clamp(settings_.bloodWetness, 0.0f, 3.0f),
             std::clamp(settings_.fleshWetness, 0.0f, 4.0f),
-            std::clamp(settings_.fleshParallaxScale, 0.0f, 0.32f)
+            std::clamp(settings_.fleshParallaxScale, 0.0f, 0.50f)
         };
         float bloodStreamCount = static_cast<float>(std::clamp(settings_.bloodStreamCount, 4, 32));
         float bloodStreamThickness = std::clamp(settings_.bloodStreamThickness, 0.10f, 2.0f);
@@ -446,12 +466,12 @@
         };
         XMFLOAT3 exitLightPos = exitSignLightPos_;
         float exitLightStrength = exitSignLightStrength_;
-        XMFLOAT3 exitLightDir{0.0f, 0.0f, 0.0f};
+        XMFLOAT3 exitLightDir = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
         float exitDoorOpen = 0.0f;
         XMFLOAT3 doorwayLightPos{0.0f, 0.0f, 0.0f};
         float doorwayLightStrength = 0.0f;
-        XMFLOAT3 doorwayPortalPos{0.0f, 0.0f, 0.0f};
-        float doorwayPortalHalfWidth = 0.0f;
+        XMFLOAT3 doorwayPortalPos = Add3(exitDoorCenter_, Scale3(exitLightDir, 0.04f));
+        float doorwayPortalHalfWidth = exitLightStrength > 0.001f ? 0.56f : 0.0f;
         if (runtimeMode_ == RendererRuntimeMode::MainMenu && exitDoorAngle_ > 0.001f) {
             float rawDoorOpen = exitDoorAngle_ / 1.38f;
             exitDoorOpen = SmoothStep(0.08f, 0.92f, rawDoorOpen);
@@ -461,7 +481,6 @@
             doorwayLightPos = Add3(exitDoorCenter_, stairSource);
             doorwayLightPos.y = exitDoorCenter_.y + 4.35f;
             doorwayLightStrength = doorwayLightOpen * 5.8f;
-            exitLightDir = Normalize3(exitDoorNormal_, exitDoorNormal_);
             doorwayPortalPos = Add3(exitDoorCenter_, Scale3(exitDoorNormal_, 0.04f));
             doorwayPortalHalfWidth = 0.56f;
         }
@@ -530,6 +549,7 @@
 
         UpdateDynamicGeometry();
         renderProfile.Mark(L"UpdateDynamicGeometry");
+        MarkGpuProfile(GpuProfileMarker::DynamicGeometry);
         if (StartupProfileEnabled()) {
             std::wstringstream counts;
             counts << L"Dynamic scene geometry: opaqueVertices=" << dynamicOpaqueVertexCount_
@@ -773,11 +793,13 @@
             renderDepthShadow(shadowDsv_.Get(), shadowMapSize_, lightViewProj,
                 lightPosFloat, lightDirFloat, shadowDistance, std::cos(shadowFov * 0.5f));
         }
+        MarkGpuProfile(GpuProfileMarker::FlashlightShadow);
         if (fixtureShadowActive && settings_.flashlightShadowStrength > 0.001f && transitionFade < 0.995f) {
             renderProfile.Mark(L"BeginFixtureShadow");
             renderDepthShadow(fixtureShadowDsv_.Get(), fixtureShadowMapSize_, fixtureLightViewProj,
                 fixtureShadowPos, fixtureShadowDir, fixtureShadowRange, std::cos(116.0f * 0.5f * kPi / 180.0f));
         }
+        MarkGpuProfile(GpuProfileMarker::FixtureShadow);
         if (monsterEyeStrength > 0.001f) {
             for (int eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
                 if (monsterEyeShadowDsv_[static_cast<size_t>(eyeIndex)]) {
@@ -793,11 +815,13 @@
                 }
             }
         }
+        MarkGpuProfile(GpuProfileMarker::MonsterEyeShadow);
 
         UploadSceneConstants(cb);
         renderProfile.Mark(L"UploadSceneConstants");
         UploadLampDamageTexture();
         renderProfile.Mark(L"UploadLampDamageTexture");
+        MarkGpuProfile(GpuProfileMarker::Uploads);
 
         ID3D11ShaderResourceView* srvs[] = {
             albedoSrv_.Get(),
@@ -878,16 +902,48 @@
             context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
             UINT opaqueIndexCount = std::min(floorCeilingStartIndex_, indexCount_);
             if (opaqueIndexCount > 0) {
-                StartupProfileLine(L"Render before MainOpaque DrawIndexed");
-                context_->DrawIndexed(opaqueIndexCount, 0, 0);
+                StartupProfileLine(staticOpaqueChunks_.empty()
+                    ? L"Render before MainOpaque DrawIndexed"
+                    : L"Render before MainOpaque chunked DrawIndexed");
+                UINT drawn = 0;
+                if (!staticOpaqueChunks_.empty()) {
+                    drawn = drawVisibleChunks(staticOpaqueChunks_, eyePos, viewDirFloat, mainCullDistance, mainConeCos,
+                        mainForceVisibleDistance, false, 2);
+                    if (StartupProfileEnabled()) {
+                        std::wstringstream counts;
+                        counts << L"MainOpaque visible indices=" << drawn << L"/" << opaqueIndexCount;
+                        StartupProfileLine(counts.str());
+                    }
+                }
+                if (staticOpaqueChunks_.empty() || drawn == 0) {
+                    context_->DrawIndexed(opaqueIndexCount, 0, 0);
+                }
                 renderProfile.Mark(L"MainOpaque");
             }
+            MarkGpuProfile(GpuProfileMarker::MainOpaque);
             if (floorCeilingIndexCount_ > 0) {
-                StartupProfileLine(L"Render before FloorCeiling DrawIndexed");
-                context_->DrawIndexed(floorCeilingIndexCount_, floorCeilingStartIndex_, 0);
+                StartupProfileLine(staticFloorCeilingChunks_.empty()
+                    ? L"Render before FloorCeiling DrawIndexed"
+                    : L"Render before FloorCeiling chunked DrawIndexed");
+                UINT drawn = 0;
+                if (!staticFloorCeilingChunks_.empty()) {
+                    drawn = drawVisibleChunks(staticFloorCeilingChunks_, eyePos, viewDirFloat, mainCullDistance, mainConeCos,
+                        mainForceVisibleDistance, false, 2);
+                    if (StartupProfileEnabled()) {
+                        std::wstringstream counts;
+                        counts << L"FloorCeiling visible indices=" << drawn << L"/" << floorCeilingIndexCount_;
+                        StartupProfileLine(counts.str());
+                    }
+                }
+                if (staticFloorCeilingChunks_.empty() || drawn == 0) {
+                    context_->DrawIndexed(floorCeilingIndexCount_, floorCeilingStartIndex_, 0);
+                }
                 renderProfile.Mark(L"FloorCeiling");
             }
+        } else {
+            MarkGpuProfile(GpuProfileMarker::MainOpaque);
         }
+        MarkGpuProfile(GpuProfileMarker::FloorCeiling);
 
         if (dynamicOpaqueVertexCount_ > 0 || dynamicTransparentVertexCount_ > 0) {
             bindDynamicScenePipeline();
@@ -899,6 +955,7 @@
             context_->Draw(dynamicOpaqueVertexCount_, 0);
             renderProfile.Mark(L"DynamicOpaque");
         }
+        MarkGpuProfile(GpuProfileMarker::DynamicOpaque);
         if (!monsterPreview_) {
             if (staticWaterIndexCount_ > 0 || staticTransparentIndexCount_ > 0) {
                 bindStaticScenePipeline();
@@ -918,6 +975,7 @@
                 context_->OMSetDepthStencilState(depthState_.Get(), 0);
                 context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
             }
+            MarkGpuProfile(GpuProfileMarker::StaticWater);
             if (staticTransparentIndexCount_ > 0) {
                 context_->OMSetDepthStencilState(depthReadOnlyState_.Get(), 0);
                 context_->OMSetBlendState(alphaBlend_.Get(), blendFactor, 0xffffffff);
@@ -933,7 +991,10 @@
                 context_->OMSetDepthStencilState(depthState_.Get(), 0);
                 context_->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
             }
+        } else {
+            MarkGpuProfile(GpuProfileMarker::StaticWater);
         }
+        MarkGpuProfile(GpuProfileMarker::StaticTransparent);
         if (dynamicTransparentVertexCount_ > 0) {
             bindDynamicScenePipeline();
             context_->OMSetDepthStencilState(depthReadOnlyState_.Get(), 0);
@@ -942,6 +1003,7 @@
             context_->Draw(dynamicTransparentVertexCount_, dynamicOpaqueVertexCount_);
             renderProfile.Mark(L"DynamicTransparent");
         }
+        MarkGpuProfile(GpuProfileMarker::DynamicTransparent);
 
         ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
         context_->PSSetShaderResources(0, 11, nullSrvs);
@@ -953,6 +1015,7 @@
             DrawPostProcess();
             renderProfile.Mark(L"PostProcess");
         }
+        MarkGpuProfile(GpuProfileMarker::PostProcess);
 
         if (!monsterPreview_) {
             StartupProfileLine(L"Render before DrawMapOverlay");
@@ -965,11 +1028,13 @@
             DrawGameHudOverlay();
             renderProfile.Mark(L"GameHudOverlay");
         }
+        MarkGpuProfile(GpuProfileMarker::Overlays);
 
         context_->PSSetShaderResources(0, 11, nullSrvs);
         context_->DSSetShaderResources(0, 11, nullSrvs);
         context_->HSSetShader(nullptr, nullptr, 0);
         context_->DSSetShader(nullptr, nullptr, 0);
+        EndGpuProfileFrame();
         StartupProfileLine(L"Render before Present");
         HRESULT presentHr = swapChain_->Present(presentSyncInterval_, presentFlags_);
         lastPresentCompleted_ = presentHr != DXGI_ERROR_WAS_STILL_DRAWING;

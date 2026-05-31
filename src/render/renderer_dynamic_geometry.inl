@@ -253,7 +253,7 @@
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
         if (menuStartTransitionActive_ || menuStartTransitionComplete_) return;
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < menuButtonCount_; ++i) {
             bool hover = menuHoverButtonIndex_ == i;
             float material = hover ? 9.88f : 9.68f;
             MenuPlaquePlacement plaque = MenuButtonPlacement(i);
@@ -263,8 +263,8 @@
             XMFLOAT3 labelCenter = Add3(plaque.center, Scale3(plaque.inward, 0.036f));
             XMFLOAT3 hw = Scale3(plaque.right, std::min(plaque.halfW * 0.72f, 0.76f));
             XMFLOAT3 hh = Scale3(up, 0.096f);
-            int labelIndex = (i == 0 && menuResumeLabel_) ? 1 : (i == 0 ? 0 : i + 1);
-            constexpr float kMenuLabelRows = 4.0f;
+            int labelIndex = std::clamp(menuButtonLabelRows_[static_cast<size_t>(i)], 0, 4);
+            constexpr float kMenuLabelRows = 5.0f;
             float v0 = (static_cast<float>(labelIndex) + 0.18f) / kMenuLabelRows;
             float v1 = (static_cast<float>(labelIndex) + 0.82f) / kMenuLabelRows;
             float labelMaterial = 18.0f + (hover ? 0.46f : 0.08f);
@@ -280,6 +280,7 @@
     void AppendMonsterBillboard(std::vector<Vertex>& solidVerts, std::vector<Vertex>& transparentVerts) {
         if (gEffectDebugViewer && gDebugHideMonster) return;
         monsterEyeWorldCount_ = 0;
+        if (!MonsterActiveForCurrentMode()) return;
         float modelY = std::clamp(settings_.monsterScale, 0.35f, 1.25f);
         float modelXZ = std::clamp(settings_.monsterScale, 0.35f, 1.35f);
         float dist = MonsterDistance();
@@ -332,7 +333,7 @@
         XMFLOAT3 right{std::cos(faceYaw), 0.0f, -std::sin(faceYaw)};
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
         XMFLOAT3 forward{std::sin(faceYaw), 0.0f, std::cos(faceYaw)};
-        float hover = 0.22f + std::sin(time_ * 1.55f + monster_.x * 0.07f + monster_.z * 0.05f) * 0.050f;
+        float hover = 0.30f + std::sin(time_ * 1.25f + monster_.x * 0.07f + monster_.z * 0.05f) * 0.030f;
         auto off = [&](float x, float y, float z) {
             return Add3(monster_, OrientedOffset(right, up, forward, x * modelXZ, y * modelY + hover, z * modelXZ));
         };
@@ -344,7 +345,7 @@
             AppendSegmentBox(solidVerts, a, b, w * modelXZ, d * modelXZ, material);
         };
 
-        float twitch = std::sin(time_ * 13.7f + monster_.x * 0.3f) * 0.035f;
+        float twitch = std::sin(time_ * 9.4f + monster_.x * 0.3f) * 0.018f;
         float breathe = std::sin(time_ * 2.3f) * 0.030f;
         float deathHeadLock = deathActive_ ? SmoothStep(0.0f, 0.22f, deathTimer_) : 0.0f;
         constexpr float boneMat = 9.65f;
@@ -419,6 +420,9 @@
                 toCam, side, material);
         };
 
+        bool allowBodySurfaceClimb = monsterPreview_ || debugEffectMonster;
+        bool allowCeilingLimbContacts = monsterPreview_ || debugEffectMonster;
+
         auto sampleTrail = [&](float targetDistance) {
             if (monsterTrail_.empty()) return monster_;
             XMFLOAT3 prev = monsterTrail_.front();
@@ -452,21 +456,21 @@
             tangentDir = Normalize3(tangentDir, forward);
             upDir = Normalize3(upDir, up);
             maxReach = std::max(0.20f, maxReach);
-            float reach = std::clamp(maze_.TileMinimum() * (0.58f + Rand01(limbIndex * 11 + cycle * 3, 719, runtimeSeed_) * 0.22f),
-                maxReach * 0.58f, maxReach * 0.93f);
-            float sideBias = 0.72f + Rand01(limbIndex * 13 + cycle * 5, 727, runtimeSeed_) * 0.42f;
-            float tangentBias = (Rand01(limbIndex * 17 + cycle * 7, 731, runtimeSeed_) - 0.5f) * 0.86f;
-            float verticalBias = (Rand01(limbIndex * 19 + cycle * 11, 733, runtimeSeed_) - 0.5f) * 1.10f;
-            if (cycle % 5 == 1) verticalBias += 0.72f;
-            if (cycle % 7 == 2) verticalBias -= 0.72f;
+            float reach = std::clamp(maze_.TileMinimum() * (0.50f + Rand01(limbIndex * 11 + cycle * 3, 719, runtimeSeed_) * 0.18f),
+                maxReach * 0.50f, maxReach * 0.82f);
+            float sideBias = 0.60f + Rand01(limbIndex * 13 + cycle * 5, 727, runtimeSeed_) * 0.32f;
+            float tangentBias = (Rand01(limbIndex * 17 + cycle * 7, 731, runtimeSeed_) - 0.5f) * 0.58f;
+            float verticalBias = (Rand01(limbIndex * 19 + cycle * 11, 733, runtimeSeed_) - 0.5f) * 0.72f;
+            if (cycle % 5 == 1) verticalBias += 0.42f;
+            if (cycle % 7 == 2) verticalBias -= 0.42f;
             XMFLOAT3 radial = Normalize3(Add3(Scale3(sideDir, sideBias),
                 Add3(Scale3(tangentDir, tangentBias), Scale3(upDir, verticalBias))), sideDir);
             XMFLOAT3 desired = Add3(root, Scale3(radial, reach));
             desired.y = std::clamp(desired.y, 0.035f, settings_.wallHeightMeters - 0.045f);
             XMFLOAT3 anchorBase = Lerp3(root, desired, 0.92f);
-            float jitterA = (Rand01(limbIndex + cycle * 3, 739, runtimeSeed_) - 0.5f) * maze_.TileMinimum() * 0.075f;
-            float jitterB = (Rand01(limbIndex + cycle * 5, 743, runtimeSeed_) - 0.5f) * maze_.TileMinimum() * 0.075f;
-            float jitterY = (Rand01(limbIndex + cycle * 7, 751, runtimeSeed_) - 0.5f) * maze_.TileMinimum() * 0.055f;
+            float jitterA = (Rand01(limbIndex + cycle * 3, 739, runtimeSeed_) - 0.5f) * maze_.TileMinimum() * 0.042f;
+            float jitterB = (Rand01(limbIndex + cycle * 5, 743, runtimeSeed_) - 0.5f) * maze_.TileMinimum() * 0.042f;
+            float jitterY = (Rand01(limbIndex + cycle * 7, 751, runtimeSeed_) - 0.5f) * maze_.TileMinimum() * 0.032f;
             float surfaceY = std::clamp(anchorBase.y + jitterY, 0.040f, settings_.wallHeightMeters - 0.045f);
             std::array<XMFLOAT3, 6> candidates = {{
                 {c.x - halfW, surfaceY, std::clamp(anchorBase.z + jitterA, c.z - halfD, c.z + halfD)},
@@ -490,10 +494,10 @@
                 !maze_.IsOpen(t.x, t.y - 1),
                 !maze_.IsOpen(t.x, t.y + 1),
                 true,
-                true
+                allowCeilingLimbContacts
             }};
             int surfaceCycle = std::abs((limbIndex * 5 + cycle * 3 + static_cast<int>(crawl)) % 9);
-            int preferred = surfaceCycle == 0 ? 5 : (surfaceCycle == 1 ? 4 : -1);
+            int preferred = allowCeilingLimbContacts && surfaceCycle == 0 ? 5 : (surfaceCycle <= 2 ? 4 : -1);
             float bestScore = 1.0e9f;
             XMFLOAT3 best = candidates[4];
             XMFLOAT3 bestNormal = normals[4];
@@ -509,6 +513,8 @@
                 }
                 if (preferred == i) score *= 0.82f;
                 if (i < 4) score *= (0.92f - surfaceSideFit * 0.14f);
+                if (i == 4 && !allowCeilingLimbContacts) score *= 0.72f;
+                if (i == 5) score += maxReach * maxReach * 0.65f;
                 if (score < bestScore) {
                     bestScore = score;
                     best = candidates[static_cast<size_t>(i)];
@@ -589,16 +595,16 @@
             float t = fi / static_cast<float>(std::max(1, bodyCount - 1));
             XMFLOAT3 p = sampleTrail(fi * visualBodySpacing);
             float lateral = std::sin(fi * 1.83f + time_ * 0.22f + static_cast<float>(runtimeSeed_ & 255) * 0.011f) *
-                maze_.TileMinimum() * Lerp(0.015f, 0.075f, SmoothStep(0.08f, 0.72f, t));
+                maze_.TileMinimum() * Lerp(0.006f, 0.032f, SmoothStep(0.08f, 0.72f, t));
             p = Add3(p, Scale3(monsterRight, lateral));
             bodyUps[static_cast<size_t>(i)] = {0.0f, 1.0f, 0.0f};
             p.y = 0.0f;
             bodyPoints[static_cast<size_t>(i)] = p;
             bodyCenterlinePoints[static_cast<size_t>(i)] = p;
             float torsoBulge = std::exp(-std::pow((t - 0.34f) / 0.28f, 2.0f));
-            float taperRadius = Lerp(0.34f, 0.18f, SmoothStep(0.0f, 1.0f, t));
+            float taperRadius = Lerp(0.39f, 0.21f, SmoothStep(0.0f, 1.0f, t));
             float peristalsis = 1.0f + std::sin(time_ * 3.40f - fi * 0.91f) * 0.045f;
-            bodyRadii[static_cast<size_t>(i)] = (taperRadius + torsoBulge * 0.170f) * modelXZ * peristalsis;
+            bodyRadii[static_cast<size_t>(i)] = (taperRadius + torsoBulge * 0.235f) * modelXZ * peristalsis;
             bodyUvShift[static_cast<size_t>(i)] = std::fmod(Rand01(i * 41 + static_cast<int>(runtimeSeed_ & 1023), 1709, runtimeSeed_) * 0.47f +
                 std::sin(fi * 1.73f + static_cast<float>(runtimeSeed_ & 255) * 0.013f) * 0.08f, 1.0f);
         }
@@ -648,15 +654,18 @@
             float surfaceNoiseA = std::sin(time_ * 0.19f + fi * 0.71f + monster_.x * 0.07f);
             float surfaceNoiseB = std::sin(time_ * 0.13f - fi * 0.53f + monster_.z * 0.09f);
             float surfaceNoiseC = std::sin(time_ * 0.073f + fi * 1.37f + static_cast<float>(runtimeSeed_ & 255) * 0.017f);
-            float climbAffinity = SmoothStep(0.10f, 1.0f, monsterHeadChaseBlend_) * 0.18f +
-                SmoothStep(0.0f, 1.0f, Clamp01(monsterRoamBurstTimer_ / 1.05f)) * 0.12f +
-                std::abs(surfaceNoiseC) * 0.14f;
-            SurfaceChoice best{{0.0f, 1.0f, 0.0f}, Add3(p, {0.0f, radius * 0.92f + 0.026f, 0.0f}),
+            float climbAffinity = SmoothStep(0.10f, 1.0f, monsterHeadChaseBlend_) * 0.10f +
+                SmoothStep(0.0f, 1.0f, Clamp01(monsterRoamBurstTimer_ / 1.05f)) * 0.07f +
+                std::abs(surfaceNoiseC) * 0.08f;
+            SurfaceChoice best{{0.0f, 1.0f, 0.0f}, Add3(p, {0.0f, radius * 1.08f + 0.050f, 0.0f}),
                 0.44f - surfaceNoiseA * 0.10f};
-            SurfaceChoice ceiling{{0.0f, -1.0f, 0.0f}, {p.x, settings_.wallHeightMeters - radius * 0.92f - 0.026f, p.z},
-                0.38f - surfaceNoiseB * 0.24f - climbAffinity};
-            if (ceiling.score < best.score) best = ceiling;
+            if (allowBodySurfaceClimb) {
+                SurfaceChoice ceiling{{0.0f, -1.0f, 0.0f}, {p.x, settings_.wallHeightMeters - radius * 0.92f - 0.026f, p.z},
+                    0.38f - surfaceNoiseB * 0.24f - climbAffinity};
+                if (ceiling.score < best.score) best = ceiling;
+            }
             auto considerWall = [&](int dx, int dz, XMFLOAT3 normal, float planeCoord, float distanceToPlane) {
+                if (!allowBodySurfaceClimb) return;
                 if (maze_.IsOpen(tile.x + dx, tile.y + dz)) return;
                 float wallBand = 0.18f + 0.66f * (0.5f + 0.5f * std::sin(time_ * 0.17f + fi * 0.31f + dx * 1.7f + dz * 2.3f));
                 float y = std::clamp(settings_.wallHeightMeters * wallBand,
@@ -683,7 +692,7 @@
                 XMFLOAT3 c = p;
                 float surfaceGap = radius * 0.98f + 0.026f;
                 if (normal.y > 0.72f) {
-                    c.y = radius * 0.92f + 0.026f;
+                    c.y = radius * 1.08f + 0.050f;
                 } else if (normal.y < -0.72f) {
                     c.y = settings_.wallHeightMeters - radius * 0.92f - 0.026f;
                 } else {
@@ -700,7 +709,7 @@
                 return c;
             };
             XMFLOAT3 surfaceUp = Normalize3(best.normal, up);
-            if (i == 0 && hasHandSupportUp) {
+            if (allowBodySurfaceClimb && i == 0 && hasHandSupportUp) {
                 surfaceUp = handSupportUp;
                 best.center = Add3(bodyCenterlinePoints[0], Scale3(surfaceUp, radius * 0.98f + 0.026f));
                 best.center.y = std::clamp(best.center.y, radius * 0.74f + 0.026f,
@@ -734,9 +743,9 @@
             float gait = time_ * 3.65f - fi * 0.74f + monster_.x * 0.09f + monster_.z * 0.05f;
             float stepLift = std::pow(Clamp01(std::sin(gait) * 0.5f + 0.5f), 2.3f);
             float gutPulse = std::sin(time_ * 2.65f - fi * 0.58f) * 0.065f;
-            float bodyBounce = std::sin(time_ * 5.35f - fi * 0.92f) * 0.038f * (0.55f + taper * 0.45f);
+            float bodyBounce = std::sin(time_ * 3.75f - fi * 0.92f) * 0.026f * (0.55f + taper * 0.45f);
             float curiosityLift = curiosityPose * std::pow(taper, 2.4f) * (0.46f * modelY);
-            p = Add3(p, Scale3(surfaceUp, stepLift * 0.026f + bodyBounce * 0.38f + gutPulse * 0.24f + curiosityLift * 0.36f));
+            p = Add3(p, Scale3(surfaceUp, 0.045f * modelY + stepLift * 0.018f + bodyBounce * 0.30f + gutPulse * 0.18f + curiosityLift * 0.36f));
             bodyUps[static_cast<size_t>(i)] = surfaceUp;
             bodySides[static_cast<size_t>(i)] = Normalize3(Cross3(surfaceUp, tangent), side);
             bodyPoints[static_cast<size_t>(i)] = p;
@@ -744,7 +753,7 @@
         auto clampBodyPoint = [&](int idx) {
             float radius = bodyRadii[static_cast<size_t>(idx)];
             bodyPoints[static_cast<size_t>(idx)].y = std::clamp(bodyPoints[static_cast<size_t>(idx)].y,
-                radius * 0.64f + 0.026f, settings_.wallHeightMeters - radius * 0.64f - 0.026f);
+                radius * 0.82f + 0.045f, settings_.wallHeightMeters - radius * 0.64f - 0.026f);
         };
         auto constrainBodyChain = [&]() {
             for (int iter = 0; iter < 3; ++iter) {
@@ -935,8 +944,8 @@
             monsterLimbAnchors_.resize(static_cast<size_t>(requiredLimbAnchors));
         }
         float gaitDrive = Clamp01(SmoothStep(0.0f, 1.0f, Clamp01(monsterRoamBurstTimer_ / 1.05f)) * (1.0f - monsterHeadChaseBlend_ * 0.65f) +
-            SmoothStep(0.18f, 1.0f, monsterHeadChaseBlend_) * 0.72f);
-        float gaitStepInterval = Lerp(0.24f, 0.085f, gaitDrive);
+            SmoothStep(0.18f, 1.0f, monsterHeadChaseBlend_) * 0.64f);
+        float gaitStepInterval = Lerp(0.34f, 0.16f, gaitDrive);
         int gaitTick = requiredLimbAnchors > 0
             ? static_cast<int>(std::floor((time_ + static_cast<float>(runtimeSeed_ & 31) * 0.013f) / std::max(0.035f, gaitStepInterval)))
             : 0;
@@ -960,19 +969,19 @@
             MonsterLimbAnchor& anchor = monsterLimbAnchors_[static_cast<size_t>(limbId)];
             float maxReach = std::max(0.18f, upperLen + lowerLen);
             float reachVariance = Rand01(limbId * 17 + 3, 787, runtimeSeed_);
-            float detachReach = maxReach * (0.78f + reachVariance * 0.17f);
-            float emergencyDetachReach = maxReach * (0.98f + reachVariance * 0.08f);
-            float plantSlack = maxReach * (0.18f + Rand01(limbId * 19 + 5, 797, runtimeSeed_) * 0.12f);
+            float detachReach = maxReach * (0.88f + reachVariance * 0.12f);
+            float emergencyDetachReach = maxReach * (1.15f + reachVariance * 0.08f);
+            float plantSlack = maxReach * (0.12f + Rand01(limbId * 19 + 5, 797, runtimeSeed_) * 0.08f);
             float now = time_;
             float roamScramble = SmoothStep(0.0f, 1.0f, Clamp01(monsterRoamBurstTimer_ / 1.05f)) * (1.0f - monsterHeadChaseBlend_ * 0.65f);
             float chaseScramble = SmoothStep(0.18f, 1.0f, monsterHeadChaseBlend_);
             float scramble = Clamp01(roamScramble + chaseScramble * 0.72f);
-            float lead = maxReach * Lerp(0.06f, 0.22f, trailMotionAmount) * Lerp(0.72f, 1.28f, scramble);
+            float lead = maxReach * Lerp(0.04f, 0.15f, trailMotionAmount) * Lerp(0.82f, 1.12f, scramble);
             XMFLOAT3 strideLead = Scale3(trailMotionDir, lead);
             XMFLOAT3 desiredRoot = Add3(root, strideLead);
             SurfaceContact restContact = contactPoint(desiredRoot, sideDir, tangentDir, upDir, limbId, anchor.retargetCount, maxReach);
             if (!anchor.planted && anchor.swingDuration <= 0.001f) {
-                anchor.swingDuration = (0.42f + Rand01(limbId * 23 + 7, 803, runtimeSeed_) * 0.32f) * Lerp(1.0f, 0.46f, scramble);
+                anchor.swingDuration = (0.50f + Rand01(limbId * 23 + 7, 803, runtimeSeed_) * 0.34f) * Lerp(1.0f, 0.62f, scramble);
             }
             if (!anchor.planted && Length3(Sub3(anchor.swingTo, anchor.swingFrom)) <= 0.001f) {
                 anchor.anchor = restContact.point;
@@ -991,11 +1000,11 @@
                 bool emergencyReplant = stretch > emergencyDetachReach;
                 float restDrift = Length3(Sub3(anchor.anchor, restContact.point));
                 float restNormalChange = 1.0f - Clamp01(Dot3(Normalize3(anchor.anchorNormal, upDir), Normalize3(restContact.normal, upDir)));
-                bool restNeedsUpdate = restDrift > maxReach * Lerp(0.44f, 0.24f, std::max(scramble, trailMotionAmount)) ||
-                    restNormalChange > Lerp(0.58f, 0.30f, scramble);
+                bool restNeedsUpdate = restDrift > maxReach * Lerp(0.55f, 0.36f, std::max(scramble, trailMotionAmount)) ||
+                    restNormalChange > Lerp(0.72f, 0.44f, scramble);
                 bool wantsReplant = emergencyReplant || (gaitTurn && (stretch > detachReach ||
                     restNeedsUpdate ||
-                    (stretch > detachReach - plantSlack * Lerp(1.0f, 1.85f, scramble) && impatient > Lerp(0.82f, 0.30f, scramble))));
+                    (stretch > detachReach - plantSlack * Lerp(1.0f, 1.45f, scramble) && impatient > Lerp(0.92f, 0.46f, scramble))));
                 if (wantsReplant) {
                     anchor.planted = false;
                     anchor.swingFrom = anchor.anchor;
@@ -1007,7 +1016,7 @@
                     anchor.swingTo = contact.point;
                     anchor.swingToNormal = contact.normal;
                     anchor.swingStart = now;
-                    anchor.swingDuration = (0.34f + Rand01(limbId + anchor.retargetCount * 13, 811, runtimeSeed_) * 0.34f) * Lerp(1.0f, 0.38f, scramble);
+                    anchor.swingDuration = (0.44f + Rand01(limbId + anchor.retargetCount * 13, 811, runtimeSeed_) * 0.34f) * Lerp(1.0f, 0.58f, scramble);
                 } else {
                     return LimbReachTarget{anchor.anchor, anchor.anchorNormal, 0.0f};
                 }
@@ -1023,15 +1032,15 @@
                 return LimbReachTarget{anchor.anchor, anchor.anchorNormal, 0.0f};
             }
             float liftT = std::sin(SmoothStep(0.0f, 1.0f, swingT) * kPi);
-                float arc = liftT * (0.075f + Rand01(limbId, anchor.retargetCount + 853, runtimeSeed_) * 0.055f) * Lerp(1.0f, 1.35f, scramble);
+            float arc = liftT * (0.060f + Rand01(limbId, anchor.retargetCount + 853, runtimeSeed_) * 0.040f) * Lerp(1.0f, 1.18f, scramble);
             XMFLOAT3 arcDir = upDir;
             if (anchor.swingTo.y > settings_.wallHeightMeters - 0.12f) {
                 arcDir = Scale3(up, -1.0f);
             } else if (anchor.swingTo.y > 0.10f) {
                 arcDir = Normalize3(Add3(upDir, Scale3(sideDir, 0.38f)), upDir);
             }
-                float curl = std::sin(eased * kPi) * (0.012f + Rand01(limbId, anchor.retargetCount + 857, runtimeSeed_) * 0.016f) *
-                Lerp(0.65f, 1.25f, scramble);
+            float curl = std::sin(eased * kPi) * (0.008f + Rand01(limbId, anchor.retargetCount + 857, runtimeSeed_) * 0.010f) *
+                Lerp(0.65f, 1.05f, scramble);
             XMFLOAT3 target = Add3(Lerp3(anchor.swingFrom, anchor.swingTo, eased),
                 Add3(Scale3(arcDir, arc), Scale3(sideDir, curl)));
             XMFLOAT3 normal = Normalize3(Lerp3(anchor.swingFromNormal, anchor.swingToNormal, eased), up);
@@ -1063,7 +1072,7 @@
                 float axialRoot = (limbSeed - 0.5f) * bodySpacing * 0.12f;
                 XMFLOAT3 root = Add3(p, Add3(Scale3(sideDir, lateralRoot),
                     Add3(Scale3(tangent, axialRoot), Scale3(localUp, r * 0.06f + std::sin(phase) * (0.008f + limbSeed * 0.014f)))));
-                float limb = Lerp(0.030f, 0.048f, pairT) * (0.94f + limbSeed * 0.18f);
+                float limb = Lerp(0.028f, 0.043f, pairT) * (0.94f + limbSeed * 0.18f);
                 float upperLen = std::max(0.14f, maze_.TileMinimum() * (Lerp(0.44f, 0.26f, pairT) + limbSeed * 0.035f) + limb * 0.70f);
                 float lowerLen = std::max(0.14f, maze_.TileMinimum() * (Lerp(0.50f, 0.30f, pairT) + Rand01(limbId * 31 + 9, 829, runtimeSeed_) * 0.040f) + limb * 0.66f);
                 LimbReachTarget reachTarget = limbReachTarget(root, sideDir, tangent, localUp, limbId, upperLen, lowerLen);
@@ -1085,7 +1094,7 @@
                     : 0.0f;
                 bool chaseReachArm = canTrackPlayer && monsterHeadChaseBlend_ > 0.34f && frontGrabArm;
                 if (chaseReachArm || closeGrabWeight > 0.0f) {
-                    float reachPulse = 0.72f + std::pow(std::max(0.0f, std::sin(time_ * (3.8f + limbSeed * 2.1f) + limbId * 1.9f)), 4.0f) * 0.55f;
+                    float reachPulse = 0.76f + std::pow(std::max(0.0f, std::sin(time_ * (2.4f + limbSeed * 1.2f) + limbId * 1.9f)), 4.0f) * 0.32f;
                     float chaseReachWeight = SmoothStep(0.34f, 0.92f, monsterHeadChaseBlend_) * Lerp(1.0f, 0.42f, pairT) * reachPulse;
                     float reachWeight = std::max(chaseReachWeight, closeGrabWeight * (1.12f + reachPulse * 0.16f));
                     XMFLOAT3 toPlayer = Sub3(playerAim, root);
@@ -1094,8 +1103,8 @@
                     float reachLen = std::min(playerDist, (upperLen + lowerLen) * (1.16f + 0.08f * std::sin(time_ * 5.2f + limbId)));
                     XMFLOAT3 reachPoint = Add3(root, Scale3(playerDir, reachLen));
                     float clawJitter = 1.0f - closeGrabWeight * 0.62f;
-                    reachPoint = Add3(reachPoint, Add3(Scale3(sideDir, std::sin(time_ * 8.7f + limbId * 1.7f) * 0.065f * clawJitter),
-                        Scale3(localUp, std::sin(time_ * 11.4f + limbId * 0.9f) * 0.050f * clawJitter)));
+                    reachPoint = Add3(reachPoint, Add3(Scale3(sideDir, std::sin(time_ * 5.2f + limbId * 1.7f) * 0.034f * clawJitter),
+                        Scale3(localUp, std::sin(time_ * 6.8f + limbId * 0.9f) * 0.030f * clawJitter)));
                     target = Lerp3(target, reachPoint, Clamp01(reachWeight));
                     contactNormal = Scale3(playerDir, -1.0f);
                     swing = std::max(swing, 0.42f + Clamp01(reachWeight) * 0.54f);
@@ -1125,8 +1134,8 @@
                 XMFLOAT3 palmUp{};
                 surfaceAxes(contactNormal, palmRight, palmUp);
                 XMFLOAT3 palmCenter = Add3(target, Scale3(contactNormal, 0.022f + swing * 0.018f));
-                float handScale = 1.0f + SmoothStep(0.72f, 1.0f, frontness) * 0.58f;
-                float grabHandScale = handScale * (1.0f + closeGrabWeight * 0.16f);
+                float handScale = 0.86f + SmoothStep(0.72f, 1.0f, frontness) * 0.36f;
+                float grabHandScale = handScale * (1.0f + closeGrabWeight * 0.10f);
                 AppendDynamicEllipsoid(solidVerts, palmCenter, palmRight, palmUp, contactNormal,
                     {limb * 2.25f * grabHandScale, limb * 1.06f * grabHandScale, limb * 0.42f * grabHandScale}, 10, 5, limbMaterial + 0.045f);
                 XMFLOAT3 padCenter = Add3(palmCenter, Scale3(contactNormal, 0.018f + swing * 0.010f));
@@ -1143,11 +1152,11 @@
                 if (monsterDetail >= 1 || closeGrabWeight > 0.10f) {
                     for (int finger = -1; finger <= 1; ++finger) {
                         float f = static_cast<float>(finger);
-                        float spread = f * limb * 0.88f * grabHandScale;
-                        float hookCurl = (1.0f - std::abs(f)) * limb * 0.28f;
-                        XMFLOAT3 base = Add3(padCenter, Add3(Scale3(palmRight, spread), Scale3(palmUp, limb * 0.46f * handScale)));
-                        XMFLOAT3 mid = Add3(base, Add3(Scale3(palmUp, limb * 0.82f * handScale), Scale3(contactNormal, limb * 0.20f * (0.65f + swing))));
-                        XMFLOAT3 tip = Add3(mid, Add3(Scale3(palmUp, limb * 0.24f * handScale), Scale3(contactNormal, -limb * (0.48f + swing * 0.24f) - hookCurl)));
+                        float spread = f * limb * 0.68f * grabHandScale;
+                        float hookCurl = (1.0f - std::abs(f)) * limb * 0.18f;
+                        XMFLOAT3 base = Add3(padCenter, Add3(Scale3(palmRight, spread), Scale3(palmUp, limb * 0.34f * handScale)));
+                        XMFLOAT3 mid = Add3(base, Add3(Scale3(palmUp, limb * 0.60f * handScale), Scale3(contactNormal, limb * 0.16f * (0.65f + swing))));
+                        XMFLOAT3 tip = Add3(mid, Add3(Scale3(palmUp, limb * 0.20f * handScale), Scale3(contactNormal, -limb * (0.36f + swing * 0.18f) - hookCurl)));
                         organicSegment(base, mid, limb * 0.22f * handScale, limb * 0.13f * handScale, darkMat, 5);
                         organicSegment(mid, tip, limb * 0.14f * handScale, limb * 0.055f * handScale, darkMat, 5);
                     }
@@ -1237,13 +1246,20 @@
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
         };
         keepHeadOnSurface();
-        float headSurfaceLift = bodyRadii[0] * 0.74f + MonsterHeadBobOffset() * 0.24f * modelY;
-        float headForwardLift = bodyRadii[0] * 1.18f + kMonsterHeadForwardOffset * 0.46f * modelXZ;
+        float headSurfaceLift = bodyRadii[0] * 0.46f + MonsterHeadBobOffset() * 0.14f * modelY;
+        float headForwardLift = bodyRadii[0] * 0.72f + kMonsterHeadForwardOffset * 0.28f * modelXZ;
         XMFLOAT3 headRoot = Add3(bodyPoints[0], OrientedOffset(hRight, hUp, hForward,
-            0.0f, bodyRadii[0] * 0.48f, bodyRadii[0] * 0.52f));
+            0.0f, bodyRadii[0] * 0.24f, bodyRadii[0] * 0.18f));
         XMFLOAT3 skull = Add3(bodyPoints[0], OrientedOffset(hRight, hUp, hForward,
             0.0f, headSurfaceLift, headForwardLift));
         skull = Add3(skull, Scale3(hUp, curiosityPose * 0.24f * modelY));
+        float headAwareness = SmoothStep(0.18f, 1.0f, MonsterAwarenessAmount());
+        if (headAwareness > 0.001f) {
+            float targetY = std::clamp(camera_.y + 0.035f, 1.22f * modelY, settings_.wallHeightMeters - 0.24f);
+            float raise = (targetY - skull.y) * (0.62f * headAwareness);
+            skull.y += raise;
+            headRoot.y += raise * 0.82f;
+        }
         Tile headTile = maze_.TileFromWorld(bodyPoints[0].x, bodyPoints[0].z);
         XMFLOAT3 headTileCenter = maze_.WorldCenter(headTile, 0.0f);
         float headHalfW = std::max(0.12f, maze_.tileW * 0.5f - bodyRadii[0] * 1.35f);
@@ -1280,10 +1296,10 @@
             float centered = SmoothStep(std::cos(7.0f * kPi / 180.0f), std::cos(1.2f * kPi / 180.0f), Dot3(hForward, toPlayer));
             float rage = centered * SmoothStep(0.55f, 1.0f, headLock);
             if (rage > 0.001f) {
-                float yawJitter = (std::sin(time_ * 74.0f + monster_.x * 3.1f) * 0.012f +
-                    std::sin(time_ * 121.0f + monster_.z * 1.7f) * 0.007f) * rage;
-                float pitchJitter = (std::sin(time_ * 91.0f + monster_.z * 2.4f) * 0.010f +
-                    std::sin(time_ * 147.0f + monster_.x * 1.6f) * 0.005f) * rage;
+                float yawJitter = (std::sin(time_ * 24.0f + monster_.x * 3.1f) * 0.005f +
+                    std::sin(time_ * 39.0f + monster_.z * 1.7f) * 0.003f) * rage;
+                float pitchJitter = (std::sin(time_ * 31.0f + monster_.z * 2.4f) * 0.004f +
+                    std::sin(time_ * 47.0f + monster_.x * 1.6f) * 0.002f) * rage;
 
                 hForward = Normalize3(Add3(Scale3(hForward, std::cos(yawJitter)), Scale3(hRight, std::sin(yawJitter))), hForward);
                 hRight = Normalize3(Cross3(hUp, hForward), hRight);
@@ -1291,8 +1307,8 @@
                 hUp = Normalize3(Cross3(hForward, hRight), hUp);
                 hRight = Normalize3(Cross3(hUp, hForward), hRight);
                 hUp = Normalize3(Cross3(hForward, hRight), hUp);
-                skull = Add3(skull, Add3(Scale3(hRight, std::sin(time_ * 137.0f) * 0.016f * rage),
-                    Scale3(hUp, std::sin(time_ * 151.0f + 1.7f) * 0.012f * rage)));
+                skull = Add3(skull, Add3(Scale3(hRight, std::sin(time_ * 41.0f) * 0.006f * rage),
+                    Scale3(hUp, std::sin(time_ * 53.0f + 1.7f) * 0.005f * rage)));
             }
         }
         keepHeadOnSurface();
@@ -1303,20 +1319,19 @@
         bool nativeMaskMesh = externalSkull && monsterSkullNativeMaskAxes_;
         XMFLOAT3 externalMaskCenter = skull;
         if (externalSkull) {
-            XMFLOAT3 maskCenter = Add3(headRoot, Scale3(hForward, bodyRadii[0] * 0.96f + 0.320f * modelXZ));
-            maskCenter = Add3(maskCenter, Scale3(hUp, 0.055f * modelY));
-            XMFLOAT3 maskSocket = Add3(maskCenter, Scale3(hForward, -0.330f * modelXZ));
+            XMFLOAT3 maskCenter = Add3(skull, Scale3(hForward, 0.030f * modelXZ));
+            maskCenter = Add3(maskCenter, Scale3(hUp, -0.035f * modelY));
+            if (headAwareness > 0.001f) {
+                XMFLOAT3 awareMask = Add3(skull, Scale3(hForward, 0.075f * modelXZ));
+                maskCenter = Lerp3(maskCenter, awareMask, headAwareness * 0.54f);
+            }
             externalMaskCenter = maskCenter;
-            AppendDynamicEllipsoid(solidVerts, maskSocket, hRight, hUp, hForward,
-                {0.250f * modelXZ, 0.280f * modelY, 0.045f * modelXZ}, 16, 7, gutMat + 0.045f);
-            AppendDynamicEllipsoid(solidVerts, Add3(maskSocket, Scale3(hForward, -0.095f * modelXZ)), hRight, hUp, hForward,
-                {0.360f * modelXZ, 0.370f * modelY, 0.034f * modelXZ}, 16, 7, gutMat + 0.055f);
             AppendExternalSkullMesh(solidVerts, maskCenter, hRight, hUp, hForward,
                 1.10f * modelXZ, 1.10f * modelY);
         } else {
             XMFLOAT3 headMeat = Add3(headRoot, Scale3(hForward, bodyRadii[0] * 0.34f + 0.030f * modelXZ));
             AppendDynamicEllipsoid(solidVerts, headMeat, hRight, hUp, hForward,
-                {0.390f * modelXZ, 0.440f * modelY, 0.150f * modelXZ}, 20, 10, gutMat + 0.04f);
+                {0.420f * modelXZ, 0.400f * modelY, 0.135f * modelXZ}, 20, 10, gutMat + 0.04f);
         }
 
         if (false && !externalSkull) {
@@ -1443,8 +1458,11 @@
         float coneHalf = std::clamp(settings_.flashlightConeDegrees, 20.0f, 140.0f) * 0.5f * kPi / 180.0f;
         float coneOuter = std::cos(coneHalf);
         float coneInner = std::cos(std::max(3.0f * kPi / 180.0f, coneHalf * 0.50f));
-        int maxParticles = std::min<int>(static_cast<int>(airParticles_.size()), std::clamp(static_cast<int>(2600.0f * std::clamp(settings_.airParticleDensity, 0.0f, 4.0f)), 0, 7200));
+        float levelDensity = AirParticleLevelDensityScale();
+        int maxParticles = std::min<int>(static_cast<int>(airParticles_.size()),
+            std::clamp(static_cast<int>(1900.0f * std::clamp(settings_.airParticleDensity, 0.0f, 4.0f) * levelDensity), 0, 5200));
         int emitted = 0;
+        int farParticlePhase = static_cast<int>(time_ * 24.0f) & 1;
         XMFLOAT3 worldUp{0.0f, 1.0f, 0.0f};
         float maxDistSq = maxDist * maxDist;
         for (const AirParticle& p : airParticles_) {
@@ -1453,6 +1471,10 @@
             XMFLOAT3 fromCamera = Sub3(pos, camera_);
             float cameraDepth = Dot3(fromCamera, cameraForward);
             if (cameraDepth <= 0.035f) continue;
+            if (p.nearLayer < 0.5f && cameraDepth > maxDist * 0.55f) {
+                int particlePhase = static_cast<int>(p.seed * 4096.0f) & 1;
+                if (particlePhase != farParticlePhase) continue;
+            }
 
             XMFLOAT3 fromLight = Sub3(pos, lightOrigin);
             float lightDistSq = Dot3(fromLight, fromLight);
@@ -1582,8 +1604,27 @@
             XMFLOAT3 c = Add3(page.center, Add3(hw, hh));
             XMFLOAT3 d = Add3(page.center, Add3(Scale3(hw, -1.0f), hh));
             AppendDynamicQuadUV(verts, a, b, c, d, normal, right,
-                {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 0.0f},
+                {1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f},
                 static_cast<float>(kCollectiblePageMaterialFirst + page.pageIndex));
+        }
+    }
+
+    void AppendSavePoint(std::vector<Vertex>& verts) {
+        if (runtimeMode_ != RendererRuntimeMode::PlayableGame || !savePoint_.active) return;
+        if (!DynamicVisualCandidate(Add3(savePoint_.pos, {0.0f, 0.72f, 0.0f}), 0.85f, std::max(9.0f, maze_.TileAverage() * 7.0f))) return;
+        XMFLOAT3 right{std::cos(savePoint_.yaw), 0.0f, -std::sin(savePoint_.yaw)};
+        XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+        XMFLOAT3 forward{std::sin(savePoint_.yaw), 0.0f, std::cos(savePoint_.yaw)};
+        XMFLOAT3 base = savePoint_.pos;
+        AppendDynamicBoxAxes(verts, Add3(base, {0.0f, 0.22f, 0.0f}), right, up, forward, {0.30f, 0.22f, 0.22f}, 19.0f);
+        AppendDynamicBoxAxes(verts, Add3(base, {0.0f, 0.49f, 0.0f}), right, up, forward, {0.44f, 0.055f, 0.30f}, 22.0f);
+        AppendDynamicBoxAxes(verts, Add3(base, {0.0f, 0.62f, 0.02f}), right, up, forward, {0.28f, 0.075f, 0.17f}, 23.0f);
+        AppendDynamicBoxAxes(verts, Add3(base, Add3(Scale3(forward, -0.13f), {0.0f, 0.73f, 0.0f})), right, up, forward, {0.24f, 0.070f, 0.035f}, 18.0f);
+        AppendDynamicBoxAxes(verts, Add3(base, Add3(Scale3(forward, 0.17f), {0.0f, 0.68f, 0.0f})), right, up, forward, {0.20f, 0.030f, 0.045f}, 18.0f);
+        for (int i = -4; i <= 4; ++i) {
+            float x = static_cast<float>(i) * 0.045f;
+            AppendDynamicBoxAxes(verts, Add3(base, Add3(Scale3(right, x), Add3(Scale3(forward, 0.12f), {0.0f, 0.72f, 0.0f}))),
+                right, up, forward, {0.014f, 0.014f, 0.018f}, 21.0f);
         }
     }
 
@@ -1605,6 +1646,7 @@
         } else {
             AppendVentDrops(opaqueVerts);
             AppendCollectiblePages(opaqueVerts);
+            AppendSavePoint(opaqueVerts);
             AppendMonsterBillboard(opaqueVerts, transparentVerts);
             dynamicProfile.Mark(L"MonsterAndVentDrops");
         }

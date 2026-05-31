@@ -173,7 +173,11 @@ int RunScreensaver(HINSTANCE hInstance, RunMode mode, HWND previewParent) {
             CloseLoadingOverlayWindow(app.loadingOverlay);
             app.loadingOverlay = nullptr;
         }
-        MessageBoxW(hwnd, L"Direct3D initialization failed.", L"Backrooms Maze", MB_OK | MB_ICONERROR);
+        std::wstring detail = app.renderer.LastInitializeError();
+        std::wstring message = detail.empty()
+            ? L"Direct3D initialization failed."
+            : L"Direct3D initialization failed.\r\n\r\n" + detail;
+        MessageBoxW(hwnd, message.c_str(), L"Backrooms Maze", MB_OK | MB_ICONERROR);
         DestroyWindow(hwnd);
         if (!app.preview) ShowCursor(TRUE);
         return 1;
@@ -193,7 +197,11 @@ int RunScreensaver(HINSTANCE hInstance, RunMode mode, HWND previewParent) {
                 CloseLoadingOverlayWindow(clone->loadingOverlay);
                 clone->loadingOverlay = nullptr;
             }
-            MessageBoxW(hwnd, L"Direct3D initialization failed on a cloned display.", L"Backrooms Maze", MB_OK | MB_ICONERROR);
+            std::wstring detail = clone->renderer.LastInitializeError();
+            std::wstring message = detail.empty()
+                ? L"Direct3D initialization failed on a cloned display."
+                : L"Direct3D initialization failed on a cloned display.\r\n\r\n" + detail;
+            MessageBoxW(hwnd, message.c_str(), L"Backrooms Maze", MB_OK | MB_ICONERROR);
             QuitScreensaver(hwnd);
             if (!app.preview) ShowCursor(TRUE);
             return 1;

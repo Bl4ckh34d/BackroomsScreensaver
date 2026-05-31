@@ -22,6 +22,17 @@
             previousFlashlightInput_ = false;
         }
 
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.scoreScreenActive) {
+            if (gameInput_.interact && !previousInteractInput_) {
+                ContinueAfterScoreScreen();
+            }
+            previousInteractInput_ = gameInput_.interact;
+            UpdateFlashlightAim(dt);
+            UpdateAirParticles(dt);
+            UpdateAirParticleFocus(dt);
+            return;
+        }
+
         fadeInTimer_ = std::max(0.0f, fadeInTimer_ - dt);
         if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
             UpdateMainMenuScene(dt);
@@ -70,21 +81,36 @@
         }
 
         if (VisibleInFront(maze_.exit)) exitSpotted_ = true;
-        UpdateMonster(dt);
-        UpdateMonsterLampDamage(dt);
-        float monsterDist = MonsterDistance();
-        if (!settings_.debugInvincible && !MonsterIgnoresPlayer() && monsterDist < settings_.monsterKillDistance && maze_.LineClear(CameraTile(), MonsterTile())) {
-            playerHealth_ = 0.0f;
-            BeginDeath();
-            UpdateDeath(dt);
-            UpdateFlashlightAim(dt);
-            UpdateAirParticles(dt);
-            UpdateAirParticleFocus(dt);
-            return;
+        bool monsterActive = MonsterActiveForCurrentMode();
+        float monsterDist = monsterActive ? MonsterDistance() : std::numeric_limits<float>::max();
+        if (monsterActive) {
+            UpdateMonster(dt);
+            UpdateMonsterLampDamage(dt);
+            monsterDist = MonsterDistance();
+            if (!settings_.debugInvincible && !MonsterIgnoresPlayer() && monsterDist < settings_.monsterKillDistance && maze_.LineClear(CameraTile(), MonsterTile())) {
+                playerHealth_ = 0.0f;
+                BeginDeath();
+                UpdateDeath(dt);
+                UpdateFlashlightAim(dt);
+                UpdateAirParticles(dt);
+                UpdateAirParticleFocus(dt);
+                return;
+            }
+        } else {
+            monsterLimbAnchors_.clear();
+            monsterSmoothedBodyPoints_.clear();
+            monsterSmoothedBodyUps_.clear();
+            monsterBodySmoothTime_ = -1000.0f;
+            monsterHasSound_ = false;
+            monsterHasLastKnown_ = false;
+            monsterChasingVisible_ = false;
+            monsterRecognizedForChase_ = false;
+            monsterHeadChaseBlend_ = 0.0f;
+            monsterHeadLockAmount_ = 0.0f;
         }
 
-        bool threat = IsThreatVisible();
-        if (MonsterIgnoresPlayer()) {
+        bool threat = monsterActive && IsThreatVisible();
+        if (!monsterActive || MonsterIgnoresPlayer()) {
             threat = false;
             chasePanic_ = 0.0f;
             chaseMemoryTimer_ = 0.0f;

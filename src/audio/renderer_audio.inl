@@ -347,7 +347,7 @@
         } else {
             float runBlend = std::max(runT, runEffort_ * 0.72f);
             if (runBlend > 0.01f) {
-                radius = TileHearingRadius(Lerp(3.6f, 4.6f, runBlend));
+                radius = TileHearingRadius(Lerp(3.2f, 4.0f, runBlend));
             } else {
                 radius = TileHearingRadius(Lerp(2.1f, 2.9f, walkT));
             }
@@ -360,7 +360,7 @@
     }
 
     float LightBulbBreakHearingRadius() const {
-        return TileHearingRadius(20.0f);
+        return TileHearingRadius(28.0f);
     }
 
     float FlashlightClickHearingRadius() const {
@@ -372,7 +372,7 @@
     }
 
     float SparkHearingRadius(float intensity = 1.0f) const {
-        return TileHearingRadius(Lerp(7.0f, 12.0f, Clamp01(intensity / std::max(0.1f, settings_.effectBrokenLampSparkIntensityMax))));
+        return TileHearingRadius(Lerp(9.0f, 16.0f, Clamp01(intensity / std::max(0.1f, settings_.effectBrokenLampSparkIntensityMax))));
     }
 
     int FootstepDownBobIndex(float phase) const {
@@ -412,7 +412,7 @@
 
     void PlaySparkSoundAt(XMFLOAT3 pos, float intensity = 1.0f) {
         audio_.PlayRandom(GameSound::ElectricCrackle, AudioBus::Effects, pos,
-            std::clamp(0.30f + intensity * 0.18f, 0.25f, 1.0f), true, AudioOcclusionFor(pos));
+            std::clamp(0.40f + intensity * 0.24f, 0.32f, 1.25f), true, AudioOcclusionFor(pos));
     }
 
     void PlayNeonFlickerStarterClickAt(XMFLOAT3 pos) {
@@ -421,11 +421,11 @@
 
     void PlayLightBulbBreakSoundAt(XMFLOAT3 pos, float intensity = 1.0f, bool emitPlayerNoise = true) {
         audio_.PlayRandom(GameSound::LightBulbBreak, AudioBus::Effects, pos,
-            std::clamp(1.55f + intensity * 0.55f, 1.10f, 2.75f),
+            std::clamp(1.80f + intensity * 0.70f, 1.25f, 3.20f),
             runtimeMode_ != RendererRuntimeMode::MainMenu,
             runtimeMode_ != RendererRuntimeMode::MainMenu ? std::min(AudioOcclusionFor(pos), 1.15f) : 0.0f);
         if (emitPlayerNoise) {
-            EmitPlayerAudibleSound(pos, LightBulbBreakHearingRadius(), 1.35f);
+            EmitPlayerAudibleSound(pos, LightBulbBreakHearingRadius(), 1.70f);
         }
     }
 
@@ -622,7 +622,7 @@
 
     void UpdateMonsterVocalAudio(float dt) {
         monsterSpottedScreamCooldown_ = std::max(0.0f, monsterSpottedScreamCooldown_ - dt);
-        if (monsterPreview_ || !IsPlayableSimulationMode(runtimeMode_)) {
+        if (monsterPreview_ || !IsPlayableSimulationMode(runtimeMode_) || !MonsterActiveForCurrentMode()) {
             monsterAlertAudioActive_ = false;
             monsterAlertVocalTimer_ = 0.0f;
             return;
@@ -671,7 +671,7 @@
     }
 
     void UpdateVentMonsterGroans(float dt) {
-        if (monsterPreview_ || !IsPlayableSimulationMode(runtimeMode_) || deathActive_ || exitTransitionActive_) {
+        if (monsterPreview_ || !IsPlayableSimulationMode(runtimeMode_) || !MonsterActiveForCurrentMode() || deathActive_ || exitTransitionActive_) {
             ventMonsterGroanTimer_ = std::min(ventMonsterGroanTimer_, 2.0f);
             ventMonsterGroanCooldown_ = std::max(0.0f, ventMonsterGroanCooldown_ - dt);
             return;

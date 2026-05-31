@@ -47,7 +47,7 @@
         RECT measure{0, 0, maxTextW, 0};
         DrawTextW(dc, hudNotificationText_.c_str(), -1, &measure,
             DT_LEFT | DT_SINGLELINE | DT_CALCRECT);
-        bool wrap = (measure.right - measure.left) > maxTextW;
+        bool wrap = (measure.right - measure.left) > maxTextW || hudNotificationText_.find(L'\n') != std::wstring::npos;
         if (wrap) {
             measure = {0, 0, maxTextW, 0};
             DrawTextW(dc, hudNotificationText_.c_str(), -1, &measure,
@@ -264,6 +264,14 @@
             }
         };
 
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.scoreScreenActive) {
+            pushRect(0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), {0.0f, 0.0f, 0.0f, 0.54f});
+            float panelW = std::clamp(static_cast<float>(width_) * 0.58f, 360.0f, 760.0f);
+            float panelH = std::clamp(static_cast<float>(height_) * 0.26f, 170.0f, 250.0f);
+            pushRect((static_cast<float>(width_) - panelW) * 0.5f, (static_cast<float>(height_) - panelH) * 0.5f,
+                panelW, panelH, {0.020f, 0.018f, 0.014f, 0.82f});
+        }
+
         float x = 24.0f;
         float y = static_cast<float>(height_) - 58.0f;
         float w = std::clamp(static_cast<float>(width_) * 0.22f, 180.0f, 290.0f);
@@ -372,6 +380,31 @@
             float py = y0 + (static_cast<float>(t.y) + 0.5f) * cell - size * 0.5f;
             pushRect(px, py, size, size, color);
         };
+        auto featureDiscovered = [&](Tile t) {
+            if (!playerExplorationMap) return true;
+            const Tile neighbors[] = {{t.x + 1, t.y}, {t.x - 1, t.y}, {t.x, t.y + 1}, {t.x, t.y - 1}};
+            for (Tile n : neighbors) {
+                if (!maze_.IsOpen(n.x, n.y)) continue;
+                if (VisitCount(n) > 0 || n == cameraTile) return true;
+            }
+            return false;
+        };
+
+        for (int y = 0; y < maze_.h; ++y) {
+            for (int x = 0; x < maze_.w; ++x) {
+                MazeWallFeature feature = maze_.WallFeature(x, y);
+                if (feature == MazeWallFeature::None) continue;
+                Tile t{x, y};
+                if (!featureDiscovered(t)) continue;
+                XMFLOAT4 color = feature == MazeWallFeature::Window
+                    ? XMFLOAT4{0.035f, 0.037f, 0.038f, 0.72f}
+                    : XMFLOAT4{0.62f, 0.62f, 0.58f, 0.70f};
+                float inset = std::max(0.16f, cell * 0.09f);
+                float px = mapTileX(x);
+                float py = y0 + static_cast<float>(y) * cell;
+                pushRect(px + inset, py + inset, std::max(0.55f, cell - inset * 2.0f), std::max(0.55f, cell - inset * 2.0f), color);
+            }
+        }
 
         for (int y = 0; y < maze_.h; ++y) {
             for (int x = 0; x < maze_.w; ++x) {

@@ -10,6 +10,8 @@
 
 #include "../maze/maze.inl"
 
+#include "../gameplay/playable_progression_types.inl"
+
 #include "renderer_public_types.inl"
 
 class Renderer {
@@ -37,6 +39,8 @@ private:
     #include "../debug/debug_slice_runtime.inl"
 
     #include "renderer_state.inl"
+
+    #include "../gameplay/playable_progression_runtime.inl"
 
     #include "../audio/renderer_audio.inl"
 

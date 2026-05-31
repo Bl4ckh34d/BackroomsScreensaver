@@ -44,7 +44,7 @@ void UpdateGameMenuLabels() {
     if (!gApp || !gApp->gameShell) return;
     bool canResume = gApp->gameRunStarted && !gApp->gameDebugActive;
     if (gApp->gameSinglePlayer) {
-        SetWindowTextW(gApp->gameSinglePlayer, canResume ? L"Resume" : L"Single Player");
+        SetWindowTextW(gApp->gameSinglePlayer, canResume ? L"Resume Current Run" : L"Start New Run");
     }
 }
 
@@ -53,13 +53,17 @@ struct GameMenuButtonSpec {
     const wchar_t* label;
 };
 
-std::array<GameMenuButtonSpec, 3> ActiveGameMenuButtons() {
+std::vector<GameMenuButtonSpec> ActiveGameMenuButtons() {
     bool canResume = gApp && gApp->gameRunStarted && !gApp->gameDebugActive;
-    return {{
-        {kGameSinglePlayerId, canResume ? L"Resume" : L"Single Player"},
-        {kGameSettingsId, L"Settings"},
-        {kGameDebugId, L"Debug"}
-    }};
+    bool canResumeSaved = std::filesystem::exists(GameSavePath());
+    std::vector<GameMenuButtonSpec> buttons;
+    buttons.reserve(5);
+    if (canResume) buttons.push_back({kGameResumeCurrentRunId, L"Resume Current Run"});
+    if (canResumeSaved) buttons.push_back({kGameResumeSavedRunId, L"Resume Saved Run"});
+    buttons.push_back({kGameSinglePlayerId, L"Start New Run"});
+    buttons.push_back({kGameSettingsId, L"Settings"});
+    buttons.push_back({kGameDebugId, L"Debug"});
+    return buttons;
 }
 
 RECT GameMenuButtonRect(const RECT& client, int index) {
@@ -145,9 +149,10 @@ void PushGameMenuInteractionToRenderer(HWND hwnd) {
     gApp->renderer.SetMenuInteraction(x, y,
         hoverIndex >= 0,
         hoverId == kGameExitId,
-        hoverIndex == 0);
+        hoverId == kGameSinglePlayerId);
     gApp->renderer.SetMenuHoverButtonIndex(hoverIndex);
-    gApp->renderer.SetMenuResumeLabel(gApp->gameRunStarted && !gApp->gameDebugActive);
+    gApp->renderer.SetMenuButtonLayout(gApp->gameRunStarted && !gApp->gameDebugActive,
+        std::filesystem::exists(GameSavePath()));
 }
 
 float GameMenuFadeAmount(ULONGLONG now) {
@@ -237,6 +242,16 @@ void ActivateGameMenuCommand(HWND hwnd, int id) {
 void ExecuteGameMenuCommand(HWND hwnd, int id) {
     if (!gApp || !gApp->gameShell || hwnd != gApp->hwnd) return;
     if (id == kGameSinglePlayerId) {
+        gApp->gameForceNewRunPending = true;
+        gApp->gameLoadSavedRunPending = false;
+        EnterGamePlay(hwnd);
+    } else if (id == kGameResumeCurrentRunId) {
+        gApp->gameForceNewRunPending = false;
+        gApp->gameLoadSavedRunPending = false;
+        EnterGamePlay(hwnd);
+    } else if (id == kGameResumeSavedRunId) {
+        gApp->gameForceNewRunPending = false;
+        gApp->gameLoadSavedRunPending = true;
         EnterGamePlay(hwnd);
     } else if (id == kGameSettingsId) {
         EnterGameSettings(hwnd, ConfigDialogMode::Game, GameState::MainMenu);
@@ -408,7 +423,8 @@ bool EnsureGameRenderer(HWND hwnd, RendererRuntimeMode mode) {
 void EnterGameMainMenu(HWND hwnd) {
     if (!gApp || !gApp->gameShell) return;
     bool pausePlayableRun = gApp->gameState == GameState::PlayGame &&
-        gApp->gameRunStarted && !gApp->gameDebugActive;
+        gApp->gameRunStarted && !gApp->gameDebugActive &&
+        (!gApp->rendererInitialized || !gApp->renderer.PlayableRunFinished());
     ReleaseGameMouse();
     gApp->gameState = GameState::MainMenu;
     gApp->gameMenuFadeIn = true;
@@ -424,16 +440,20 @@ void EnterGameMainMenu(HWND hwnd) {
     gApp->gameMenuLampBurstStart = 0;
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;
+    bool finishedPlayableRun = gApp->rendererInitialized && gApp->renderer.PlayableRunFinished();
     if (gApp->rendererInitialized) {
         if (pausePlayableRun) {
             gApp->renderer.EnterPausedMainMenuScene();
         } else {
             gApp->renderer.EnterMainMenuScene();
+            if (finishedPlayableRun) {
+                gApp->gameRunStarted = false;
+            }
         }
     }
     SetGameMenuVisible(true);
     UpdateGameMenuLabels();
-    SetGameCursorVisible(false);
+    SetGameCursorVisible(true);
     SetDebugControlsVisible(false);
     if (gApp->gameBack) ShowWindow(gApp->gameBack, SW_HIDE);
     SetWindowTextW(hwnd, L"Backrooms Maze");
@@ -444,7 +464,22 @@ void EnterGamePlay(HWND hwnd) {
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;
     if (!EnsureGameRenderer(hwnd, RendererRuntimeMode::PlayableGame)) return;
-    if (!gApp->gameRunStarted || gApp->gameDebugActive) {
+    bool loadSaved = gApp->gameLoadSavedRunPending;
+    bool forceNew = gApp->gameForceNewRunPending;
+    gApp->gameLoadSavedRunPending = false;
+    gApp->gameForceNewRunPending = false;
+    if (forceNew) {
+        gApp->gameRunStarted = false;
+        gApp->gameDebugActive = false;
+        gApp->renderer.DeleteSavedGameRun();
+    }
+    if (loadSaved) {
+        bool loaded = gApp->renderer.LoadSavedGameRun();
+        if (!loaded) {
+            gApp->renderer.RestartGameRun();
+        }
+        gApp->gameRunStarted = true;
+    } else if (!gApp->gameRunStarted || gApp->gameDebugActive) {
         bool skipLoadingOverlay = gApp->gameSkipNextLoadingOverlay;
         gApp->gameSkipNextLoadingOverlay = false;
         if (!skipLoadingOverlay && !gApp->loadingOverlay) {

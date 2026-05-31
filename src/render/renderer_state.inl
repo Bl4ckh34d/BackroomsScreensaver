@@ -87,6 +87,39 @@
     ComPtr<ID3D11SamplerState> shadowSampler_;
     ComPtr<ID3D11SamplerState> postSampler_;
     ComPtr<ID3D11RasterizerState> shadowRasterState_;
+    enum class GpuProfileMarker : size_t {
+        FrameStart = 0,
+        ClearTargets,
+        DynamicGeometry,
+        FlashlightShadow,
+        FixtureShadow,
+        MonsterEyeShadow,
+        Uploads,
+        MainOpaque,
+        FloorCeiling,
+        DynamicOpaque,
+        StaticWater,
+        StaticTransparent,
+        DynamicTransparent,
+        PostProcess,
+        Overlays,
+        FrameEnd,
+        Count
+    };
+    static constexpr size_t kGpuProfileMarkerCount = static_cast<size_t>(GpuProfileMarker::Count);
+    static constexpr size_t kGpuProfileFrameCount = 4;
+    struct GpuProfileFrame {
+        ComPtr<ID3D11Query> disjoint;
+        std::array<ComPtr<ID3D11Query>, kGpuProfileMarkerCount> timestamps;
+        bool issued = false;
+        bool open = false;
+        uint64_t frameId = 0;
+    };
+    std::array<GpuProfileFrame, kGpuProfileFrameCount> gpuProfileFrames_{};
+    bool gpuProfileAvailable_ = false;
+    bool gpuProfileFrameOpen_ = false;
+    size_t gpuProfileWriteIndex_ = 0;
+    uint64_t gpuProfileFrameCounter_ = 0;
     D3D_FEATURE_LEVEL featureLevel_ = D3D_FEATURE_LEVEL_10_0;
     UINT shadowMapSize_ = 2048;
     UINT fixtureShadowMapSize_ = 1024;
@@ -148,14 +181,18 @@
     bool menuButtonHover_ = false;
     bool menuExitHover_ = false;
     bool menuSinglePlayerHover_ = false;
+    bool menuDarkLayerOneRun_ = false;
     bool menuLampBurstPending_ = false;
     bool menuLampBurstPlayed_ = false;
     int menuHoverButtonIndex_ = -1;
     bool menuResumeLabel_ = false;
+    int menuButtonCount_ = 3;
+    std::array<int, 5> menuButtonLabelRows_{{0, 3, 4, 0, 0}};
     bool menuStartTransitionActive_ = false;
     bool menuStartTransitionComplete_ = false;
     float menuStartTransitionTimer_ = 0.0f;
     float menuStartTransitionFade_ = 0.0f;
+    PlayableRunState playableRun_{};
     XMFLOAT3 menuStartCamera_{};
     float menuStartYaw_ = 0.0f;
     float menuStartPitch_ = 0.0f;
@@ -165,9 +202,17 @@
     float playerStaminaRegenDelay_ = 0.0f;
     float playerNoiseRadiusMeters_ = 0.0f;
     bool sprintStaminaLocked_ = false;
+    bool tunnelCrouchLocked_ = false;
+    float crouchBlend_ = 0.0f;
+    float tunnelPostureHoldTimer_ = 0.0f;
+    float tunnelLeanTarget_ = 0.0f;
+    float tunnelLeanAmount_ = 0.0f;
+    float tunnelLeanSideTarget_ = 1.0f;
+    float tunnelLeanSide_ = 1.0f;
     bool previousInteractInput_ = false;
     std::array<CollectiblePage, kCollectiblePageMaterialCount> collectiblePages_{};
     int collectiblePagesCollected_ = 0;
+    SavePoint savePoint_{};
     std::wstring hudNotificationText_;
     float hudNotificationStartTime_ = -1000.0f;
     float hudNotificationDuration_ = 0.0f;

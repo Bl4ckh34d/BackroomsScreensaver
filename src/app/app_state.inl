@@ -59,6 +59,8 @@ struct App {
     int gameMenuPendingCommand = 0;
     bool gameMenuStartCinematic = false;
     bool gameSkipNextLoadingOverlay = false;
+    bool gameLoadSavedRunPending = false;
+    bool gameForceNewRunPending = false;
     bool gameMenuFadeOut = false;
     bool gameMenuFadeIn = true;
     bool firstMouse = true;
@@ -110,6 +112,8 @@ constexpr int kGameSettingsId = 5202;
 constexpr int kGameDebugId = 5203;
 constexpr int kGameBackId = 5204;
 constexpr int kGameExitId = 5205;
+constexpr int kGameResumeCurrentRunId = 5206;
+constexpr int kGameResumeSavedRunId = 5207;
 constexpr UINT kGameConfigClosedMessage = WM_APP + 31;
 
 DebugSliceEffect StepDebugSliceEffect(DebugSliceEffect effect, int delta) {

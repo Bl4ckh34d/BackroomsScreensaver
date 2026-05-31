@@ -21,7 +21,8 @@ enum class GameSound {
     DoorCloseLock,
     LightBulbBreak,
     VisionFlash,
-    FlashlightStutter
+    FlashlightStutter,
+    PaperFlutter
 };
 
 enum class AudioToneProfile {
@@ -115,7 +116,7 @@ public:
         if (!initialized_) return;
         samples_.clear();
         groups_.clear();
-        groups_.resize(static_cast<size_t>(GameSound::FlashlightStutter) + 1);
+        groups_.resize(static_cast<size_t>(GameSound::PaperFlutter) + 1);
         AddFolder(settings, GameSound::CarpetStep, L"assets\\sounds\\carpet_steps", L"carpet_step_*.wav");
         AddFolder(settings, GameSound::SoakedCarpetStep, L"assets\\sounds\\soaked_carpet_steps", L"soaked_step_*.wav");
         AddFolder(settings, GameSound::NeonHumQuiet, L"assets\\sounds\\neon_light_hum", L"*quiet*.wav");
@@ -133,6 +134,7 @@ public:
         AddFolder(settings, GameSound::LightBulbBreak, L"assets\\sounds\\light_bulb_break", L"light_bulb_break_1.wav");
         AddFolder(settings, GameSound::VisionFlash, L"assets\\sounds\\vision_flash", L"vision_flash_*.wav");
         AddFolder(settings, GameSound::FlashlightStutter, L"assets\\sounds\\flashlight_contact_click", L"flashlight_stutter.wav");
+        AddFolder(settings, GameSound::PaperFlutter, L"assets\\sounds\\paper_flutter", L"paper_flutter.wav");
         if (samples_.empty()) {
             OutputDebugStringW(L"Backrooms audio: no WAV samples were loaded.\n");
         }

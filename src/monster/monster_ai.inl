@@ -78,25 +78,17 @@
 
     bool MonsterFootprintOpen(const XMFLOAT3& pos) const {
         float visualScale = std::clamp(settings_.monsterScale, 0.35f, 1.35f);
-        float radius = std::clamp(0.62f * visualScale, 0.26f, 0.92f);
+        float radius = std::clamp(0.46f * visualScale, 0.22f, 0.68f);
         const XMFLOAT2 samples[] = {
             {0.0f, 0.0f},
             { radius, 0.0f},
             {-radius, 0.0f},
             {0.0f,  radius},
             {0.0f, -radius},
-            { radius * 0.92f,  radius * 0.24f},
-            {-radius * 0.92f,  radius * 0.24f},
-            { radius * 0.92f, -radius * 0.24f},
-            {-radius * 0.92f, -radius * 0.24f},
-            { radius * 0.24f,  radius * 0.92f},
-            {-radius * 0.24f,  radius * 0.92f},
-            { radius * 0.24f, -radius * 0.92f},
-            {-radius * 0.24f, -radius * 0.92f},
-            { radius * 0.62f,  radius * 0.62f},
-            {-radius * 0.62f,  radius * 0.62f},
-            { radius * 0.62f, -radius * 0.62f},
-            {-radius * 0.62f, -radius * 0.62f}
+            { radius * 0.54f,  radius * 0.54f},
+            {-radius * 0.54f,  radius * 0.54f},
+            { radius * 0.54f, -radius * 0.54f},
+            {-radius * 0.54f, -radius * 0.54f}
         };
         for (const XMFLOAT2& s : samples) {
             Tile tile = maze_.TileFromWorld(pos.x + s.x, pos.z + s.y);
@@ -129,20 +121,20 @@
         bool erraticChase = monsterChasingVisible_ || monsterRecognizedForChase_ || chaseMemoryTimer_ > 0.0f;
         if (erraticChase && len > maze_.TileMinimum() * 0.24f) {
             XMFLOAT3 lateral{dir.z, 0.0f, -dir.x};
-            float burst = std::pow(std::max(0.0f, std::sin(time_ * 2.9f + monster_.x * 0.37f - monster_.z * 0.21f)), 6.0f);
-            float twitch = std::sin(time_ * 8.7f + monster_.z * 0.53f) * 0.18f +
-                std::sin(time_ * 15.4f + monster_.x * 0.29f) * 0.07f;
+            float burst = std::pow(std::max(0.0f, std::sin(time_ * 1.15f + monster_.x * 0.18f - monster_.z * 0.13f)), 5.0f);
+            float twitch = std::sin(time_ * 2.6f + monster_.z * 0.27f) * 0.028f +
+                std::sin(time_ * 4.1f + monster_.x * 0.17f) * 0.012f;
             float chaseBlend = std::max(monsterHeadChaseBlend_, monsterChasingVisible_ ? 0.72f : 0.36f);
-            dir = Normalize3(Add3(dir, Scale3(lateral, twitch * (0.35f + burst * 0.65f) * chaseBlend)), dir);
+            dir = Normalize3(Add3(dir, Scale3(lateral, twitch * (0.68f + burst * 0.32f) * chaseBlend)), dir);
         }
         XMFLOAT3 avoid = MonsterSelfAvoidanceVector(Add3(start, Scale3(dir, std::min(distance, maze_.TileMinimum() * 0.24f))));
         float avoidLen = Length3(avoid);
         if (avoidLen > 0.001f) {
-            float avoidWeight = std::min(0.72f, avoidLen * 0.58f);
+            float avoidWeight = std::min(0.48f, avoidLen * 0.42f);
             dir = Normalize3(Add3(dir, Scale3(Scale3(avoid, 1.0f / avoidLen), avoidWeight)), dir);
         }
         float remaining = std::min(distance, len);
-        int steps = std::max(1, static_cast<int>(std::ceil(remaining / (maze_.TileMinimum() * 0.055f))));
+        int steps = std::max(1, static_cast<int>(std::ceil(remaining / (maze_.TileMinimum() * 0.085f))));
         XMFLOAT3 pos = start;
         bool moved = false;
         for (int i = 0; i < steps; ++i) {
@@ -170,7 +162,7 @@
                 if (!movedSlide) {
                     if (!MonsterFootprintOpen(pos)) {
                         XMFLOAT3 center = maze_.WorldCenter(MonsterTile(), 0.0f);
-                        if (MonsterFootprintOpen(center)) monster_ = center;
+                        if (MonsterFootprintOpen(center)) pos = Lerp3(pos, center, 0.35f);
                     }
                     break;
                 }
@@ -185,13 +177,60 @@
             RecordMonsterTrailPoint(monster_);
             float moveYaw = std::atan2(monster_.x - start.x, monster_.z - start.z);
             if (std::isfinite(moveYaw)) {
-                monsterYaw_ += AngleWrap(moveYaw - monsterYaw_) * 0.35f;
+                monsterYaw_ += AngleWrap(moveYaw - monsterYaw_) * 0.22f;
             }
         }
     }
 
     bool ValidMonsterTile(Tile t) const {
         return maze_.IsOpen(t.x, t.y);
+    }
+
+    float MonsterAwarenessAmount() const {
+        float close = Clamp01((maze_.TileAverage() * 7.0f - MonsterDistance()) / std::max(0.1f, maze_.TileAverage() * 6.2f));
+        float intent = std::max(monsterHeadChaseBlend_, chasePanic_);
+        if (monsterChasingVisible_ || monsterRecognizedForChase_) intent = std::max(intent, 1.0f);
+        if (monsterHasLastKnown_) intent = std::max(intent, 0.78f);
+        if (monsterHasSound_) intent = std::max(intent, 0.56f);
+        if (chaseMemoryTimer_ > 0.0f) intent = std::max(intent, 0.62f);
+        return Clamp01(std::max(intent, close * 0.70f));
+    }
+
+    bool RecoverMonsterToNearestOpenTile(Tile fromTile) {
+        if (maze_.IsOpen(fromTile.x, fromTile.y)) return true;
+        Tile best{-1000, -1000};
+        float bestSq = std::numeric_limits<float>::max();
+        for (int radius = 1; radius <= 5 && !ValidMonsterTile(best); ++radius) {
+            for (int dz = -radius; dz <= radius; ++dz) {
+                for (int dx = -radius; dx <= radius; ++dx) {
+                    if (std::abs(dx) != radius && std::abs(dz) != radius) continue;
+                    Tile t{fromTile.x + dx, fromTile.y + dz};
+                    if (!maze_.IsOpen(t.x, t.y)) continue;
+                    XMFLOAT3 c = maze_.WorldCenter(t, 0.0f);
+                    float sx = c.x - monster_.x;
+                    float sz = c.z - monster_.z;
+                    float d2 = sx * sx + sz * sz;
+                    if (d2 < bestSq) {
+                        bestSq = d2;
+                        best = t;
+                    }
+                }
+            }
+        }
+        if (!ValidMonsterTile(best)) return false;
+        XMFLOAT3 target = maze_.WorldCenter(best, 0.0f);
+        float maxStep = std::max(maze_.TileMinimum() * 0.18f, settings_.monsterSpeed * 0.12f);
+        XMFLOAT3 delta{target.x - monster_.x, 0.0f, target.z - monster_.z};
+        float len = Length3(delta);
+        monster_ = len > maxStep ? Add3(monster_, Scale3(delta, maxStep / std::max(0.001f, len))) : target;
+        if (len > maze_.TileAverage() * 1.3f) {
+            monsterTrail_.clear();
+            monsterLimbAnchors_.clear();
+            monsterBodySmoothTime_ = -1000.0f;
+        }
+        RecordMonsterTrailPoint(monster_);
+        ClearMonsterPath();
+        return true;
     }
 
     void ClearMonsterPath() {
@@ -202,7 +241,7 @@
 
     void RecordMonsterTrailPoint(const XMFLOAT3& p) {
         XMFLOAT3 head{p.x, 0.0f, p.z};
-        float minStep = maze_.TileMinimum() * 0.018f;
+        float minStep = maze_.TileMinimum() * 0.040f;
         if (!monsterTrail_.empty()) {
             float dx = head.x - monsterTrail_.front().x;
             float dz = head.z - monsterTrail_.front().z;
@@ -265,7 +304,7 @@
         monsterHeadLockAmount_ += ((seesPlayer ? 1.0f : 0.0f) - monsterHeadLockAmount_) *
             std::min(1.0f, dt * (seesPlayer ? 1.80f : 1.15f));
 
-        float bobSpeed = Lerp(2.35f, 7.85f, monsterHeadChaseBlend_);
+        float bobSpeed = Lerp(2.10f, 5.65f, monsterHeadChaseBlend_);
         monsterHeadBobPhase_ += dt * bobSpeed;
         if (monsterHeadBobPhase_ > kPi * 64.0f) {
             monsterHeadBobPhase_ = std::fmod(monsterHeadBobPhase_, kPi * 2.0f);
@@ -286,15 +325,15 @@
         float focusSide = Rand01(static_cast<int>(std::floor(scan * 0.19f)) + mt.x * 11, mt.y * 17 + 991, runtimeSeed_) > 0.5f ? 1.0f : -1.0f;
         float focusYaw = yawRange * focusSide * (0.72f + Rand01(mt.x + 103, mt.y + 211, runtimeSeed_) * 0.42f);
         float focusPitch = -0.045f + Rand01(mt.x + 307, mt.y + 409, runtimeSeed_) * 0.12f;
-        float jitterBurst = std::pow(std::max(0.0f, std::sin(scan * 2.9f + 0.7f)), 34.0f);
-        float microJitter = (std::sin(time_ * 19.0f + monster_.x * 0.7f) * 0.026f +
-            std::sin(time_ * 31.0f + monster_.z * 0.5f) * 0.012f) * jitterBurst;
+        float jitterBurst = std::pow(std::max(0.0f, std::sin(scan * 2.1f + 0.7f)), 26.0f);
+        float microJitter = (std::sin(time_ * 8.0f + monster_.x * 0.7f) * 0.010f +
+            std::sin(time_ * 13.0f + monster_.z * 0.5f) * 0.005f) * jitterBurst;
         float curiosityYaw = std::sin(time_ * 3.4f) * 0.16f + std::sin(time_ * 5.1f + 0.7f) * 0.045f;
         float curiosityPitch = -0.10f + std::sin(time_ * 2.2f + 0.3f) * 0.025f;
         float targetYaw = seesPlayer ? Lerp(0.0f, curiosityYaw, curiosity) : Lerp(glideYaw, focusYaw, focusWindow) + microJitter;
         float targetPitch = seesPlayer ? Lerp(0.0f, curiosityPitch, curiosity) : Lerp(glidePitch, focusPitch, focusWindow) +
             std::sin(time_ * 23.0f) * 0.008f * jitterBurst;
-        float response = seesPlayer ? Lerp(2.10f, 3.20f, curiosity) : (openScanSpace ? Lerp(0.68f, 4.35f, focusWindow + jitterBurst * 0.28f) : Lerp(0.52f, 3.25f, focusWindow));
+        float response = seesPlayer ? Lerp(1.70f, 2.65f, curiosity) : (openScanSpace ? Lerp(0.58f, 2.80f, focusWindow + jitterBurst * 0.18f) : Lerp(0.48f, 2.35f, focusWindow));
         monsterHeadYawOffset_ += AngleWrap(targetYaw - monsterHeadYawOffset_) *
             std::min(1.0f, dt * response);
         monsterHeadPitchOffset_ += (targetPitch - monsterHeadPitchOffset_) *
@@ -307,7 +346,7 @@
         float dx = center.x - monster_.x;
         float dz = center.z - monster_.z;
         float tile = maze_.TileMinimum();
-        return dx * dx + dz * dz < tile * tile * 0.035f;
+        return dx * dx + dz * dz < tile * tile * 0.070f;
     }
 
     bool MonsterGoalFarEnough(Tile goal) const {
@@ -514,12 +553,15 @@
         Tile ct = CameraTile();
         monsterHeardPlayerNow_ = false;
         if (!maze_.IsOpen(mt.x, mt.y)) {
-            monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
-            monsterTrail_.clear();
-            monsterLimbAnchors_.clear();
-            monsterHandprints_.clear();
-            RecordMonsterTrailPoint(monster_);
-            ClearMonsterPath();
+            if (!RecoverMonsterToNearestOpenTile(mt)) {
+                monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
+                monsterTrail_.clear();
+                monsterLimbAnchors_.clear();
+                monsterHandprints_.clear();
+                monsterBodySmoothTime_ = -1000.0f;
+                RecordMonsterTrailPoint(monster_);
+                ClearMonsterPath();
+            }
             UpdateMonsterHeadAnimation(dt, false);
             return;
         }
@@ -655,22 +697,22 @@
                     monsterRepath_ = 0.0f;
                 }
             } else {
-                float creepSurge = 0.82f + std::pow(std::max(0.0f, std::sin(time_ * 0.47f + monster_.x * 0.13f + monster_.z * 0.19f)), 9.0f) * 0.68f;
+                float creepSurge = 0.90f + std::pow(std::max(0.0f, std::sin(time_ * 0.36f + monster_.x * 0.10f + monster_.z * 0.14f)), 8.0f) * 0.34f;
                 float speed = 1.08f * settings_.monsterSpeed * creepSurge;
                 if (seesPlayer) {
                     float proximity = Clamp01((7.2f - MonsterDistance()) / 6.2f);
                     float impulseSeed = Rand01(mt.x * 43 + mt.y * 59 + static_cast<int>(time_ * 2.1f), 1409, runtimeSeed_);
                     float impulse = std::pow(std::max(0.0f,
                         std::sin(time_ * Lerp(2.1f, 4.4f, impulseSeed) + monster_.x * 0.41f - monster_.z * 0.23f)), Lerp(2.7f, 7.5f, impulseSeed));
-                    float stutter = Lerp(0.58f, 1.78f, impulse);
+                    float stutter = Lerp(0.94f, 1.16f, impulse);
                     speed = Lerp(2.40f, 3.98f, proximity) * settings_.monsterSprintSpeed * (0.88f + creepSurge * 0.12f) * stutter;
                 } else if (monsterHasLastKnown_) {
                     float searchSeed = Rand01(mt.x * 23 + mt.y * 71 + static_cast<int>(time_ * 1.4f), 1423, runtimeSeed_);
                     float searchPulse = std::pow(std::max(0.0f,
                         std::sin(time_ * Lerp(1.2f, 3.1f, searchSeed) + monster_.z * 0.35f)), Lerp(2.5f, 6.0f, searchSeed));
-                    speed = 2.24f * settings_.monsterSprintSpeed * Lerp(0.62f, 1.46f, searchPulse) * (0.90f + creepSurge * 0.16f);
+                    speed = 2.12f * settings_.monsterSprintSpeed * Lerp(0.80f, 1.20f, searchPulse) * (0.92f + creepSurge * 0.10f);
                 } else if (monsterHasSound_) {
-                    speed = 2.48f * settings_.monsterSprintSpeed * (0.92f + creepSurge * 0.16f);
+                    speed = 2.30f * settings_.monsterSprintSpeed * (0.94f + creepSurge * 0.08f);
                 } else {
                     float pulseSeed = Rand01(mt.x * 19 + mt.y * 37 + static_cast<int>(monsterPathIndex_) * 11, 1289, runtimeSeed_);
                     float lizardPulse = 0.5f + 0.5f *
@@ -678,8 +720,8 @@
                     lizardPulse = SmoothStep(0.0f, 1.0f, Clamp01(lizardPulse));
                     float burst = monsterRoamBurstTimer_ > 0.0f ? SmoothStep(0.0f, 1.0f, Clamp01(monsterRoamBurstTimer_ / 0.82f)) : 0.0f;
                     float burstNoise = Rand01(mt.x * 17 + mt.y * 31 + static_cast<int>(time_ * 1.7f), 1297, runtimeSeed_);
-                    float slowFlow = Lerp(0.72f, 1.12f, lizardPulse);
-                    float rush = Lerp(1.75f, 2.75f, burstNoise);
+                    float slowFlow = Lerp(0.80f, 1.05f, lizardPulse);
+                    float rush = Lerp(1.45f, 2.15f, burstNoise);
                     speed = settings_.monsterSpeed * Lerp(slowFlow, rush, burst);
                     monsterRoamBurstTimer_ = std::max(0.0f, monsterRoamBurstTimer_ - dt);
                     if (monsterRoamBurstTimer_ <= 0.0f && burst > 0.35f && RandRange(0.0f, 1.0f) < 0.05f) {

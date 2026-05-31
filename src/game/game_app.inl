@@ -83,7 +83,7 @@ int RunGame(HINSTANCE hInstance) {
     LayoutGameControls(hwnd);
     SetGameMenuVisible(true);
     UpdateGameMenuLabels();
-    SetGameCursorVisible(false);
+    SetGameCursorVisible(true);
     app.gameMenuFadeStart = GetTickCount64();
     SetDebugControlsVisible(false);
     ShowWindow(hwnd, SW_SHOW);
@@ -126,7 +126,7 @@ int RunGame(HINSTANCE hInstance) {
                     DestroyWindow(app.gameConfig);
                 }
             } else if (app.gameState == GameState::MainMenu && app.gameRunStarted && !app.gameDebugActive) {
-                ActivateGameMenuCommand(hwnd, kGameSinglePlayerId);
+                ActivateGameMenuCommand(hwnd, kGameResumeCurrentRunId);
             }
         }
         escapeWasDown = pauseDown;

@@ -1,5 +1,6 @@
     struct PlayableSnapshot {
         Settings settings;
+        PlayableRunState playableRun;
         Maze maze;
         uint32_t runtimeSeed = 1;
         std::mt19937 rng;
@@ -164,9 +165,17 @@
         float playerStaminaRegenDelay = 0.0f;
         float playerNoiseRadiusMeters = 0.0f;
         bool sprintStaminaLocked = false;
+        bool tunnelCrouchLocked = false;
+        float crouchBlend = 0.0f;
+        float tunnelPostureHoldTimer = 0.0f;
+        float tunnelLeanTarget = 0.0f;
+        float tunnelLeanAmount = 0.0f;
+        float tunnelLeanSideTarget = 1.0f;
+        float tunnelLeanSide = 1.0f;
         bool previousInteractInput = false;
         std::array<CollectiblePage, kCollectiblePageMaterialCount> collectiblePages{};
         int collectiblePagesCollected = 0;
+        SavePoint savePoint{};
         XMFLOAT3 monster{};
         std::vector<Tile> monsterPath;
         std::vector<XMFLOAT3> monsterTrail;
@@ -208,6 +217,7 @@
     void SavePlayableSnapshot() {
         auto s = std::make_unique<PlayableSnapshot>();
         s->settings = settings_;
+        s->playableRun = playableRun_;
         s->maze = maze_;
         s->runtimeSeed = runtimeSeed_;
         s->rng = rng_;
@@ -372,9 +382,17 @@
         s->playerStaminaRegenDelay = playerStaminaRegenDelay_;
         s->playerNoiseRadiusMeters = playerNoiseRadiusMeters_;
         s->sprintStaminaLocked = sprintStaminaLocked_;
+        s->tunnelCrouchLocked = tunnelCrouchLocked_;
+        s->crouchBlend = crouchBlend_;
+        s->tunnelPostureHoldTimer = tunnelPostureHoldTimer_;
+        s->tunnelLeanTarget = tunnelLeanTarget_;
+        s->tunnelLeanAmount = tunnelLeanAmount_;
+        s->tunnelLeanSideTarget = tunnelLeanSideTarget_;
+        s->tunnelLeanSide = tunnelLeanSide_;
         s->previousInteractInput = previousInteractInput_;
         s->collectiblePages = collectiblePages_;
         s->collectiblePagesCollected = collectiblePagesCollected_;
+        s->savePoint = savePoint_;
         s->monster = monster_;
         s->monsterPath = monsterPath_;
         s->monsterTrail = monsterTrail_;
@@ -419,6 +437,7 @@
         gBloodDebugEveryWall = false;
         EnsureFullSceneAssets();
         settings_ = s.settings;
+        playableRun_ = std::move(s.playableRun);
         maze_ = s.maze;
         runtimeSeed_ = s.runtimeSeed;
         rng_ = s.rng;
@@ -587,9 +606,17 @@
         playerStaminaRegenDelay_ = s.playerStaminaRegenDelay;
         playerNoiseRadiusMeters_ = s.playerNoiseRadiusMeters;
         sprintStaminaLocked_ = s.sprintStaminaLocked;
+        tunnelCrouchLocked_ = s.tunnelCrouchLocked;
+        crouchBlend_ = s.crouchBlend;
+        tunnelPostureHoldTimer_ = s.tunnelPostureHoldTimer;
+        tunnelLeanTarget_ = s.tunnelLeanTarget;
+        tunnelLeanAmount_ = s.tunnelLeanAmount;
+        tunnelLeanSideTarget_ = s.tunnelLeanSideTarget;
+        tunnelLeanSide_ = s.tunnelLeanSide;
         previousInteractInput_ = s.previousInteractInput;
         collectiblePages_ = s.collectiblePages;
         collectiblePagesCollected_ = s.collectiblePagesCollected;
+        savePoint_ = s.savePoint;
         monster_ = s.monster;
         monsterPath_ = std::move(s.monsterPath);
         monsterTrail_ = std::move(s.monsterTrail);

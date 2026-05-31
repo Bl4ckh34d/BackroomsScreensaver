@@ -1,3 +1,141 @@
+    const wchar_t* GpuProfileMarkerName(GpuProfileMarker marker) const {
+        switch (marker) {
+        case GpuProfileMarker::FrameStart: return L"FrameStart";
+        case GpuProfileMarker::ClearTargets: return L"ClearTargets";
+        case GpuProfileMarker::DynamicGeometry: return L"DynamicGeometry";
+        case GpuProfileMarker::FlashlightShadow: return L"FlashlightShadow";
+        case GpuProfileMarker::FixtureShadow: return L"FixtureShadow";
+        case GpuProfileMarker::MonsterEyeShadow: return L"MonsterEyeShadow";
+        case GpuProfileMarker::Uploads: return L"Uploads";
+        case GpuProfileMarker::MainOpaque: return L"MainOpaque";
+        case GpuProfileMarker::FloorCeiling: return L"FloorCeiling";
+        case GpuProfileMarker::DynamicOpaque: return L"DynamicOpaque";
+        case GpuProfileMarker::StaticWater: return L"StaticWater";
+        case GpuProfileMarker::StaticTransparent: return L"StaticTransparent";
+        case GpuProfileMarker::DynamicTransparent: return L"DynamicTransparent";
+        case GpuProfileMarker::PostProcess: return L"PostProcess";
+        case GpuProfileMarker::Overlays: return L"Overlays";
+        case GpuProfileMarker::FrameEnd: return L"FrameEnd";
+        default: return L"Unknown";
+        }
+    }
+
+    void CreateGpuProfileQueries() {
+        gpuProfileAvailable_ = false;
+        gpuProfileFrameOpen_ = false;
+        gpuProfileWriteIndex_ = 0;
+        gpuProfileFrameCounter_ = 0;
+        for (GpuProfileFrame& frame : gpuProfileFrames_) {
+            frame = {};
+        }
+        if (!StartupProfileEnabled() || !device_) return;
+
+        D3D11_QUERY_DESC disjointDesc{};
+        disjointDesc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+        D3D11_QUERY_DESC timestampDesc{};
+        timestampDesc.Query = D3D11_QUERY_TIMESTAMP;
+
+        for (GpuProfileFrame& frame : gpuProfileFrames_) {
+            if (FAILED(device_->CreateQuery(&disjointDesc, &frame.disjoint))) {
+                StartupProfileLine(L"GPU profile queries unavailable: timestamp disjoint query creation failed.");
+                for (GpuProfileFrame& resetFrame : gpuProfileFrames_) resetFrame = {};
+                return;
+            }
+            for (ComPtr<ID3D11Query>& timestamp : frame.timestamps) {
+                if (FAILED(device_->CreateQuery(&timestampDesc, &timestamp))) {
+                    StartupProfileLine(L"GPU profile queries unavailable: timestamp query creation failed.");
+                    for (GpuProfileFrame& resetFrame : gpuProfileFrames_) resetFrame = {};
+                    return;
+                }
+            }
+        }
+        gpuProfileAvailable_ = true;
+        StartupProfileLine(L"GPU profile queries ready.");
+    }
+
+    void ResolveGpuProfileFrame(GpuProfileFrame& frame) {
+        if (!gpuProfileAvailable_ || !context_ || !frame.issued || frame.open) return;
+
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
+        HRESULT hr = context_->GetData(frame.disjoint.Get(), &disjoint, sizeof(disjoint), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (hr == S_FALSE) return;
+        if (FAILED(hr)) {
+            frame.issued = false;
+            StartupProfileLine(L"GPU profile frame dropped: disjoint query read failed.");
+            return;
+        }
+        if (disjoint.Disjoint || disjoint.Frequency == 0) {
+            frame.issued = false;
+            StartupProfileLine(L"GPU profile frame dropped: timestamp frequency was disjoint.");
+            return;
+        }
+
+        std::array<UINT64, kGpuProfileMarkerCount> timestamps{};
+        for (size_t i = 0; i < kGpuProfileMarkerCount; ++i) {
+            hr = context_->GetData(frame.timestamps[i].Get(), &timestamps[i], sizeof(UINT64), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+            if (hr == S_FALSE) return;
+            if (FAILED(hr)) {
+                frame.issued = false;
+                StartupProfileLine(L"GPU profile frame dropped: timestamp read failed.");
+                return;
+            }
+        }
+
+        auto elapsedMs = [&](size_t from, size_t to) {
+            if (timestamps[to] < timestamps[from]) return 0.0;
+            return static_cast<double>(timestamps[to] - timestamps[from]) * 1000.0 /
+                static_cast<double>(disjoint.Frequency);
+        };
+
+        std::wostringstream line;
+        line << std::fixed << std::setprecision(3);
+        line << L"GPU frame " << frame.frameId << L": total="
+             << elapsedMs(static_cast<size_t>(GpuProfileMarker::FrameStart), static_cast<size_t>(GpuProfileMarker::FrameEnd))
+             << L" ms";
+        for (size_t i = 1; i < kGpuProfileMarkerCount; ++i) {
+            line << L", "
+                 << GpuProfileMarkerName(static_cast<GpuProfileMarker>(i))
+                 << L"=" << elapsedMs(i - 1, i) << L" ms";
+        }
+        StartupProfileLine(line.str());
+        frame.issued = false;
+    }
+
+    void BeginGpuProfileFrame() {
+        if (!gpuProfileAvailable_ || !context_ || gpuProfileFrameOpen_) return;
+        for (GpuProfileFrame& frame : gpuProfileFrames_) {
+            ResolveGpuProfileFrame(frame);
+        }
+
+        GpuProfileFrame& frame = gpuProfileFrames_[gpuProfileWriteIndex_];
+        if (frame.issued || !frame.disjoint) return;
+
+        frame.open = true;
+        frame.frameId = ++gpuProfileFrameCounter_;
+        context_->Begin(frame.disjoint.Get());
+        gpuProfileFrameOpen_ = true;
+        MarkGpuProfile(GpuProfileMarker::FrameStart);
+    }
+
+    void MarkGpuProfile(GpuProfileMarker marker) {
+        if (!gpuProfileAvailable_ || !context_ || !gpuProfileFrameOpen_) return;
+        GpuProfileFrame& frame = gpuProfileFrames_[gpuProfileWriteIndex_];
+        size_t index = static_cast<size_t>(marker);
+        if (index >= kGpuProfileMarkerCount || !frame.timestamps[index]) return;
+        context_->End(frame.timestamps[index].Get());
+    }
+
+    void EndGpuProfileFrame() {
+        if (!gpuProfileAvailable_ || !context_ || !gpuProfileFrameOpen_) return;
+        GpuProfileFrame& frame = gpuProfileFrames_[gpuProfileWriteIndex_];
+        MarkGpuProfile(GpuProfileMarker::FrameEnd);
+        context_->End(frame.disjoint.Get());
+        frame.open = false;
+        frame.issued = true;
+        gpuProfileFrameOpen_ = false;
+        gpuProfileWriteIndex_ = (gpuProfileWriteIndex_ + 1) % kGpuProfileFrameCount;
+    }
+
     bool CreateStates() {
         D3D11_SAMPLER_DESC sd{};
         sd.Filter = D3D11_FILTER_ANISOTROPIC;
@@ -70,7 +208,9 @@
         bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
         bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
         bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-        return SUCCEEDED(device_->CreateBlendState(&bd, &alphaBlend_));
+        if (FAILED(device_->CreateBlendState(&bd, &alphaBlend_))) return false;
+        CreateGpuProfileQueries();
+        return true;
     }
 
     bool CreateShadowResources() {

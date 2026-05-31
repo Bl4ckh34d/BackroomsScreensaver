@@ -222,10 +222,10 @@
     XMFLOAT2 CeilingUv(float x, float z) const {
         float scaleX = settings_.ceilingTextureMeters > 0.001f
             ? std::max(0.2f, settings_.ceilingTextureMeters)
-            : std::max(0.2f, maze_.tileW * (2.0f / 3.0f));
+            : std::max(0.2f, maze_.tileW * 2.0f);
         float scaleZ = settings_.ceilingTextureMeters > 0.001f
             ? std::max(0.2f, settings_.ceilingTextureMeters)
-            : std::max(0.2f, maze_.tileD * (2.0f / 3.0f));
+            : std::max(0.2f, maze_.tileD * 2.0f);
         float originX = -static_cast<float>(maze_.w) * maze_.tileW * 0.5f;
         float originZ = -static_cast<float>(maze_.h) * maze_.tileD * 0.5f;
         return {(x - originX) / scaleX, (z - originZ) / scaleZ};
@@ -361,6 +361,8 @@
         const float tileAvg = maze_.TileAverage();
         const float tileMin = maze_.TileMinimum();
         const float wallH = settings_.wallHeightMeters;
+        const float wallFeatureWindowSplitY = std::clamp(std::max(0.86f, wallH * 0.40f), 0.68f, wallH - 0.08f);
+        const float wallFeatureTunnelSplitY = std::clamp(std::max(1.18f, wallH * 0.54f), 0.86f, wallH - 0.08f);
         float ox = -static_cast<float>(maze_.w) * tileW * 0.5f;
         float oz = -static_cast<float>(maze_.h) * tileD * 0.5f;
 
@@ -412,20 +414,32 @@
 
         ExitPortal exitPortal = makeExitPortal();
 
-        auto addFloorCeilingRun = [&](int y, int x0, int x1) {
+        auto addFloorTile = [&](int x, int y) {
             float z0 = oz + y * tileD;
             float z1 = z0 + tileD;
+            float l = ox + x * tileW;
+            float r = l + tileW;
+            AddQuadUV(vertices, indices,
+                {l, 0, z1}, {r, 0, z1}, {r, 0, z0}, {l, 0, z0},
+                {0, 1, 0}, {1, 0, 0},
+                FloorUv(l, z1), FloorUv(r, z1), FloorUv(r, z0), FloorUv(l, z0), 1.0f);
+        };
+
+        auto addCeilingTile = [&](int x, int y) {
+            float z0 = oz + y * tileD;
+            float z1 = z0 + tileD;
+            float l = ox + x * tileW;
+            float r = l + tileW;
+            AddQuadUV(vertices, indices,
+                {l, wallH, z0}, {r, wallH, z0}, {r, wallH, z1}, {l, wallH, z1},
+                {0, -1, 0}, {1, 0, 0},
+                CeilingUv(l, z0), CeilingUv(r, z0), CeilingUv(r, z1), CeilingUv(l, z1), 2.0f);
+        };
+
+        auto addFloorCeilingRun = [&](int y, int x0, int x1) {
             for (int x = x0; x < x1; ++x) {
-                float l = ox + x * tileW;
-                float r = l + tileW;
-                AddQuadUV(vertices, indices,
-                    {l, 0, z1}, {r, 0, z1}, {r, 0, z0}, {l, 0, z0},
-                    {0, 1, 0}, {1, 0, 0},
-                    FloorUv(l, z1), FloorUv(r, z1), FloorUv(r, z0), FloorUv(l, z0), 1.0f);
-                AddQuadUV(vertices, indices,
-                    {l, wallH, z0}, {r, wallH, z0}, {r, wallH, z1}, {l, wallH, z1},
-                    {0, -1, 0}, {1, 0, 0},
-                    CeilingUv(l, z0), CeilingUv(r, z0), CeilingUv(r, z1), CeilingUv(l, z1), 2.0f);
+                addFloorTile(x, y);
+                addCeilingTile(x, y);
             }
         };
 
@@ -434,10 +448,16 @@
             for (int x = x0; x < x1; ++x) {
                 float l = ox + x * tileW;
                 float r = l + tileW;
+                float y0 = 0.0f;
+                float y1 = wallH;
+                MazeWallFeature feature = maze_.WallFeature(x, y - 1);
+                if (feature == MazeWallFeature::Window) y1 = wallFeatureWindowSplitY;
+                if (feature == MazeWallFeature::Tunnel) y0 = wallFeatureTunnelSplitY;
+                if (y1 <= y0 + 0.02f) continue;
                 AddQuadUV(vertices, indices,
-                    {r, 0, z}, {l, 0, z}, {l, wallH, z}, {r, wallH, z},
+                    {r, y0, z}, {l, y0, z}, {l, y1, z}, {r, y1, z},
                     {0, 0, 1}, {-1, 0, 0},
-                    WallUvX(r, 0), WallUvX(l, 0), WallUvX(l, wallH), WallUvX(r, wallH), 0.0f);
+                    WallUvX(r, y0), WallUvX(l, y0), WallUvX(l, y1), WallUvX(r, y1), 0.0f);
             }
         };
 
@@ -446,10 +466,16 @@
             for (int x = x0; x < x1; ++x) {
                 float l = ox + x * tileW;
                 float r = l + tileW;
+                float y0 = 0.0f;
+                float y1 = wallH;
+                MazeWallFeature feature = maze_.WallFeature(x, y + 1);
+                if (feature == MazeWallFeature::Window) y1 = wallFeatureWindowSplitY;
+                if (feature == MazeWallFeature::Tunnel) y0 = wallFeatureTunnelSplitY;
+                if (y1 <= y0 + 0.02f) continue;
                 AddQuadUV(vertices, indices,
-                    {l, 0, z}, {r, 0, z}, {r, wallH, z}, {l, wallH, z},
+                    {l, y0, z}, {r, y0, z}, {r, y1, z}, {l, y1, z},
                     {0, 0, -1}, {1, 0, 0},
-                    WallUvX(l, 0), WallUvX(r, 0), WallUvX(r, wallH), WallUvX(l, wallH), 0.0f);
+                    WallUvX(l, y0), WallUvX(r, y0), WallUvX(r, y1), WallUvX(l, y1), 0.0f);
             }
         };
 
@@ -458,10 +484,16 @@
             for (int y = y0; y < y1; ++y) {
                 float z0 = oz + y * tileD;
                 float z1 = z0 + tileD;
+                float wallY0 = 0.0f;
+                float wallY1 = wallH;
+                MazeWallFeature feature = maze_.WallFeature(x - 1, y);
+                if (feature == MazeWallFeature::Window) wallY1 = wallFeatureWindowSplitY;
+                if (feature == MazeWallFeature::Tunnel) wallY0 = wallFeatureTunnelSplitY;
+                if (wallY1 <= wallY0 + 0.02f) continue;
                 AddQuadUV(vertices, indices,
-                    {l, 0, z0}, {l, 0, z1}, {l, wallH, z1}, {l, wallH, z0},
+                    {l, wallY0, z0}, {l, wallY0, z1}, {l, wallY1, z1}, {l, wallY1, z0},
                     {1, 0, 0}, {0, 0, 1},
-                    WallUvZ(z0, 0), WallUvZ(z1, 0), WallUvZ(z1, wallH), WallUvZ(z0, wallH), 0.0f);
+                    WallUvZ(z0, wallY0), WallUvZ(z1, wallY0), WallUvZ(z1, wallY1), WallUvZ(z0, wallY1), 0.0f);
             }
         };
 
@@ -470,10 +502,16 @@
             for (int y = y0; y < y1; ++y) {
                 float z0 = oz + y * tileD;
                 float z1 = z0 + tileD;
+                float wallY0 = 0.0f;
+                float wallY1 = wallH;
+                MazeWallFeature feature = maze_.WallFeature(x + 1, y);
+                if (feature == MazeWallFeature::Window) wallY1 = wallFeatureWindowSplitY;
+                if (feature == MazeWallFeature::Tunnel) wallY0 = wallFeatureTunnelSplitY;
+                if (wallY1 <= wallY0 + 0.02f) continue;
                 AddQuadUV(vertices, indices,
-                    {r, 0, z1}, {r, 0, z0}, {r, wallH, z0}, {r, wallH, z1},
+                    {r, wallY0, z1}, {r, wallY0, z0}, {r, wallY1, z0}, {r, wallY1, z1},
                     {-1, 0, 0}, {0, 0, -1},
-                    WallUvZ(z1, 0), WallUvZ(z0, 0), WallUvZ(z0, wallH), WallUvZ(z1, wallH), 0.0f);
+                    WallUvZ(z1, wallY0), WallUvZ(z0, wallY0), WallUvZ(z0, wallY1), WallUvZ(z1, wallY1), 0.0f);
             }
         };
 
@@ -653,6 +691,73 @@
             }
         };
 
+        auto addWallFeatureInteriorSurfaces = [&]() {
+            for (int y = 1; y < maze_.h - 1; ++y) {
+                for (int x = 1; x < maze_.w - 1; ++x) {
+                    MazeWallFeature feature = maze_.WallFeature(x, y);
+                    if (feature == MazeWallFeature::None || maze_.IsOpen(x, y)) continue;
+
+                    const bool east = maze_.IsOpen(x + 1, y);
+                    const bool west = maze_.IsOpen(x - 1, y);
+                    const bool south = maze_.IsOpen(x, y + 1);
+                    const bool north = maze_.IsOpen(x, y - 1);
+                    const bool eastWestPassage = east && west && !south && !north;
+                    const bool northSouthPassage = south && north && !east && !west;
+                    if (!eastWestPassage && !northSouthPassage) continue;
+                    auto adjacentFeature = [&](int tx, int ty) {
+                        return maze_.WallFeature(tx, ty) != MazeWallFeature::None && !maze_.IsOpen(tx, ty);
+                    };
+
+                    const float l = ox + x * tileW;
+                    const float r = l + tileW;
+                    const float z0 = oz + y * tileD;
+                    const float z1 = z0 + tileD;
+                    const float splitY = feature == MazeWallFeature::Window ? wallFeatureWindowSplitY : wallFeatureTunnelSplitY;
+                    const float capY = std::clamp(splitY, 0.02f, wallH - 0.02f);
+
+                    if (eastWestPassage) {
+                        if (!adjacentFeature(x, y - 1)) {
+                            AddQuadUV(vertices, indices,
+                                {l, 0.0f, z0}, {r, 0.0f, z0}, {r, wallH, z0}, {l, wallH, z0},
+                                {0, 0, 1}, {1, 0, 0},
+                                WallUvX(l, 0.0f), WallUvX(r, 0.0f), WallUvX(r, wallH), WallUvX(l, wallH), 0.0f);
+                        }
+                        if (!adjacentFeature(x, y + 1)) {
+                            AddQuadUV(vertices, indices,
+                                {r, 0.0f, z1}, {l, 0.0f, z1}, {l, wallH, z1}, {r, wallH, z1},
+                                {0, 0, -1}, {-1, 0, 0},
+                                WallUvX(r, 0.0f), WallUvX(l, 0.0f), WallUvX(l, wallH), WallUvX(r, wallH), 0.0f);
+                        }
+                    } else {
+                        if (!adjacentFeature(x - 1, y)) {
+                            AddQuadUV(vertices, indices,
+                                {l, 0.0f, z1}, {l, 0.0f, z0}, {l, wallH, z0}, {l, wallH, z1},
+                                {1, 0, 0}, {0, 0, -1},
+                                WallUvZ(z1, 0.0f), WallUvZ(z0, 0.0f), WallUvZ(z0, wallH), WallUvZ(z1, wallH), 0.0f);
+                        }
+                        if (!adjacentFeature(x + 1, y)) {
+                            AddQuadUV(vertices, indices,
+                                {r, 0.0f, z0}, {r, 0.0f, z1}, {r, wallH, z1}, {r, wallH, z0},
+                                {-1, 0, 0}, {0, 0, 1},
+                                WallUvZ(z0, 0.0f), WallUvZ(z1, 0.0f), WallUvZ(z1, wallH), WallUvZ(z0, wallH), 0.0f);
+                        }
+                    }
+
+                    if (feature == MazeWallFeature::Window) {
+                        AddQuadUV(vertices, indices,
+                            {l, capY, z1}, {r, capY, z1}, {r, capY, z0}, {l, capY, z0},
+                            {0, 1, 0}, {1, 0, 0},
+                            FloorUv(l, z1), FloorUv(r, z1), FloorUv(r, z0), FloorUv(l, z0), 0.0f);
+                    } else {
+                        AddQuadUV(vertices, indices,
+                            {l, capY, z0}, {r, capY, z0}, {r, capY, z1}, {l, capY, z1},
+                            {0, -1, 0}, {1, 0, 0},
+                            CeilingUv(l, z0), CeilingUv(r, z0), CeilingUv(r, z1), CeilingUv(l, z1), 0.0f);
+                    }
+                }
+            }
+        };
+
         for (int y = 0; y < maze_.h; ++y) {
             int x = 0;
             while (x < maze_.w) {
@@ -688,6 +793,8 @@
                 if (start < y) addEastWallRunWithPortal(x, start, y);
             }
         }
+
+        addWallFeatureInteriorSurfaces();
 
         auto tileHash = [&](int x, int y, float salt) {
             return LampHash(static_cast<float>(x) + salt * 3.17f, static_cast<float>(y) - salt * 5.31f);
@@ -1463,7 +1570,7 @@
                 float encodedSlot = (static_cast<float>(slot) + 0.5f) / static_cast<float>(kRandomLoosePageAtlasSlots);
                 return static_cast<float>(kRandomLoosePageMaterial) + encodedSlot;
             }
-            return 9.54f + std::min(0.34f, variantSeed * 0.34f);
+            return static_cast<float>(kRandomLoosePageMaterial);
         };
 
         auto addPaperAt = [&](float px, float pz, float yaw, float lift, float material) {
@@ -1710,14 +1817,18 @@
             float signY = doorCenter.y + fixedDoorHalfH + fixedSignTargetH * 0.5f + 0.24f;
             signY = std::min(signY, wallH - fixedSignTargetH * 0.5f - 0.12f);
             XMFLOAT3 sign = {bx + forward.x * 0.028f, signY, bz + forward.z * 0.028f};
-            exitSignLightPos_ = Add3(sign, OrientedOffset(right, up, forward, 0.0f, -0.02f, 0.16f));
-            exitSignLightStrength_ = 1.0f;
+            exitSignLightPos_ = Add3(sign, OrientedOffset(right, up, forward, 0.0f, -0.01f, 0.30f));
+            exitSignLightStrength_ = 4.35f;
+            float targetW = std::min(1.04f, exitPortal.halfSpan * 1.30f);
             if (!exitSignPropMesh_.vertices.empty()) {
                 float spanX = std::max(0.001f, propSpan(exitSignPropMesh_, 0));
                 float spanY = std::max(0.001f, propSpan(exitSignPropMesh_, 1));
-                float targetW = std::min(1.04f, exitPortal.halfSpan * 1.30f);
                 float targetH = fixedSignTargetH;
                 float scale = std::clamp(std::min(targetW / spanX, targetH / spanY), 0.05f, 8.0f);
+                float actualSignW = spanX * scale;
+                float actualSignH = spanY * scale;
+                AddOrientedBox(vertices, indices, Add3(sign, Scale3(forward, -0.004f)),
+                    {actualSignW * 0.5f + 0.024f, actualSignH * 0.5f + 0.016f, 0.012f}, exitPortal.yaw, 10.0f);
                 XMFLOAT3 localCenter{
                     (exitSignPropMesh_.min.x + exitSignPropMesh_.max.x) * 0.5f,
                     (exitSignPropMesh_.min.y + exitSignPropMesh_.max.y) * 0.5f,
@@ -1728,13 +1839,14 @@
                         Add3(Scale3(up, -localCenter.y * scale), Scale3(signForward, -localCenter.z * scale))));
                     return AppendStaticPropMesh(vertices, indices, exitSignPropMesh_, origin, yaw, scale, scale, scale, 0.0f, 7.0f);
                 };
-                bool appended = appendExitSignModel(Add3(sign, Scale3(forward, 0.006f)), right, forward, exitPortal.yaw);
-                appended = appendExitSignModel(Add3(sign, Scale3(forward, -0.006f)), Scale3(right, -1.0f), Scale3(forward, -1.0f), exitPortal.yaw + kPi) || appended;
+                bool appended = appendExitSignModel(Add3(sign, Scale3(forward, 0.012f)), right, forward, exitPortal.yaw);
                 if (!appended) {
                     StartupProfileLine(L"Emergency exit sign mesh was loaded but could not be appended; no handmade fallback was drawn.");
                 }
             } else {
-                StartupProfileLine(L"Emergency exit sign mesh missing; no handmade fallback was drawn.");
+                AddOrientedBox(vertices, indices, Add3(sign, Scale3(forward, 0.012f)),
+                    {targetW * 0.5f, fixedSignTargetH * 0.5f, 0.014f}, exitPortal.yaw, 7.0f);
+                StartupProfileLine(L"Emergency exit sign mesh missing; using handmade fallback.");
             }
         };
         addExitDoor();
@@ -2902,7 +3014,7 @@
                 return true;
             };
             auto emitWaterWallCanvasRuns = [&]() {
-                constexpr float kWaterWallCanvasInset = 0.0062f;
+                constexpr float kWaterWallCanvasInset = 0.0180f;
                 auto waterWallCanvasMaterial = [](float seed) {
                     return 25.965f + std::fmod(std::abs(seed), 1.0f) * 0.0245f;
                 };
@@ -4140,9 +4252,11 @@
             emitLiquidCanvasTiles();
 
             float roomClutterDensity = std::clamp(settings_.chairDensity * 0.85f, 0.0f, 4.0f);
+            int roomGroupMin = roomClutterDensity >= 0.72f ? 4 : (roomClutterDensity < 0.12f ? 0 : 1);
             int roomGroups = roomClutterDensity <= 0.001f
                 ? 0
-                : std::clamp(static_cast<int>(static_cast<float>(openTiles.size()) * 0.010f * roomClutterDensity), 4, 42);
+                : std::clamp(static_cast<int>(std::round(static_cast<float>(openTiles.size()) * 0.010f * roomClutterDensity)),
+                    roomGroupMin, 42);
             int roomAttempts = roomGroups * 7;
             int placedRoomGroups = 0;
             for (int g = 0; g < roomAttempts && placedRoomGroups < roomGroups; ++g) {
@@ -4155,7 +4269,8 @@
                 }
             }
 
-            int basePages = std::clamp(static_cast<int>(openTiles.size() / 3), 260, 900);
+            int basePageMin = paperDensity >= 0.95f ? 260 : 80;
+            int basePages = std::clamp(static_cast<int>(openTiles.size() / 3), basePageMin, 900);
             int targetPages = std::clamp(static_cast<int>(basePages * paperDensity), 0, 3600);
             int attempts = targetPages * 4;
             int placed = 0;
@@ -4209,7 +4324,9 @@
 
         for (int tileY = 0; tileY < maze_.h; ++tileY) {
             for (int tileX = 0; tileX < maze_.w; ++tileX) {
-                if (!maze_.IsOpen(tileX, tileY)) continue;
+                MazeWallFeature feature = maze_.WallFeature(tileX, tileY);
+                bool hasCeilingSurface = maze_.IsOpen(tileX, tileY) || feature == MazeWallFeature::Window;
+                if (!hasCeilingSurface) continue;
 
                 Tile lampTile{tileX, tileY};
                 XMFLOAT3 lampCenter = maze_.WorldCenter(lampTile, 0.0f);
@@ -4224,8 +4341,11 @@
                 bool jumpscareLamp = wetLampTile && lampOn && IsPlayableSimulationMode(runtimeMode_) &&
                     LampHash(static_cast<float>(cellX) + 151.3f, static_cast<float>(cellZ) - 207.9f) < settings_.sparkEmitterRatio;
                 if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
-                    lampOn = lampTile == maze_.start;
-                    brokenPanel = false;
+                    Tile menuSparkTile{std::clamp(maze_.start.x + 1, 1, maze_.w - 2), std::max(1, maze_.start.y - 5)};
+                    bool menuBrokenPanel = lampTile == menuSparkTile;
+                    brokenZone = menuBrokenPanel;
+                    lampOn = !menuBrokenPanel && seed >= 1.0f - settings_.lampOnRatio;
+                    brokenPanel = menuBrokenPanel;
                     jumpscareLamp = false;
                 }
                 float panelW = tileW * (1.01f / 3.0f);
@@ -4251,8 +4371,13 @@
                     if (jumpscareLamp && settings_.sparkParticles) {
                         sparkEmitters_.push_back({{lampCenter.x, wallH - 0.085f, lampCenter.z}});
                     }
-                } else if (wetLampTile && brokenPanel && settings_.sparkParticles) {
-                    sparkEmitters_.push_back({{lampCenter.x, wallH - 0.085f, lampCenter.z}});
+                } else if (((runtimeMode_ == RendererRuntimeMode::MainMenu && brokenPanel) || wetLampTile) &&
+                           brokenPanel && settings_.sparkParticles) {
+                    SparkEmitter emitter{{lampCenter.x, wallH - 0.085f, lampCenter.z}};
+                    if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+                        emitter.cooldown = 1.4f + LampHash(static_cast<float>(cellX) + 51.2f, static_cast<float>(cellZ) - 17.4f) * 4.8f;
+                    }
+                    sparkEmitters_.push_back(emitter);
                 }
                 if (brokenZone && !lampDamagePixels_.empty()) {
                     lampDamagePixels_[static_cast<size_t>(tileY * maze_.w + tileX)] = 255;
@@ -4260,20 +4385,6 @@
                 }
             }
         }
-        if (runtimeMode_ == RendererRuntimeMode::MainMenu && !lampDamagePixels_.empty()) {
-            for (int tileY = 0; tileY < maze_.h; ++tileY) {
-                for (int tileX = 0; tileX < maze_.w; ++tileX) {
-                    if (!maze_.IsOpen(tileX, tileY) || Tile{tileX, tileY} == maze_.start) continue;
-                    lampDamagePixels_[static_cast<size_t>(tileY * maze_.w + tileX)] = 255;
-                }
-            }
-            Tile sparkTile{std::clamp(maze_.start.x + 1, 1, maze_.w - 2), std::max(1, maze_.start.y - 5)};
-            if (maze_.IsOpen(sparkTile.x, sparkTile.y) && settings_.sparkParticles) {
-                XMFLOAT3 sparkCenter = maze_.WorldCenter(sparkTile, 0.0f);
-                sparkEmitters_.push_back({{sparkCenter.x, wallH - 0.085f, sparkCenter.z}});
-            }
-        }
-
         CreateLampDamageTexture();
 
         floorCeilingStartIndex_ = static_cast<UINT>(indices.size());
@@ -4284,6 +4395,17 @@
                 int start = x;
                 while (x < maze_.w && maze_.IsOpen(x, y)) ++x;
                 if (start < x) addFloorCeilingRun(y, start, x);
+            }
+        }
+        for (int y = 0; y < maze_.h; ++y) {
+            for (int x = 0; x < maze_.w; ++x) {
+                if (maze_.IsOpen(x, y)) continue;
+                MazeWallFeature feature = maze_.WallFeature(x, y);
+                if (feature == MazeWallFeature::Tunnel) {
+                    addFloorTile(x, y);
+                } else if (feature == MazeWallFeature::Window) {
+                    addCeilingTile(x, y);
+                }
             }
         }
         floorCeilingIndexCount_ = static_cast<UINT>(indices.size()) - floorCeilingStartIndex_;

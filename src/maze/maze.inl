@@ -1,12 +1,19 @@
 // Maze layout generation and navigation queries.
 // Included from main.cpp before renderer code.
 
+enum class MazeWallFeature : uint8_t {
+    None = 0,
+    Window = 1,
+    Tunnel = 2
+};
+
 struct Maze {
     int w = kMazeW;
     int h = kMazeH;
     float tileW = kTile;
     float tileD = kTile;
     std::vector<uint8_t> open;
+    std::vector<uint8_t> wallFeatures;
     Tile start{1, 1};
     Tile exit{kMazeW - 2, kMazeH - 2};
     std::mt19937 rng{0xBACC2026u};
@@ -20,7 +27,25 @@ struct Maze {
     }
 
     void SetOpen(int x, int y, bool v = true) {
-        if (InBounds(x, y)) open[static_cast<size_t>(y * w + x)] = v ? 1 : 0;
+        if (!InBounds(x, y)) return;
+        const size_t idx = static_cast<size_t>(y * w + x);
+        open[idx] = v ? 1 : 0;
+        if (v && idx < wallFeatures.size()) wallFeatures[idx] = 0;
+    }
+
+    MazeWallFeature WallFeature(int x, int y) const {
+        if (!InBounds(x, y)) return MazeWallFeature::None;
+        const size_t idx = static_cast<size_t>(y * w + x);
+        if (idx >= wallFeatures.size()) return MazeWallFeature::None;
+        return static_cast<MazeWallFeature>(wallFeatures[idx]);
+    }
+
+    bool HasWallFeature(int x, int y) const {
+        return WallFeature(x, y) != MazeWallFeature::None;
+    }
+
+    bool IsVisionOpen(int x, int y) const {
+        return IsOpen(x, y) || WallFeature(x, y) == MazeWallFeature::Window;
     }
 
     XMFLOAT3 WorldCenter(Tile t, float y = 0.0f) const {
@@ -82,7 +107,7 @@ struct Maze {
     }
 
     void AddExtraConnectors(const Settings& settings) {
-        float minRatio = std::clamp(settings.extraConnectorMinRatio, 0.0f, 0.20f);
+        float minRatio = std::clamp(settings.extraConnectorMinRatio, 0.015f, 0.20f);
         float maxRatio = std::clamp(settings.extraConnectorMaxRatio, minRatio, 0.20f);
         if (maxRatio <= 0.0f) return;
 
@@ -120,8 +145,48 @@ struct Maze {
         }
     }
 
+    void GenerateWallFeatures(const Settings& settings) {
+        wallFeatures.assign(static_cast<size_t>(w * h), 0);
+
+        std::vector<Tile> candidates;
+        candidates.reserve(static_cast<size_t>(w * h / 12));
+        for (int y = 1; y < h - 1; ++y) {
+            for (int x = 1; x < w - 1; ++x) {
+                if (IsOpen(x, y)) continue;
+                if (std::abs(x - start.x) + std::abs(y - start.y) <= 3 ||
+                    std::abs(x - exit.x) + std::abs(y - exit.y) <= 3) {
+                    continue;
+                }
+
+                const bool east = IsOpen(x + 1, y);
+                const bool west = IsOpen(x - 1, y);
+                const bool south = IsOpen(x, y + 1);
+                const bool north = IsOpen(x, y - 1);
+                const bool eastWestPassage = east && west && !south && !north;
+                const bool northSouthPassage = south && north && !east && !west;
+                if (eastWestPassage || northSouthPassage) candidates.push_back({x, y});
+            }
+        }
+        if (candidates.empty()) return;
+
+        const float baseFrequency = std::clamp(static_cast<float>(settings.wallFeatureFrequency), 1.0f, 200.0f);
+        const float spread = std::clamp(settings.wallFeatureFrequencySpread, 0.0f, 3.0f);
+        std::uniform_real_distribution<float> spreadDist(-spread, spread);
+        const float frequency = std::clamp(static_cast<float>(baseFrequency * std::pow(2.0f, spreadDist(rng))), 1.0f, 200.0f);
+        int target = std::clamp(static_cast<int>(std::round(static_cast<float>(candidates.size()) / frequency)),
+            1, static_cast<int>(candidates.size()));
+
+        std::shuffle(candidates.begin(), candidates.end(), rng);
+        for (int i = 0; i < target; ++i) {
+            const Tile t = candidates[static_cast<size_t>(i)];
+            wallFeatures[static_cast<size_t>(t.y * w + t.x)] =
+                (rng() & 1u) ? static_cast<uint8_t>(MazeWallFeature::Window) : static_cast<uint8_t>(MazeWallFeature::Tunnel);
+        }
+    }
+
     void Generate(const Settings& settings) {
         open.assign(static_cast<size_t>(w * h), 0);
+        wallFeatures.assign(static_cast<size_t>(w * h), 0);
         start = {1, 1};
         std::vector<Tile> stack;
         stack.push_back(start);
@@ -172,12 +237,14 @@ struct Maze {
         exit = FarthestPerimeterReachable(start);
         AddExtraConnectors(settings);
         exit = FarthestPerimeterReachable(start);
+        GenerateWallFeatures(settings);
     }
 
     void GenerateBloodDebugCorridor() {
         w = std::max(9, w);
         h = std::max(5, h);
         open.assign(static_cast<size_t>(w * h), 0);
+        wallFeatures.assign(static_cast<size_t>(w * h), 0);
         int row = std::clamp(h / 2, 1, h - 2);
         for (int x = 1; x < w - 1; ++x) {
             SetOpen(x, row);
@@ -191,6 +258,7 @@ struct Maze {
         w = tiles + 2;
         h = tiles + 2;
         open.assign(static_cast<size_t>(w * h), 0);
+        wallFeatures.assign(static_cast<size_t>(w * h), 0);
         for (int y = 1; y <= tiles; ++y) {
             for (int x = 1; x <= tiles; ++x) {
                 SetOpen(x, y);
@@ -205,6 +273,7 @@ struct Maze {
         w = 14;
         h = 24;
         open.assign(static_cast<size_t>(w * h), 0);
+        wallFeatures.assign(static_cast<size_t>(w * h), 0);
         start = {9, 21};
         exit = start;
         for (int y = start.y - 2; y <= start.y; ++y) {
@@ -280,7 +349,7 @@ struct Maze {
         for (int i = 0; i <= steps; ++i) {
             float t = static_cast<float>(i) / static_cast<float>(steps);
             Tile sample = TileFromWorld(aw.x + dx * t, aw.z + dz * t);
-            if (!IsOpen(sample.x, sample.y)) return false;
+            if (!IsVisionOpen(sample.x, sample.y)) return false;
         }
         return true;
     }

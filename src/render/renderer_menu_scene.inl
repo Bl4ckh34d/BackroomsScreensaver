@@ -9,12 +9,13 @@
         settings_.hallwayPaperRunDensity = 0.40f;
         settings_.metalCabinetDensity = 0.0f;
         settings_.waterDamageDensity = 0.0f;
-        settings_.lampOnRatio = 1.0f;
+        settings_.lampOnRatio = 0.94f;
         settings_.lampSpacing = std::max(settings_.tileWidthMeters, settings_.tileLengthMeters) * 2.4f;
-        settings_.lampIntensity = std::max(settings_.lampIntensity, 1.05f);
-        settings_.lampFlickerRatio = 0.0f;
+        settings_.lampIntensity = std::max(settings_.lampIntensity, 1.85f);
+        settings_.lampFlickerRatio = 0.080f;
         settings_.brokenZoneRatio = 0.0f;
-        settings_.ambientLight = 0.0f;
+        settings_.ambientLight = std::max(settings_.ambientLight, 0.045f);
+        settings_.exposure = std::max(settings_.exposure, 1.12f);
         settings_.flashlightIntensity = std::clamp(settings_.flashlightIntensity, 1.15f, 1.55f);
         settings_.flashlightAttenuation = std::min(settings_.flashlightAttenuation, 0.048f);
         settings_.flashlightConeDegrees = std::clamp(settings_.flashlightConeDegrees, 68.0f, 78.0f);
@@ -25,8 +26,8 @@
         settings_.bloodWorldCoverage = std::max(settings_.bloodWorldCoverage, 0.45f);
         settings_.bloodWorldAlwaysOn = false;
         settings_.bloodWorldFlickerIntensity = 0.0f;
-        settings_.fogStartMeters = 2.6f;
-        settings_.fogEndMeters = 6.4f;
+        settings_.fogStartMeters = 3.2f;
+        settings_.fogEndMeters = 8.8f;
     }
 
     MenuPlaquePlacement MenuButtonPlacement(int index) const {

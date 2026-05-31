@@ -1,6 +1,39 @@
 // Player/camera movement, navigation, attention, chase, and camera-state helpers.
 // Included inside Renderer's private section from main.cpp.
 
+    void GenerateSavePoint() {
+        savePoint_ = {};
+        if (runtimeMode_ != RendererRuntimeMode::PlayableGame || !playableRun_.active || !playableRun_.levelRunning) return;
+        if (playableRun_.levelInLayer < 3) return;
+        int remainingBudget = playableRun_.saveItemTarget - playableRun_.saveItemsSpawned;
+        if (remainingBudget <= 0) return;
+        int remainingLevels = std::max(1, PlayableRunState::kLevelsPerLayer - std::max(3, playableRun_.levelInLayer) + 1);
+        bool mustSpawn = remainingBudget >= remainingLevels;
+        if (!mustSpawn && !PickChance(settings_.saveItemLevelChance)) return;
+
+        std::vector<Tile> candidates;
+        candidates.reserve(static_cast<size_t>(maze_.w * maze_.h));
+        for (int y = 1; y < maze_.h - 1; ++y) {
+            for (int x = 1; x < maze_.w - 1; ++x) {
+                Tile t{x, y};
+                if (!maze_.IsOpen(x, y) || t == maze_.start || t == maze_.exit) continue;
+                if (std::abs(x - maze_.start.x) + std::abs(y - maze_.start.y) < 4) continue;
+                if (std::abs(x - maze_.exit.x) + std::abs(y - maze_.exit.y) < 3) continue;
+                candidates.push_back(t);
+            }
+        }
+        if (candidates.empty()) return;
+
+        std::shuffle(candidates.begin(), candidates.end(), rng_);
+        Tile t = candidates.front();
+        XMFLOAT3 center = maze_.WorldCenter(t, 0.0f);
+        float yaw = RandRange(0.0f, kPi * 2.0f);
+        savePoint_.pos = {center.x, 0.0f, center.z};
+        savePoint_.yaw = yaw;
+        savePoint_.active = true;
+        playableRun_.saveItemsSpawned = std::min(playableRun_.saveItemTarget, playableRun_.saveItemsSpawned + 1);
+    }
+
     void GenerateCollectiblePages() {
         collectiblePagesCollected_ = 0;
         for (CollectiblePage& page : collectiblePages_) {
@@ -9,12 +42,29 @@
         }
         if (!IsPlayableSimulationMode(runtimeMode_) || maze_.open.empty()) return;
 
+        int firstPageIndex = 0;
+        int pageCount = kCollectiblePageMaterialCount;
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.active) {
+            EnsureLayerPageDistribution();
+            firstPageIndex = LayerPageStartForLevel(playableRun_.levelInLayer);
+            pageCount = LayerPageCountForLevel(playableRun_.levelInLayer);
+        }
+        if (pageCount <= 0) return;
+
         std::vector<Tile> openTiles;
         openTiles.reserve(static_cast<size_t>(maze_.w * maze_.h));
+        auto collectibleFloorTile = [&](Tile t) {
+            return maze_.IsOpen(t.x, t.y) && maze_.WallFeature(t.x, t.y) == MazeWallFeature::None;
+        };
+        auto collectibleWallNeighbor = [&](Tile t) {
+            return maze_.InBounds(t.x, t.y) &&
+                !maze_.IsOpen(t.x, t.y) &&
+                maze_.WallFeature(t.x, t.y) == MazeWallFeature::None;
+        };
         for (int y = 1; y < maze_.h - 1; ++y) {
             for (int x = 1; x < maze_.w - 1; ++x) {
                 Tile t{x, y};
-                if (!maze_.IsOpen(x, y) || t == maze_.start || t == maze_.exit) continue;
+                if (!collectibleFloorTile(t) || t == maze_.start || t == maze_.exit) continue;
                 if (std::abs(x - maze_.start.x) + std::abs(y - maze_.start.y) < 4) continue;
                 openTiles.push_back(t);
             }
@@ -38,7 +88,12 @@
         constexpr float pageW = 0.210f;
         constexpr float pageH = 0.297f;
         const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        for (int pageIndex = 0; pageIndex < kCollectiblePageMaterialCount; ++pageIndex) {
+        for (int pageOffset = 0; pageOffset < pageCount; ++pageOffset) {
+            int pageIndex = firstPageIndex + pageOffset;
+            if (pageIndex < 0 || pageIndex >= kCollectiblePageMaterialCount) continue;
+            bool alreadyCollected = runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.active &&
+                playableRun_.layerPageCollected[static_cast<size_t>(pageIndex)] != 0;
+            if (alreadyCollected) continue;
             bool placed = false;
             for (int attempt = 0; attempt < 220 && !placed; ++attempt) {
                 Tile t = openTiles[static_cast<size_t>(rng_() % openTiles.size())];
@@ -51,7 +106,7 @@
                     for (int ord : order) {
                         int dx = dirs[ord][0];
                         int dy = dirs[ord][1];
-                        if (maze_.IsOpen(t.x + dx, t.y + dy)) continue;
+                        if (!collectibleWallNeighbor({t.x + dx, t.y + dy})) continue;
                         XMFLOAT3 normal{static_cast<float>(-dx), 0.0f, static_cast<float>(-dy)};
                         normal = Normalize3(normal, {0.0f, 0.0f, 1.0f});
                         XMFLOAT3 right = Normalize3(Cross3({0.0f, 1.0f, 0.0f}, normal), {1.0f, 0.0f, 0.0f});
@@ -115,10 +170,38 @@
         if (best < 0) return false;
         CollectiblePage& page = collectiblePages_[static_cast<size_t>(best)];
         page.collected = true;
+        audio_.PlayRandom(GameSound::PaperFlutter, AudioBus::Effects, camera_, 0.72f, false);
         collectiblePagesCollected_ = std::clamp(collectiblePagesCollected_ + 1, 0, kCollectiblePageMaterialCount);
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.active &&
+            page.pageIndex >= 0 && page.pageIndex < kCollectiblePageMaterialCount &&
+            playableRun_.layerPageCollected[static_cast<size_t>(page.pageIndex)] == 0) {
+            playableRun_.layerPageCollected[static_cast<size_t>(page.pageIndex)] = 1;
+            playableRun_.layerPagesCollected = std::clamp(playableRun_.layerPagesCollected + 1, 0, kCollectiblePageMaterialCount);
+        }
         std::wostringstream notice;
-        notice << L"Page collected  " << collectiblePagesCollected_ << L"/" << kCollectiblePageMaterialCount;
+        int displayCollected = runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.active
+            ? playableRun_.layerPagesCollected
+            : collectiblePagesCollected_;
+        notice << L"Page collected  " << displayCollected << L"/" << kCollectiblePageMaterialCount;
         ShowGameNotification(notice.str(), 4.2f);
+        return true;
+    }
+
+    bool TrySavePointInteract() {
+        if (runtimeMode_ != RendererRuntimeMode::PlayableGame || !savePoint_.active || exitTransitionActive_ || deathActive_) return false;
+        XMFLOAT3 target{savePoint_.pos.x, 0.82f, savePoint_.pos.z};
+        XMFLOAT3 to = Sub3(target, camera_);
+        float dist = Length3(to);
+        if (dist > 1.85f) return false;
+        XMFLOAT3 dir = Normalize3(to, {0.0f, 0.0f, 1.0f});
+        XMFLOAT3 view = Normalize3(DirectionFromYawPitch(yaw_, lookPitch_), {0.0f, 0.0f, 1.0f});
+        if (Dot3(dir, view) < 0.34f) return false;
+        if (!maze_.LineClear(CameraTile(), maze_.TileFromWorld(savePoint_.pos.x, savePoint_.pos.z))) return false;
+        if (SaveCurrentRunToFile()) {
+            ShowGameNotification(L"Run saved", 3.8f);
+        } else {
+            ShowGameNotification(L"Save failed", 3.8f);
+        }
         return true;
     }
 
@@ -285,8 +368,16 @@
         playerStaminaRegenDelay_ = 0.0f;
         playerNoiseRadiusMeters_ = 0.0f;
         sprintStaminaLocked_ = false;
+        tunnelCrouchLocked_ = false;
+        crouchBlend_ = 0.0f;
+        tunnelPostureHoldTimer_ = 0.0f;
+        tunnelLeanTarget_ = 0.0f;
+        tunnelLeanAmount_ = 0.0f;
+        tunnelLeanSideTarget_ = 1.0f;
+        tunnelLeanSide_ = 1.0f;
         previousInteractInput_ = false;
         GenerateCollectiblePages();
+        GenerateSavePoint();
         playerAudibleSoundPulses_.clear();
         monster_ = maze_.WorldCenter(maze_.exit, 0.0f);
         monsterPath_.clear();
@@ -297,9 +388,11 @@
         monsterSmoothedBodyUps_.clear();
         monsterBodySmoothTime_ = -1000.0f;
         monsterHandprints_.clear();
-        for (int i = 0; i < 96; ++i) {
-            float back = static_cast<float>(i) * maze_.TileMinimum() * 0.075f;
-            monsterTrail_.push_back({monster_.x - std::sin(monsterYaw_) * back, 0.0f, monster_.z - std::cos(monsterYaw_) * back});
+        if (MonsterActiveForCurrentMode()) {
+            for (int i = 0; i < 96; ++i) {
+                float back = static_cast<float>(i) * maze_.TileMinimum() * 0.075f;
+                monsterTrail_.push_back({monster_.x - std::sin(monsterYaw_) * back, 0.0f, monster_.z - std::cos(monsterYaw_) * back});
+            }
         }
         monsterPathIndex_ = 0;
         monsterRepath_ = 0.0f;
@@ -456,6 +549,18 @@
         monsterPathIndex_ = 0;
     }
 
+    void UpdateMainMenuAmbientSparks(float dt) {
+        if (menuDarkLayerOneRun_ || !settings_.sparkParticles) return;
+        for (SparkEmitter& emitter : sparkEmitters_) {
+            emitter.cooldown -= std::max(0.0f, dt);
+            if (emitter.cooldown > 0.0f) continue;
+            float intensity = RandRange(0.35f, 0.92f);
+            EmitSparkBurstAt(emitter.pos, intensity);
+            PlaySparkSoundAt(emitter.pos, intensity);
+            emitter.cooldown = RandRange(2.8f, 7.4f);
+        }
+    }
+
     void UpdateMainMenuScene(float dt) {
         if (menuStartTransitionActive_) {
             menuStartTransitionTimer_ += std::max(0.0f, dt);
@@ -492,12 +597,13 @@
             previousCameraYaw_ = yaw_;
             previousCameraPitch_ = lookPitch_;
             menuStartTransitionFade_ = SmoothStep(2.55f, 4.05f, t);
-            if (t > 1.10f && !menuLampBurstPlayed_) menuLampBurstPending_ = true;
+            if (menuDarkLayerOneRun_ && t > 1.10f && !menuLampBurstPlayed_) menuLampBurstPending_ = true;
             if (t >= 4.80f) {
                 menuStartTransitionActive_ = false;
                 menuStartTransitionComplete_ = true;
                 menuStartTransitionFade_ = 1.0f;
             }
+            UpdateMainMenuAmbientSparks(dt);
             UpdateBrokenRuntimeLampSparks(dt, 1.65f, 5.8f, 0.22f);
             UpdateSparks(dt);
             UpdateAirParticles(dt);
@@ -518,7 +624,7 @@
         bodyYaw_ = yaw_;
         lookPitch_ = std::clamp(menuBasePitch_ + handheldPitch, -0.42f, 0.42f);
 
-        float hoverFlicker = menuButtonHover_ ? (std::sin(time_ * 36.0f) * 0.012f + std::sin(time_ * 81.0f) * 0.006f) : 0.0f;
+        float hoverFlicker = (menuDarkLayerOneRun_ && menuSinglePlayerHover_) ? (std::sin(time_ * 36.0f) * 0.012f + std::sin(time_ * 81.0f) * 0.006f) : 0.0f;
         float targetYaw = menuBaseYaw_ + (menuPointerX_ - 0.5f) * 1.12f + jitterYaw + hoverFlicker;
         float targetPitch = menuBasePitch_ + (0.5f - menuPointerY_) * 0.72f + jitterPitch - std::abs(hoverFlicker) * 0.35f;
         if (width_ > 0 && height_ > 0) {
@@ -550,13 +656,14 @@
         menuDoorOpen_ += (doorTarget - menuDoorOpen_) * std::min(1.0f, dt * doorResponse);
         exitDoorAngle_ = menuDoorOpen_ * 1.38f;
 
-        if (menuSinglePlayerHover_ && !menuLampBurstPlayed_) {
+        if (menuDarkLayerOneRun_ && menuSinglePlayerHover_ && !menuLampBurstPlayed_) {
             menuLampBurstPending_ = true;
         }
 
         if (menuLampBurstPending_) {
             menuLampBurstPending_ = false;
             if (menuLampBurstPlayed_) {
+                UpdateMainMenuAmbientSparks(dt);
                 UpdateBrokenRuntimeLampSparks(dt, 1.65f, 5.8f, 0.22f);
                 UpdateSparks(dt);
                 UpdateAirParticles(dt);
@@ -586,13 +693,12 @@
             } else {
                 XMFLOAT3 c = maze_.WorldCenter(maze_.start, settings_.wallHeightMeters - 0.10f);
                 PlayLightBulbBreakSoundAt(c, 1.0f);
-                if (IsWetCeilingTile(maze_.start) || IsWetFootstepTile(maze_.start)) {
-                    EmitSparkBurstAt(c, 3.1f);
-                    ScheduleSparkChain(c, 2.1f, 3);
-                }
+                EmitSparkBurstAt(c, 3.1f);
+                ScheduleSparkChain(c, 2.1f, 3);
             }
         }
 
+        UpdateMainMenuAmbientSparks(dt);
         UpdateBrokenRuntimeLampSparks(dt, 1.65f, 5.8f, 0.22f);
         UpdateSparks(dt);
         UpdateAirParticles(dt);
@@ -722,6 +828,7 @@
 
     std::vector<Tile> MonsterBodyOccupiedTiles() const {
         std::vector<Tile> occupied;
+        if (!MonsterActiveForCurrentMode()) return occupied;
         if (maze_.w <= 0 || maze_.h <= 0) return occupied;
         float spacing = MonsterBodySpacing();
         int samples = std::clamp(static_cast<int>(std::ceil(MonsterBodyLengthMeters() / spacing)) + 1, 4, 48);
@@ -743,6 +850,8 @@
     }
 
     bool MonsterBodyOccupiesTile(Tile tile) const {
+        if (!MonsterActiveForCurrentMode()) return false;
+        if (tile == maze_.start || tile == maze_.exit) return false;
         if (!maze_.IsOpen(tile.x, tile.y)) return false;
         for (Tile occupied : MonsterBodyOccupiedTiles()) {
             if (occupied == tile) return true;
@@ -848,7 +957,7 @@
     void AdvanceStepPhase(float metersMoved, float speedMetersPerSecond) {
         if (metersMoved <= 0.0001f || speedMetersPerSecond <= 0.0001f) return;
         float runBlend = Clamp01((speedMetersPerSecond - settings_.walkSpeed) / std::max(0.1f, settings_.runSpeed - settings_.walkSpeed));
-        float strideMeters = Lerp(1.42f, 1.34f, SmoothStep(0.0f, 1.0f, runBlend));
+        float strideMeters = Lerp(1.42f, 1.58f, SmoothStep(0.0f, 1.0f, runBlend));
         stepPhase_ += metersMoved * (kPi / std::max(0.25f, strideMeters));
         if (stepPhase_ > kPi * 128.0f) {
             stepPhase_ = std::fmod(stepPhase_, kPi * 2.0f);
@@ -856,6 +965,7 @@
     }
 
     float MonsterDistance() const {
+        if (!MonsterActiveForCurrentMode()) return std::numeric_limits<float>::max();
         float dx = monster_.x - camera_.x;
         float dz = monster_.z - camera_.z;
         return std::sqrt(dx * dx + dz * dz);
@@ -1427,11 +1537,20 @@
         airParticleBudgetScale_ = std::clamp(airParticleBudgetScale_, 0.34f, 1.0f);
     }
 
+    float AirParticleLevelDensityScale() const {
+        if (!IsPlayableSimulationMode(runtimeMode_) || !playableRun_.active) return 1.0f;
+        int level = std::clamp(playableRun_.levelInLayer, 1, PlayableRunState::kLevelsPerLayer);
+        constexpr float kLevelScale[PlayableRunState::kLevelsPerLayer] = {
+            0.16f, 0.34f, 0.56f, 0.78f, 1.0f
+        };
+        return kLevelScale[static_cast<size_t>(level - 1)];
+    }
+
     int DesiredAirParticleCount() const {
         if (!settings_.airParticles || settings_.airParticleDensity <= 0.001f || monsterPreview_) return 0;
-        float density = std::clamp(settings_.airParticleDensity, 0.0f, 4.0f);
+        float density = std::clamp(settings_.airParticleDensity, 0.0f, 4.0f) * AirParticleLevelDensityScale();
         float budget = std::clamp(airParticleBudgetScale_, 0.34f, 1.0f);
-        return std::clamp(static_cast<int>(std::round(3400.0f * density * budget)), 0, 11000);
+        return std::clamp(static_cast<int>(std::round(2800.0f * density * budget)), 0, 9000);
     }
 
     void RespawnAirParticle(AirParticle& p, bool initial) {
@@ -1488,12 +1607,12 @@
         float layerScale = p.nearLayer > 1.5f ? RandRange(1.85f, 3.10f) : (p.nearLayer > 0.5f ? RandRange(1.25f, 2.05f) : 1.0f);
         p.size = baseSize * layerScale * std::clamp(settings_.airParticleSize, 0.20f, 4.0f);
         float aspectRoll = RandRange(0.0f, 1.0f);
-        if (aspectRoll < 0.18f) {
-            p.aspect = RandRange(1.75f, 3.20f);
-        } else if (aspectRoll < 0.36f) {
-            p.aspect = RandRange(0.34f, 0.62f);
+        if (aspectRoll < 0.34f) {
+            p.aspect = RandRange(1.95f, 4.10f);
+        } else if (aspectRoll < 0.66f) {
+            p.aspect = RandRange(0.24f, 0.56f);
         } else {
-            p.aspect = RandRange(0.74f, 1.38f);
+            p.aspect = RandRange(0.62f, 1.62f);
         }
         p.seed = RandRange(0.0f, 1.0f);
         p.angle = RandRange(0.0f, kPi * 2.0f);
@@ -1819,9 +1938,154 @@
         return previous;
     }
 
+    bool EffectivePlayerCrouch() const {
+        return gameInput_.crouch || tunnelCrouchLocked_;
+    }
+
+    bool IsTunnelTile(Tile t) const {
+        return !maze_.IsOpen(t.x, t.y) && maze_.WallFeature(t.x, t.y) == MazeWallFeature::Tunnel;
+    }
+
+    bool ProbeTunnelAhead(const XMFLOAT3& primaryDir, bool hasPrimaryDir, Tile& tunnelTile) const {
+        if (runtimeMode_ != RendererRuntimeMode::PlayableGame || maze_.w <= 0 || maze_.h <= 0) return false;
+        std::array<XMFLOAT3, 2> dirs{};
+        int dirCount = 0;
+        if (hasPrimaryDir && Length3(primaryDir) > 0.001f) {
+            dirs[static_cast<size_t>(dirCount++)] = Normalize3(primaryDir, Forward());
+        }
+        dirs[static_cast<size_t>(dirCount++)] = Forward();
+
+        float tile = maze_.TileMinimum();
+        const float distances[] = {tile * 0.18f, tile * 0.34f, tile * 0.52f, tile * 0.74f, tile * 0.96f};
+        for (int d = 0; d < dirCount; ++d) {
+            for (float dist : distances) {
+                Tile t = maze_.TileFromWorld(camera_.x + dirs[static_cast<size_t>(d)].x * dist,
+                    camera_.z + dirs[static_cast<size_t>(d)].z * dist);
+                if (IsTunnelTile(t)) {
+                    tunnelTile = t;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    bool TunnelImmediateVicinity(Tile& tunnelTile) const {
+        if (runtimeMode_ != RendererRuntimeMode::PlayableGame || maze_.w <= 0 || maze_.h <= 0) return false;
+        Tile cur = CameraTile();
+        float ox = -static_cast<float>(maze_.w) * maze_.tileW * 0.5f;
+        float oz = -static_cast<float>(maze_.h) * maze_.tileD * 0.5f;
+        float margin = std::clamp(maze_.TileMinimum() * 0.22f, 0.34f, 0.58f);
+        float bestDistSq = margin * margin;
+        bool found = false;
+
+        for (int y = cur.y - 1; y <= cur.y + 1; ++y) {
+            for (int x = cur.x - 1; x <= cur.x + 1; ++x) {
+                Tile t{x, y};
+                if (!IsTunnelTile(t)) continue;
+                float x0 = ox + static_cast<float>(x) * maze_.tileW;
+                float x1 = x0 + maze_.tileW;
+                float z0 = oz + static_cast<float>(y) * maze_.tileD;
+                float z1 = z0 + maze_.tileD;
+                float dx = std::max(std::max(x0 - camera_.x, 0.0f), camera_.x - x1);
+                float dz = std::max(std::max(z0 - camera_.z, 0.0f), camera_.z - z1);
+                float distSq = dx * dx + dz * dz;
+                if (distSq <= bestDistSq) {
+                    bestDistSq = distSq;
+                    tunnelTile = t;
+                    found = true;
+                }
+            }
+        }
+        return found;
+    }
+
+    float TunnelLeanSideFromApproach(Tile tile, const XMFLOAT3& intendedMoveDir, bool hasMoveDir) const {
+        XMFLOAT3 center = maze_.WorldCenter(tile, camera_.y);
+        XMFLOAT3 fromTile = {camera_.x - center.x, 0.0f, camera_.z - center.z};
+        if (Length3(fromTile) < 0.04f && hasMoveDir) {
+            fromTile = Scale3(intendedMoveDir, -1.0f);
+        }
+
+        XMFLOAT3 right{std::cos(yaw_), 0.0f, -std::sin(yaw_)};
+        float localSide = Dot3(Normalize3(fromTile, {0.0f, 0.0f, 1.0f}), right);
+        if (std::abs(localSide) > 0.035f) return localSide >= 0.0f ? -1.0f : 1.0f;
+
+        if (std::abs(fromTile.x) > std::abs(fromTile.z)) return fromTile.x >= 0.0f ? -1.0f : 1.0f;
+        if (std::abs(fromTile.z) > 0.001f) return fromTile.z >= 0.0f ? -1.0f : 1.0f;
+        return tunnelLeanSideTarget_;
+    }
+
+    void UpdateTunnelLeanSideTarget(Tile tile, const XMFLOAT3& intendedMoveDir, bool hasMoveDir) {
+        tunnelLeanSideTarget_ = TunnelLeanSideFromApproach(tile, intendedMoveDir, hasMoveDir);
+    }
+
+    void UpdateTunnelCrouchLock(float dt, const XMFLOAT3& intendedMoveDir, bool hasMoveDir) {
+        dt = std::max(0.0f, dt);
+        if (runtimeMode_ != RendererRuntimeMode::PlayableGame) {
+            tunnelCrouchLocked_ = false;
+            tunnelPostureHoldTimer_ = 0.0f;
+            tunnelLeanTarget_ = 0.0f;
+            tunnelLeanSideTarget_ = 1.0f;
+            return;
+        }
+
+        tunnelPostureHoldTimer_ = std::max(0.0f, tunnelPostureHoldTimer_ - dt);
+        Tile tile = CameraTile();
+        bool inTunnel = IsTunnelTile(tile);
+        Tile approachTile{};
+        bool approachingTunnel = gameInput_.crouch && ProbeTunnelAhead(intendedMoveDir, hasMoveDir, approachTile);
+        Tile vicinityTile{};
+        bool nearTunnel = TunnelImmediateVicinity(vicinityTile);
+        bool tunnelMouthLock = nearTunnel && (gameInput_.crouch || tunnelCrouchLocked_);
+
+        if (inTunnel) {
+            tunnelCrouchLocked_ = true;
+            tunnelPostureHoldTimer_ = std::max(tunnelPostureHoldTimer_, 0.58f);
+        } else if (tunnelMouthLock) {
+            tunnelCrouchLocked_ = true;
+            UpdateTunnelLeanSideTarget(vicinityTile, intendedMoveDir, hasMoveDir);
+        } else if (approachingTunnel) {
+            UpdateTunnelLeanSideTarget(approachTile, intendedMoveDir, hasMoveDir);
+            if (tunnelPostureHoldTimer_ <= 0.0f && !gameInput_.crouch) tunnelCrouchLocked_ = false;
+        } else if (!gameInput_.crouch) {
+            tunnelCrouchLocked_ = false;
+        }
+
+        tunnelLeanTarget_ = (inTunnel || tunnelMouthLock || approachingTunnel || tunnelPostureHoldTimer_ > 0.0f) ? 1.0f : 0.0f;
+    }
+
+    void UpdateCrouchBlend(float dt) {
+        float target = EffectivePlayerCrouch() ? 1.0f : 0.0f;
+        float response = target > crouchBlend_ ? 14.0f : 8.4f;
+        float alpha = 1.0f - std::exp(-std::max(0.0f, dt) * response);
+        crouchBlend_ += (target - crouchBlend_) * alpha;
+        if (crouchBlend_ < 0.001f && target <= 0.0f) crouchBlend_ = 0.0f;
+        if (crouchBlend_ > 0.999f && target >= 1.0f) crouchBlend_ = 1.0f;
+    }
+
+    void UpdateTunnelCameraLean(float dt) {
+        float target = tunnelLeanTarget_;
+        float response = target > tunnelLeanAmount_ ? 5.6f : 2.35f;
+        float alpha = 1.0f - std::exp(-std::max(0.0f, dt) * response);
+        tunnelLeanAmount_ += (target - tunnelLeanAmount_) * alpha;
+        float sideAlpha = 1.0f - std::exp(-std::max(0.0f, dt) * 5.2f);
+        tunnelLeanSide_ += (tunnelLeanSideTarget_ - tunnelLeanSide_) * sideAlpha;
+        if (tunnelLeanAmount_ < 0.001f && target <= 0.0f) {
+            tunnelLeanAmount_ = 0.0f;
+        }
+    }
+
+    bool CameraTilePassable(Tile t) const {
+        if (maze_.IsOpen(t.x, t.y)) return true;
+        return runtimeMode_ == RendererRuntimeMode::PlayableGame &&
+            EffectivePlayerCrouch() &&
+            IsTunnelTile(t);
+    }
+
     bool CameraFootprintOpen(float x, float z) const {
         Tile t = maze_.TileFromWorld(x, z);
-        if (!maze_.IsOpen(t.x, t.y)) return false;
+        if (!CameraTilePassable(t)) return false;
 
         float ox = -static_cast<float>(maze_.w) * maze_.tileW * 0.5f;
         float oz = -static_cast<float>(maze_.h) * maze_.tileD * 0.5f;
@@ -1829,14 +2093,14 @@
         float localZ = (z - (oz + static_cast<float>(t.y) * maze_.tileD));
         float margin = std::clamp(maze_.TileMinimum() * 0.26f, 0.12f, 0.46f);
 
-        if (localX < margin && !maze_.IsOpen(t.x - 1, t.y)) return false;
-        if (maze_.tileW - localX < margin && !maze_.IsOpen(t.x + 1, t.y)) return false;
-        if (localZ < margin && !maze_.IsOpen(t.x, t.y - 1)) return false;
-        if (maze_.tileD - localZ < margin && !maze_.IsOpen(t.x, t.y + 1)) return false;
-        if (localX < margin && localZ < margin && !maze_.IsOpen(t.x - 1, t.y - 1)) return false;
-        if (maze_.tileW - localX < margin && localZ < margin && !maze_.IsOpen(t.x + 1, t.y - 1)) return false;
-        if (localX < margin && maze_.tileD - localZ < margin && !maze_.IsOpen(t.x - 1, t.y + 1)) return false;
-        if (maze_.tileW - localX < margin && maze_.tileD - localZ < margin && !maze_.IsOpen(t.x + 1, t.y + 1)) return false;
+        if (localX < margin && !CameraTilePassable({t.x - 1, t.y})) return false;
+        if (maze_.tileW - localX < margin && !CameraTilePassable({t.x + 1, t.y})) return false;
+        if (localZ < margin && !CameraTilePassable({t.x, t.y - 1})) return false;
+        if (maze_.tileD - localZ < margin && !CameraTilePassable({t.x, t.y + 1})) return false;
+        if (localX < margin && localZ < margin && !CameraTilePassable({t.x - 1, t.y - 1})) return false;
+        if (maze_.tileW - localX < margin && localZ < margin && !CameraTilePassable({t.x + 1, t.y - 1})) return false;
+        if (localX < margin && maze_.tileD - localZ < margin && !CameraTilePassable({t.x - 1, t.y + 1})) return false;
+        if (maze_.tileW - localX < margin && maze_.tileD - localZ < margin && !CameraTilePassable({t.x + 1, t.y + 1})) return false;
         return true;
     }
 
@@ -1846,7 +2110,7 @@
         float len = std::sqrt(dx * dx + dz * dz);
         int steps = std::max(1, static_cast<int>(std::ceil(len / std::max(0.05f, maze_.TileMinimum() * 0.08f))));
         Tile prev = maze_.TileFromWorld(fromX, fromZ);
-        if (!maze_.IsOpen(prev.x, prev.y)) return false;
+        if (!CameraTilePassable(prev)) return false;
         if (!(prev == allowedStart) && !(prev == allowedTarget)) return false;
         for (int i = 1; i <= steps; ++i) {
             float t = static_cast<float>(i) / static_cast<float>(steps);
@@ -1856,7 +2120,7 @@
             if (MonsterBodyOccupiesTile(cur) && !(cur == allowedStart)) return false;
             if (!(cur == allowedStart) && !(cur == allowedTarget)) return false;
             if (!(cur == prev)) {
-                if (!maze_.IsOpen(cur.x, cur.y)) return false;
+                if (!CameraTilePassable(cur)) return false;
                 if (!AdjacentTiles(prev, cur)) return false;
                 prev = cur;
             }
@@ -1871,21 +2135,21 @@
         float len = std::sqrt(dx * dx + dz * dz);
         int steps = std::max(1, static_cast<int>(std::ceil(len / std::max(0.05f, maze_.TileMinimum() * 0.07f))));
         Tile prev = maze_.TileFromWorld(fromX, fromZ);
-        if (!maze_.IsOpen(prev.x, prev.y) || !CameraFootprintOpen(fromX, fromZ)) return false;
+        if (!CameraTilePassable(prev) || !CameraFootprintOpen(fromX, fromZ)) return false;
         for (int i = 1; i <= steps; ++i) {
             float t = static_cast<float>(i) / static_cast<float>(steps);
             float sx = Lerp(fromX, toX, t);
             float sz = Lerp(fromZ, toZ, t);
             Tile cur = maze_.TileFromWorld(sx, sz);
             if (MonsterBodyOccupiesTile(cur) && !(cur == prev)) return false;
-            if (!maze_.IsOpen(cur.x, cur.y)) return false;
+            if (!CameraTilePassable(cur)) return false;
             if (!(cur == prev)) {
                 int stepX = cur.x - prev.x;
                 int stepY = cur.y - prev.y;
                 if (std::abs(stepX) > 1 || std::abs(stepY) > 1) return false;
                 if (std::abs(stepX) == 1 && std::abs(stepY) == 1) {
                     if (!allowDiagonal) return false;
-                    if (!maze_.IsOpen(prev.x + stepX, prev.y) || !maze_.IsOpen(prev.x, prev.y + stepY)) return false;
+                    if (!CameraTilePassable({prev.x + stepX, prev.y}) || !CameraTilePassable({prev.x, prev.y + stepY})) return false;
                     if (!OpenAreaAllowsFreeRun(prev) || !OpenAreaAllowsFreeRun(cur)) return false;
                 }
                 prev = cur;
@@ -1973,7 +2237,7 @@
         }
 
         Tile cur = CameraTile();
-        if (!maze_.IsOpen(cur.x, cur.y)) {
+        if (!CameraTilePassable(cur)) {
             RecoverCameraToOpenTile();
             return false;
         }
@@ -2187,6 +2451,7 @@
 
         const Tile dirs[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         Tile monsterTile = MonsterTile();
+        bool monsterActive = MonsterActiveForCurrentMode();
         float bestScore = -1.0e9f;
         float bestYaw = yaw_;
         int candidates = 0;
@@ -2198,7 +2463,7 @@
             float branchYaw = std::atan2(nw.x - camera_.x, nw.z - camera_.z);
             float ray = ViewRayOpenDistance(branchYaw, std::clamp(settings_.fogEndMeters, 6.0f, 18.0f));
             if (ray < maze_.TileMinimum() * 0.95f) continue;
-            bool possibleThreatLine = MonsterDistance() < 18.0f && maze_.LineClear(n, monsterTile);
+            bool possibleThreatLine = monsterActive && MonsterDistance() < 18.0f && maze_.LineClear(n, monsterTile);
             float score = ray + static_cast<float>(maze_.LocalOpenCount(n, 1)) * 0.18f +
                 (possibleThreatLine ? 5.5f : 0.0f) - std::abs(AngleWrap(branchYaw - yaw_)) * 0.35f;
             ++candidates;
@@ -2311,6 +2576,7 @@
         std::vector<std::pair<float, float>> branches;
         const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         Tile monsterTile = MonsterTile();
+        bool monsterActive = MonsterActiveForCurrentMode();
         for (auto& d : dirs) {
             Tile n{cur.x + d[0], cur.y + d[1]};
             if (!maze_.IsOpen(n.x, n.y)) continue;
@@ -2318,7 +2584,7 @@
             XMFLOAT3 nw = maze_.WorldCenter(n, camera_.y);
             float branchYaw = std::atan2(nw.x - camera_.x, nw.z - camera_.z);
             float rel = AngleWrap(branchYaw - bodyYaw_);
-            bool branchThreat = maze_.LineClear(n, monsterTile) && MonsterDistance() < 18.0f;
+            bool branchThreat = monsterActive && MonsterDistance() < 18.0f && maze_.LineClear(n, monsterTile);
             float order = branchThreat ? -10.0f + std::abs(rel) * 0.01f : rel;
             branches.push_back({order, branchYaw});
         }
@@ -2463,6 +2729,7 @@
     }
 
     bool ExitRouteNotBlockedByMonster() const {
+        if (!MonsterActiveForCurrentMode()) return true;
         XMFLOAT3 exitWorld = maze_.WorldCenter(maze_.exit, camera_.y);
         float ex = exitWorld.x - camera_.x;
         float ez = exitWorld.z - camera_.z;
@@ -2474,6 +2741,34 @@
         if (monsterDist < 0.2f) return false;
         float alignment = (ex * mx + ez * mz) / (exitDist * monsterDist);
         return !(monsterDist < exitDist + maze_.TileAverage() * 0.8f && alignment > 0.66f);
+    }
+
+    float ExitAlignSeconds() const {
+        return 0.42f;
+    }
+
+    XMFLOAT3 ExitAlignedCameraTarget() const {
+        XMFLOAT3 inward = Normalize3(exitDoorNormal_, {0.0f, 0.0f, 1.0f});
+        float standOff = std::clamp(maze_.TileMinimum() * 0.46f, 0.78f, 1.08f);
+        XMFLOAT3 target = Add3(exitDoorCenter_, Scale3(inward, standOff));
+        target.y = 1.43f;
+        return target;
+    }
+
+    bool CanTriggerExitTransition() const {
+        if (deathActive_ || exitTransitionActive_ || !maze_.IsOpen(maze_.exit.x, maze_.exit.y)) return false;
+        Tile cur = CameraTile();
+        if (!(cur == maze_.exit)) return false;
+
+        XMFLOAT3 aligned = ExitAlignedCameraTarget();
+        float dx = aligned.x - camera_.x;
+        float dz = aligned.z - camera_.z;
+        float maxDist = std::clamp(maze_.TileMinimum() * 0.56f, 0.72f, 1.22f);
+        if (dx * dx + dz * dz > maxDist * maxDist) return false;
+
+        XMFLOAT3 toDoor = Normalize3(Sub3(exitDoorCenter_, camera_), {0.0f, 0.0f, 1.0f});
+        XMFLOAT3 view = Normalize3(DirectionFromYawPitch(yaw_, lookPitch_), {0.0f, 0.0f, 1.0f});
+        return Dot3(toDoor, view) > 0.10f || VisibleInFront(maze_.exit);
     }
 
     float ExitAttentionWeight(XMFLOAT3& focus) const {
@@ -2880,39 +3175,47 @@
 
     void UpdateExitTransition(float dt) {
         exitTransitionTimer_ += dt;
-        float doorOpenStart = std::min(0.22f, settings_.exitDoorOpenSeconds * 0.35f);
-        float doorOpenEnd = std::max(doorOpenStart + 0.05f, settings_.exitDoorOpenSeconds);
-        float stepStart = std::max(0.05f, settings_.exitDoorOpenSeconds * 0.68f);
+        float alignEnd = ExitAlignSeconds();
+        float localDoorOpenStart = std::min(0.22f, settings_.exitDoorOpenSeconds * 0.35f);
+        float doorOpenStart = alignEnd + localDoorOpenStart;
+        float doorOpenEnd = alignEnd + std::max(localDoorOpenStart + 0.05f, settings_.exitDoorOpenSeconds);
+        float stepStart = alignEnd + std::max(0.05f, settings_.exitDoorOpenSeconds * 0.68f);
         float stepEnd = stepStart + settings_.exitStepSeconds;
         float fadeEnd = stepEnd + settings_.exitFadeSeconds;
         float doorOpen = SmoothStep(doorOpenStart, doorOpenEnd, exitTransitionTimer_);
         exitDoorAngle_ = doorOpen * 1.38f;
 
         XMFLOAT3 outward = Scale3(exitDoorNormal_, -1.0f);
+        float align = SmoothStep(0.0f, alignEnd, exitTransitionTimer_);
+        XMFLOAT3 alignedCamera = ExitAlignedCameraTarget();
+        XMFLOAT3 walkStart = Lerp3(exitStartCamera_, alignedCamera, align);
         float step = SmoothStep(stepStart, stepEnd, exitTransitionTimer_);
         float settle = std::sin(Clamp01(step) * kPi);
         XMFLOAT3 previousCamera = camera_;
-        camera_ = Add3(exitStartCamera_, Scale3(outward, step * settings_.exitStepDistance));
+        camera_ = Add3(walkStart, Scale3(outward, step * settings_.exitStepDistance));
         float moved = std::sqrt((camera_.x - previousCamera.x) * (camera_.x - previousCamera.x) +
             (camera_.z - previousCamera.z) * (camera_.z - previousCamera.z));
         AdvanceStepPhase(moved, dt > 0.0001f ? moved / dt : settings_.walkSpeed);
         camera_.y = 1.43f + std::abs(std::sin(stepPhase_)) * settings_.headBobAmount * (1.0f - step) + settle * 0.035f;
 
-        XMFLOAT3 focus = Add3(exitDoorCenter_, Scale3(outward, 0.65f + step * 1.1f));
+        XMFLOAT3 doorFocus = Add3(exitDoorCenter_, {0.0f, 0.08f, 0.0f});
+        XMFLOAT3 walkFocus = Add3(exitDoorCenter_, Scale3(outward, 0.65f + step * 1.1f));
+        XMFLOAT3 focus = Lerp3(doorFocus, walkFocus, SmoothStep(alignEnd * 0.35f, stepEnd, exitTransitionTimer_));
         float targetYaw = YawToPoint(focus);
-        yaw_ += AngleWrap(targetYaw - yaw_) * std::min(1.0f, dt * 3.6f);
+        yaw_ += AngleWrap(targetYaw - yaw_) * std::min(1.0f, dt * (exitTransitionTimer_ < alignEnd ? 6.4f : 3.6f));
         bodyYaw_ = yaw_;
         float targetPitch = std::clamp(PitchToPoint(Add3(focus, {0.0f, 0.20f, 0.0f})), -0.22f, 0.12f);
-        lookPitch_ += (targetPitch - lookPitch_) * std::min(1.0f, dt * 2.8f);
+        lookPitch_ += (targetPitch - lookPitch_) * std::min(1.0f, dt * (exitTransitionTimer_ < alignEnd ? 5.2f : 2.8f));
 
         if (exitTransitionTimer_ > fadeEnd + 0.35f) {
-            RestartMaze();
+            CompletePlayableLevel();
         }
     }
 
     void BeginDeath() {
         if (settings_.debugInvincible) return;
         if (deathActive_) return;
+        if (runtimeMode_ == RendererRuntimeMode::PlayableGame) DeleteSavedRun();
         deathActive_ = true;
         monsterKillCount_ = std::min(monsterKillCount_ + 1, 16);
         deathTimer_ = 0.0f;
@@ -2950,10 +3253,12 @@
             RecoverCameraToOpenTile();
             return;
         }
-        Tile monsterTile = MonsterTile();
+        bool monsterActive = MonsterActiveForCurrentMode();
+        Tile monsterTile = monsterActive ? MonsterTile() : Tile{-10000, -10000};
         if (!force && pathIndex_ < path_.size()) {
-            bool freeRunPath = ChasePanicActive() && OpenAreaAllowsFreeRun(cur);
-            bool panicContext = IsThreatVisible() || ChasePanicActive();
+            bool panicState = monsterActive && ChasePanicActive();
+            bool freeRunPath = panicState && OpenAreaAllowsFreeRun(cur);
+            bool panicContext = monsterActive && (IsThreatVisible() || panicState);
             if (ActivePathValidForMode(cur, freeRunPath) &&
                 (!panicContext || !ActiveThreatPathShouldRepath(cur, monsterTile))) {
                 return;
@@ -2965,10 +3270,13 @@
         path_.clear();
         pathIndex_ = 0;
 
-        float mdx = monster_.x - camera_.x;
-        float mdz = monster_.z - camera_.z;
-        float monsterDist = std::sqrt(mdx * mdx + mdz * mdz);
-        bool threat = (monsterDist < 12.0f && maze_.LineClear(cur, monsterTile)) || ChasePanicActive();
+        float monsterDist = std::numeric_limits<float>::max();
+        if (monsterActive) {
+            float mdx = monster_.x - camera_.x;
+            float mdz = monster_.z - camera_.z;
+            monsterDist = std::sqrt(mdx * mdx + mdz * mdz);
+        }
+        bool threat = monsterActive && ((monsterDist < 12.0f && maze_.LineClear(cur, monsterTile)) || ChasePanicActive());
         std::vector<Tile> localNeighbors = maze_.Neighbors(cur);
         bool hasNonBacktrackingNeighbor = false;
         for (Tile n : localNeighbors) {
@@ -3090,9 +3398,6 @@
 
     void UpdateManualPlayer(float dt) {
         dt = std::clamp(dt, 0.0f, 0.05f);
-        if (!CameraFootprintOpen(camera_.x, camera_.z)) {
-            RecoverCameraToOpenTile();
-        }
 
         constexpr float kMouseYawScale = 0.0022f;
         constexpr float kMousePitchScale = 0.0018f;
@@ -3124,7 +3429,18 @@
         }
 
         bool wantsMove = inputLen > 0.001f;
-        bool crouching = gameInput_.crouch;
+        XMFLOAT3 forward = Forward();
+        XMFLOAT3 right{std::cos(yaw_), 0.0f, -std::sin(yaw_)};
+        XMFLOAT3 moveDir = Normalize3(Add3(Scale3(right, inputX), Scale3(forward, inputZ)), forward);
+        UpdateTunnelCrouchLock(dt, moveDir, wantsMove);
+        UpdateCrouchBlend(dt);
+        UpdateTunnelCameraLean(dt);
+        if (!CameraFootprintOpen(camera_.x, camera_.z)) {
+            RecoverCameraToOpenTile();
+        }
+
+        bool crouching = EffectivePlayerCrouch();
+        float crouchPose = SmoothStep(0.0f, 1.0f, crouchBlend_);
         if (settings_.debugInfiniteStamina) {
             playerStamina_ = 100.0f;
             playerStaminaRegenDelay_ = 0.0f;
@@ -3134,21 +3450,21 @@
         float sprintSpeed = std::max(settings_.runSpeed, walkSpeed * 1.35f);
         float jogSpeed = Lerp(walkSpeed, sprintSpeed, 0.55f);
         constexpr float kJogStamina = 100.0f / 3.0f;
-        constexpr float kSprintResumeStamina = 100.0f / 6.0f;
         constexpr float kExhaustedStamina = 5.0f;
-        if (playerStamina_ < kExhaustedStamina) sprintStaminaLocked_ = true;
-        if (sprintStaminaLocked_ && playerStamina_ >= kSprintResumeStamina) sprintStaminaLocked_ = false;
-        bool sprintAllowed = settings_.debugInfiniteStamina || (!sprintStaminaLocked_ && playerStamina_ >= kExhaustedStamina);
+        if (playerStamina_ <= 0.001f) sprintStaminaLocked_ = true;
+        if (sprintStaminaLocked_ && playerStamina_ >= kExhaustedStamina) sprintStaminaLocked_ = false;
+        bool sprintAllowed = settings_.debugInfiniteStamina || (!sprintStaminaLocked_ && playerStamina_ > 0.001f);
         bool wantsSprint = gameInput_.sprint && wantsMove && !crouching && sprintAllowed;
         bool staminaJog = wantsSprint && !settings_.debugInfiniteStamina && playerStamina_ <= kJogStamina;
         float targetSpeed = wantsSprint ? (staminaJog ? jogSpeed : sprintSpeed) : walkSpeed;
-        if (crouching) targetSpeed *= 0.52f;
+        targetSpeed *= Lerp(1.0f, 0.52f, crouchPose);
 
         if (wantsSprint && !settings_.debugInfiniteStamina) {
-            float drainRate = staminaJog ? 3.25f : 6.50f;
+            float drainRate = playerStamina_ <= kExhaustedStamina ? (kExhaustedStamina / 30.0f) :
+                (staminaJog ? 2.00f : 5.00f);
             playerStamina_ = std::max(0.0f, playerStamina_ - drainRate * dt);
             playerStaminaRegenDelay_ = 0.85f;
-            if (playerStamina_ < kExhaustedStamina) {
+            if (playerStamina_ <= 0.001f) {
                 wantsSprint = false;
                 sprintStaminaLocked_ = true;
                 targetSpeed = walkSpeed;
@@ -3157,9 +3473,15 @@
             playerStamina_ = 100.0f;
             playerStaminaRegenDelay_ = 0.0f;
         } else {
-            playerStaminaRegenDelay_ = std::max(0.0f, playerStaminaRegenDelay_ - dt);
-            if (playerStaminaRegenDelay_ <= 0.0f) {
-                playerStamina_ = std::min(100.0f, playerStamina_ + 8.25f * dt);
+            if (playerStamina_ < kExhaustedStamina) {
+                playerStaminaRegenDelay_ = 0.0f;
+                playerStamina_ = std::min(100.0f, playerStamina_ + (kExhaustedStamina / 3.0f) * dt);
+            } else {
+                playerStaminaRegenDelay_ = std::max(0.0f, playerStaminaRegenDelay_ - dt);
+                if (playerStaminaRegenDelay_ <= 0.0f) {
+                    float regenRate = playerStamina_ < kJogStamina ? 10.50f : 5.20f;
+                    playerStamina_ = std::min(100.0f, playerStamina_ + regenRate * dt);
+                }
             }
         }
 
@@ -3170,9 +3492,6 @@
             speedAccel * dt);
         float moveDistance = smoothedMoveSpeed_ * dt;
         if (wantsMove && moveDistance > 0.0001f) {
-            XMFLOAT3 forward = Forward();
-            XMFLOAT3 right{std::cos(yaw_), 0.0f, -std::sin(yaw_)};
-            XMFLOAT3 moveDir = Normalize3(Add3(Scale3(right, inputX), Scale3(forward, inputZ)), forward);
             MoveCameraSafely(moveDir.x * moveDistance, moveDir.z * moveDistance,
                 moveDistance, std::max(0.1f, smoothedMoveSpeed_), CameraTile(), true);
         }
@@ -3181,10 +3500,11 @@
         if (interactPressed && !exitTransitionActive_ && TryCollectiblePagePickup()) {
             interactPressed = false;
         }
+        if (interactPressed && !exitTransitionActive_ && TrySavePointInteract()) {
+            interactPressed = false;
+        }
         if (interactPressed && !exitTransitionActive_) {
-            Tile cur = CameraTile();
-            float exitDistSq = TileDistanceSq(cur, maze_.exit);
-            if (exitDistSq <= 2.0f && VisibleInFront(maze_.exit)) {
+            if (CanTriggerExitTransition()) {
                 BeginExitTransition();
             }
         }
@@ -3207,21 +3527,24 @@
             breathPhase_ = std::fmod(breathPhase_, kPi * 2.0f);
         }
 
-        float eyeTarget = crouching ? 1.12f : 1.45f;
+        float eyeTarget = Lerp(1.45f, 1.12f, crouchPose);
         float configuredBob = std::min(settings_.headBobAmount, 0.10f);
-        float bobAmount = configuredBob * Lerp(0.045f, 0.22f, Clamp01(moveBlend * 0.55f + runBlend * 0.45f)) * (crouching ? 0.10f : 1.0f);
+        float bobAmount = configuredBob * Lerp(0.045f, 0.22f, Clamp01(moveBlend * 0.55f + runBlend * 0.45f)) *
+            Lerp(1.0f, 0.10f, crouchPose);
         float stepWave = std::sin(stepPhase_ * 2.0f);
         float verticalBob = stepWave * bobAmount;
-        float sideBob = crouching ? 0.0f : stepWave * (0.00055f + runEffort_ * 0.0011f);
+        float sideBob = stepWave * (0.00055f + runEffort_ * 0.0011f) * (1.0f - crouchPose);
         float breathY = std::sin(breathPhase_) * (0.002f + runIntensity_ * 0.0045f + runEffort_ * 0.008f);
         float desiredY = eyeTarget + playerVerticalOffset_ + verticalBob + sideBob + breathY;
-        camera_.y += (desiredY - camera_.y) * std::min(1.0f, dt * 6.2f);
+        float eyeResponse = crouchPose > 0.5f ? 15.0f : 9.6f;
+        camera_.y += (desiredY - camera_.y) * (1.0f - std::exp(-dt * eyeResponse));
         RevealVisibleMapTiles();
     }
 
     void UpdatePathFollower(float dt) {
-        bool threat = IsThreatVisible();
-        bool panicActive = threat || ChasePanicActive();
+        bool monsterActive = MonsterActiveForCurrentMode();
+        bool threat = monsterActive && IsThreatVisible();
+        bool panicActive = monsterActive && (threat || ChasePanicActive());
         bool sightFreezeActive = threat && MonsterSightingFreezeActive();
         if (panicActive) {
             bloodFocusTimer_ = 0.0f;

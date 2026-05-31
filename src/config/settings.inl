@@ -167,8 +167,13 @@ struct Settings {
     int roomCountRange = 1;
     int roomMinRadiusRange = 1;
     int roomMaxRadiusRange = 1;
-    float extraConnectorMinRatio = 0.005f;
+    float extraConnectorMinRatio = 0.015f;
     float extraConnectorMaxRatio = 0.050f;
+    int wallFeatureFrequency = 20;
+    float wallFeatureFrequencySpread = 1.0f;
+    int saveItemMinPerLayer = 1;
+    int saveItemMaxPerLayer = 3;
+    float saveItemLevelChance = 0.15f;
     uint32_t mazeSeed = 0;
     bool mapOverlay = true;
     bool debugAiMapOverlay = false;
@@ -184,8 +189,8 @@ struct Settings {
     float ceilingTextureMeters = kCeilingTextureMeters;
     std::wstring assetFolder = L"assets\\PBRs";
     std::wstring wallStem = L"backrooms_wall";
-    std::wstring floorStem = L"backrooms_carpet";
-    std::wstring ceilingStem = L"backrooms_ceiling";
+    std::wstring floorStem = L"downloads\\Fabric029_4K-JPG\\Fabric029_4K-JPG";
+    std::wstring ceilingStem = L"backup_backrooms_pack_20260511_182856\\backrooms_ceiling";
     std::wstring fleshStem = L"downloads\\Others001_4k\\others_0001";
     bool useExternalNormals = true;
     int maxNormalMapMB = 512;
@@ -284,7 +289,7 @@ struct Settings {
     bool fleshFlicker = true;
     bool fleshAlwaysOn = false;
     float fleshWetness = 0.995f;
-    float fleshParallaxScale = 0.14f;
+    float fleshParallaxScale = 0.22f;
     float fleshFlickerMinSeconds = 1500.0f;
     float fleshFlickerMaxSeconds = 4800.0f;
     float fleshFlickerDuration = 0.35f;
@@ -429,6 +434,10 @@ std::filesystem::path PackagedSettingsPath() {
     return ModuleDirectory() / L"BackroomsMaze.ini";
 }
 
+std::filesystem::path GameSavePath() {
+    return SettingsPath().parent_path() / L"BackroomsMaze.save";
+}
+
 std::filesystem::path CacheDirectory() {
     wchar_t localAppData[MAX_PATH]{};
     DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, ARRAYSIZE(localAppData));
@@ -511,8 +520,15 @@ std::wstring DefaultConfigText() {
       << L"RoomMinRadiusRange=1\r\n"
       << L"RoomMaxRadiusRange=1\r\n"
       << L"; Opens this random fraction of eligible interior wall tiles after maze generation.\r\n"
-      << L"ExtraConnectorMinRatio=0.005\r\n"
+      << L"ExtraConnectorMinRatio=0.015\r\n"
       << L"ExtraConnectorMaxRatio=0.05\r\n"
+      << L"; Base eligible wall interval for windows/crawl tunnels. Spread is multiplicative; 1 means roughly half to double per maze.\r\n"
+      << L"WallFeatureFrequency=20\r\n"
+      << L"WallFeatureFrequencySpread=1\r\n"
+      << L"; Save item/typewriter placement for playable layers.\r\n"
+      << L"SaveItemMinPerLayer=1\r\n"
+      << L"SaveItemMaxPerLayer=3\r\n"
+      << L"SaveItemLevelChance=0.15\r\n"
       << L"RandomSeed=0\r\n\r\n"
       << L"MapOverlay=1\r\n\r\n"
       << L"TileWidthMeters=1.6\r\n"
@@ -527,12 +543,12 @@ std::wstring DefaultConfigText() {
       << L"AssetFolder=assets\\PBRs\r\n"
       << L"WallStem=backrooms_wall\r\n"
       << L"; Leave a stem empty to use the built-in procedural material.\r\n"
-      << L"FloorStem=backrooms_carpet\r\n"
-      << L"CeilingStem=backrooms_ceiling\r\n"
+      << L"FloorStem=downloads\\Fabric029_4K-JPG\\Fabric029_4K-JPG\r\n"
+      << L"CeilingStem=backup_backrooms_pack_20260511_182856\\backrooms_ceiling\r\n"
       << L"FleshStem=downloads\\Others001_4k\\others_0001\r\n"
       << L"WallScaleMeters=1.8\r\n"
       << L"FloorScaleMeters=1.8\r\n"
-      << L"; 0 auto-aligns the ceiling texture as a 2x2 panel grid per maze tile.\r\n"
+      << L"; 0 auto-aligns the 6x6 ceiling sheet as a 3x3 panel grid per maze tile.\r\n"
       << L"CeilingScaleMeters=0\r\n"
       << L"UseExternalNormals=1\r\n"
       << L"MaxNormalMapMB=512\r\n\r\n"
@@ -636,7 +652,7 @@ std::wstring DefaultConfigText() {
       << L"FleshFlicker=1\r\n"
       << L"FleshAlwaysOn=0\r\n"
       << L"FleshWetness=0.995\r\n"
-      << L"FleshParallaxScale=0.14\r\n"
+      << L"FleshParallaxScale=0.22\r\n"
       << L"FleshFlickerMinSeconds=1500\r\n"
       << L"FleshFlickerMaxSeconds=4800\r\n"
       << L"FleshFlickerDuration=0.35\r\n"
@@ -789,8 +805,13 @@ Settings LoadSettings() {
     s.roomCountRange = std::clamp(IniInt(L"Maze", L"RoomCountRange", s.roomCountRange), 0, 80);
     s.roomMinRadiusRange = std::clamp(IniInt(L"Maze", L"RoomMinRadiusRange", s.roomMinRadiusRange), 0, 12);
     s.roomMaxRadiusRange = std::clamp(IniInt(L"Maze", L"RoomMaxRadiusRange", s.roomMaxRadiusRange), 0, 16);
-    s.extraConnectorMinRatio = std::clamp(IniFloat(L"Maze", L"ExtraConnectorMinRatio", s.extraConnectorMinRatio), 0.0f, 0.20f);
+    s.extraConnectorMinRatio = std::clamp(IniFloat(L"Maze", L"ExtraConnectorMinRatio", s.extraConnectorMinRatio), 0.015f, 0.20f);
     s.extraConnectorMaxRatio = std::clamp(IniFloat(L"Maze", L"ExtraConnectorMaxRatio", s.extraConnectorMaxRatio), s.extraConnectorMinRatio, 0.20f);
+    s.wallFeatureFrequency = std::clamp(IniInt(L"Maze", L"WallFeatureFrequency", s.wallFeatureFrequency), 1, 200);
+    s.wallFeatureFrequencySpread = std::clamp(IniFloat(L"Maze", L"WallFeatureFrequencySpread", s.wallFeatureFrequencySpread), 0.0f, 3.0f);
+    s.saveItemMinPerLayer = std::clamp(IniInt(L"Maze", L"SaveItemMinPerLayer", s.saveItemMinPerLayer), 0, 5);
+    s.saveItemMaxPerLayer = std::clamp(IniInt(L"Maze", L"SaveItemMaxPerLayer", s.saveItemMaxPerLayer), s.saveItemMinPerLayer, 5);
+    s.saveItemLevelChance = std::clamp(IniFloat(L"Maze", L"SaveItemLevelChance", s.saveItemLevelChance), 0.0f, 1.0f);
     s.mazeSeed = static_cast<uint32_t>(std::clamp(IniInt(L"Maze", L"RandomSeed", static_cast<int>(s.mazeSeed)), 0, std::numeric_limits<int>::max()));
     s.mapOverlay = IniInt(L"Maze", L"MapOverlay", s.mapOverlay ? 1 : 0) != 0;
     s.debugAiMapOverlay = IniInt(L"Debug", L"AiMapOverlay", s.debugAiMapOverlay ? 1 : 0) != 0;
@@ -912,7 +933,7 @@ Settings LoadSettings() {
     s.fleshFlicker = IniInt(L"Atmosphere", L"FleshFlicker", s.fleshFlicker ? 1 : 0) != 0;
     s.fleshAlwaysOn = IniInt(L"Atmosphere", L"FleshAlwaysOn", s.fleshAlwaysOn ? 1 : 0) != 0;
     s.fleshWetness = std::clamp(IniFloat(L"Atmosphere", L"FleshWetness", s.fleshWetness), 0.0f, 4.0f);
-    s.fleshParallaxScale = std::clamp(IniFloat(L"Atmosphere", L"FleshParallaxScale", s.fleshParallaxScale), 0.0f, 0.32f);
+    s.fleshParallaxScale = std::clamp(IniFloat(L"Atmosphere", L"FleshParallaxScale", s.fleshParallaxScale), 0.0f, 0.50f);
     s.fleshFlickerMinSeconds = std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerMinSeconds", s.fleshFlickerMinSeconds), 60.0f, 7200.0f);
     s.fleshFlickerMaxSeconds = std::max(s.fleshFlickerMinSeconds, std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerMaxSeconds", s.fleshFlickerMaxSeconds), 60.0f, 7200.0f));
     s.fleshFlickerDuration = std::clamp(IniFloat(L"Atmosphere", L"FleshFlickerDuration", s.fleshFlickerDuration), 0.15f, 8.0f);

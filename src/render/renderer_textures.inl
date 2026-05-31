@@ -245,7 +245,7 @@
             }
         };
 
-        auto applyNormal = [&](int material, const ImageRGBA& img) {
+        auto applyNormal = [&](int material, const ImageRGBA& img, bool flipGreen = false) {
             if (!img.Valid()) return;
             for (int y = 0; y < kTextureSize; ++y) {
                 int gy = material * kTextureSize + y;
@@ -253,7 +253,7 @@
                     size_t src = static_cast<size_t>((y * img.width + x) * 4);
                     size_t dst = static_cast<size_t>((gy * width + x) * 4);
                     externalNormal[dst + 0] = img.pixels[src + 0];
-                    externalNormal[dst + 1] = img.pixels[src + 1];
+                    externalNormal[dst + 1] = flipGreen ? static_cast<uint8_t>(255 - img.pixels[src + 1]) : img.pixels[src + 1];
                     externalNormal[dst + 2] = img.pixels[src + 2];
                     externalNormal[dst + 3] = 255;
                     hasExternalNormal[static_cast<size_t>(gy * width + x)] = 1;
@@ -273,29 +273,86 @@
             }
         };
 
+        auto resolvePbrPath = [&](const std::wstring& base, std::initializer_list<const wchar_t*> suffixes) {
+            for (const wchar_t* suffix : suffixes) {
+                std::filesystem::path path = ResolveAsset(settings_, base + suffix);
+                if (!path.empty()) return path;
+            }
+            return std::filesystem::path{};
+        };
+
+        auto loadPbrImage = [&](const std::wstring& base, std::initializer_list<const wchar_t*> suffixes, ImageRGBA& img) {
+            std::filesystem::path path = resolvePbrPath(base, suffixes);
+            return !path.empty() && LoadImageWic(path, kTextureSize, kTextureSize, img);
+        };
+
         auto loadPbrMaterial = [&](int material, const wchar_t* stem) {
             ImageRGBA img;
             std::wstring base(stem);
             if (base.empty()) return;
-            if (LoadImageWic(ResolveAsset(settings_, base + L"_color_4k.jpg"), kTextureSize, kTextureSize, img)) {
+            if (loadPbrImage(base, {
+                L"_color_4k.jpg", L"_color_4k.png",
+                L"_Color.jpg", L"_Color.png",
+                L"_BaseColor.jpg", L"_BaseColor.png",
+                L"_Albedo.jpg", L"_Albedo.png",
+                L"_Diffuse.jpg", L"_Diffuse.png"
+            }, img)) {
                 applyAlbedo(material, img);
             }
-            if (LoadImageWic(ResolveAsset(settings_, base + L"_height_4k.png"), kTextureSize, kTextureSize, img)) {
+            if (loadPbrImage(base, {
+                L"_height_4k.png", L"_height_4k.jpg",
+                L"_Displacement.jpg", L"_Displacement.png",
+                L"_Height.jpg", L"_Height.png"
+            }, img)) {
                 applyHeight(material, img);
             }
-            std::filesystem::path normalPath = ResolveAsset(settings_, base + L"_normal_directx_4k.png");
+            std::filesystem::path normalPath = resolvePbrPath(base, {
+                L"_normal_directx_4k.png", L"_normal_directx_4k.jpg",
+                L"_normal_dx_4k.png", L"_normal_dx_4k.jpg",
+                L"_NormalDX.jpg", L"_NormalDX.png",
+                L"_NormalDirectX.jpg", L"_NormalDirectX.png"
+            });
             std::error_code ec;
             uintmax_t normalSize = std::filesystem::exists(normalPath, ec) ? std::filesystem::file_size(normalPath, ec) : 0;
             if (settings_.useExternalNormals && normalSize > 0 &&
                 (material == 15 || normalSize <= static_cast<uintmax_t>(settings_.maxNormalMapMB) * 1024ull * 1024ull) &&
                 LoadImageWic(normalPath, kTextureSize, kTextureSize, img)) {
                 applyNormal(material, img);
+            } else {
+                normalPath = resolvePbrPath(base, {
+                    L"_normal_opengl_4k.png", L"_normal_opengl_4k.jpg",
+                    L"_normal_gl_4k.png", L"_normal_gl_4k.jpg",
+                    L"_NormalGL.jpg", L"_NormalGL.png",
+                    L"_NormalOpenGL.jpg", L"_NormalOpenGL.png"
+                });
+                ec.clear();
+                normalSize = std::filesystem::exists(normalPath, ec) ? std::filesystem::file_size(normalPath, ec) : 0;
+                if (settings_.useExternalNormals && normalSize > 0 &&
+                    (material == 15 || normalSize <= static_cast<uintmax_t>(settings_.maxNormalMapMB) * 1024ull * 1024ull) &&
+                    LoadImageWic(normalPath, kTextureSize, kTextureSize, img)) {
+                    applyNormal(material, img, true);
+                }
             }
-            if (LoadImageWic(ResolveAsset(settings_, base + L"_ao_4k.jpg"), kTextureSize, kTextureSize, img)) {
+            if (loadPbrImage(base, {
+                L"_ao_4k.jpg", L"_ao_4k.png",
+                L"_AO.jpg", L"_AO.png",
+                L"_AmbientOcclusion.jpg", L"_AmbientOcclusion.png"
+            }, img)) {
                 applyScalarProp(material, img, 0);
             }
-            if (LoadImageWic(ResolveAsset(settings_, base + L"_roughness_4k.jpg"), kTextureSize, kTextureSize, img)) {
+            if (loadPbrImage(base, {
+                L"_roughness_4k.jpg", L"_roughness_4k.png",
+                L"_Roughness.jpg", L"_Roughness.png"
+            }, img)) {
                 applyScalarProp(material, img, 1);
+            }
+            if (loadPbrImage(base, {
+                L"_metallic_4k.jpg", L"_metallic_4k.png",
+                L"_metalness_4k.jpg", L"_metalness_4k.png",
+                L"_Metallic.jpg", L"_Metallic.png",
+                L"_Metalness.jpg", L"_Metalness.png"
+            }, img)) {
+                applyScalarProp(material, img, 2);
             }
         };
 
@@ -518,8 +575,8 @@
                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                     DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
                 HGDIOBJ oldFont = SelectObject(dc, font);
-                const wchar_t* labels[] = {L"Single Player", L"Resume", L"Settings", L"Debug"};
-                constexpr int kMenuLabelRows = 4;
+                const wchar_t* labels[] = {L"Start New Run", L"Resume Current Run", L"Resume Saved Run", L"Settings", L"Debug"};
+                constexpr int kMenuLabelRows = 5;
                 for (int row = 0; row < kMenuLabelRows; ++row) {
                     int top = row * kTextureSize / kMenuLabelRows;
                     int bottom = (row + 1) * kTextureSize / kMenuLabelRows;
