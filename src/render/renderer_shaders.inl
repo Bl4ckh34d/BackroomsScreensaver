@@ -86,6 +86,19 @@ struct VSIn
     float material : TEXCOORD1;
 };
 
+struct VSInstIn
+{
+    float3 pos : POSITION;
+    float3 normal : NORMAL;
+    float3 tangent : TANGENT;
+    float2 uv : TEXCOORD0;
+    float material : TEXCOORD1;
+    float4 instX : TEXCOORD5;
+    float4 instY : TEXCOORD6;
+    float4 instZ : TEXCOORD7;
+    float4 instMaterial : TEXCOORD8;
+};
+
 struct VSOut
 {
     float4 pos : SV_POSITION;
@@ -157,6 +170,35 @@ VSOut VSMain(VSIn input)
     }
     o.pos = mul(float4(o.worldPos, 1.0), gViewProj);
     return o;
+}
+
+VSOut VSInstanced(VSInstIn input)
+{
+    float3 axisX = input.instX.xyz;
+    float3 axisY = input.instY.xyz;
+    float3 axisZ = input.instZ.xyz;
+    float3 origin = float3(input.instX.w, input.instY.w, input.instZ.w);
+
+    VSIn baseInput;
+    baseInput.pos = origin + axisX * input.pos.x + axisY * input.pos.y + axisZ * input.pos.z;
+    float invLenX2 = rcp(max(0.000001, dot(axisX, axisX)));
+    float invLenY2 = rcp(max(0.000001, dot(axisY, axisY)));
+    float invLenZ2 = rcp(max(0.000001, dot(axisZ, axisZ)));
+    baseInput.normal = normalize(axisX * input.normal.x * invLenX2 +
+        axisY * input.normal.y * invLenY2 +
+        axisZ * input.normal.z * invLenZ2);
+    baseInput.tangent = normalize(axisX * input.tangent.x + axisY * input.tangent.y + axisZ * input.tangent.z);
+    baseInput.uv = input.uv;
+    baseInput.material = input.material;
+    if (input.instMaterial.x >= 0.0)
+    {
+        baseInput.material = input.instMaterial.x;
+    }
+    else if (floor(baseInput.material) > 21.5 && floor(baseInput.material) < 22.5)
+    {
+        baseInput.material = 22.020 + fmod(abs(input.instMaterial.y), 0.92);
+    }
+    return VSMain(baseInput);
 }
 
 float MaterialId(float material)
@@ -501,6 +543,7 @@ void ApplyWorldDirtOverlay(inout float3 base, inout float roughness, inout float
     float detailFade = saturate(screenDetail * distanceDetail);
     float microFade = saturate(detailFade * (1.0 - smoothstep(0.086, 0.235, pixelFootprint)));
 
+)" R"(
     float broad = Fbm3(float3(warped * 0.28 + surfaceVar * 3.0, materialSalt + 31.0));
     float mid = Fbm3(float3(warped * 1.75 + 17.0, materialSalt + 47.0));
     float fine = lerp(0.5, Noise3(float3(warped * 34.0 + surfaceVar * 13.0, materialSalt + 59.0)), detailFade);
@@ -749,22 +792,29 @@ float CenterSeepPool(float2 uv, float3 worldPos, float seed, float age, float sp
         float2 q = p - offset;
         float angle = seed * 6.2831853 + Hash21(float2(seed * 41.0 + fi, 19.0)) * 1.2;
         q = Rotate2(q, angle);
-        q *= float2(0.94 + Hash21(float2(seed * 47.0 + fi, 23.0)) * 0.14,
-                    0.92 + Hash21(float2(seed * 53.0, fi + 29.0)) * 0.16);
-        float radial = length(q);
+        q *= float2(0.58 + Hash21(float2(seed * 47.0 + fi, 23.0)) * 0.58,
+                    0.84 + Hash21(float2(seed * 53.0, fi + 29.0)) * 0.82);
         float broad = Fbm3(float3(worldPos.xz * (3.4 + seed * 1.1 + fi * 0.35) + seed * 11.0 + fi, seed * 31.0));
         float fine = Noise3(float3(worldPos.xz * (15.0 + seed * 4.0 + fi * 1.7) + seed * 7.0, seed * 71.0 + fi));
         float cellular = Fbm3(float3(worldPos.xz * (8.4 + fi * 1.5) + seed * 19.0, seed * 89.0 + fi));
+        float angular = atan2(q.y, q.x);
+        float lobedEdge = sin(angular * (2.0 + floor(Hash21(float2(seed * 97.0 + fi, 43.0)) * 4.0)) +
+            seed * 9.1 + fi * 1.7) * (0.045 + localGrow * 0.145);
+        lobedEdge += sin(angular * 5.0 - seed * 6.4 + fi) * (0.026 + localGrow * 0.065);
+        lobedEdge += sin(q.x * (4.3 + fi * 0.7) + q.y * (2.8 + seed) + seed * 8.4) * (0.012 + localGrow * 0.045);
+        float radial = length(q) + lobedEdge;
         float edgeNoise = (broad - 0.5) * (0.18 + localGrow * 0.22) + (fine - 0.5) * 0.055;
-        float spotScale = i == 0 ? 1.0 : (0.54 + Hash21(float2(seed * 79.0, fi + 31.0)) * 0.20);
+        float spotScale = i == 0
+            ? (0.78 + Hash21(float2(seed * 79.0, fi + 31.0)) * 0.16)
+            : (0.52 + Hash21(float2(seed * 79.0, fi + 31.0)) * 0.28);
         float radius = lerp(0.022, maxRadius * spotScale, localGrow);
         float coreEdge = (broad - 0.5) * 0.028 + (fine - 0.5) * 0.012;
         float coreGrow = smoothstep(0.0, 1.0, saturate(age * speed * (0.58 + fi * 0.08)));
         float coreNoise = (cellular - 0.5) * (0.020 + coreGrow * 0.035) + coreEdge;
         float core = 1.0 - smoothstep(radius * (0.070 + coreGrow * 0.040) + coreNoise,
             radius * (0.18 + coreGrow * 0.145) + coreNoise, radial);
-        float front = 1.0 - smoothstep(radius * 0.36 + edgeNoise,
-            radius + 0.34 + edgeNoise, radial);
+        float front = 1.0 - smoothstep(radius * 0.42 + edgeNoise,
+            radius * (1.08 + localGrow * 0.20) + edgeNoise, radial);
         float soakMask = smoothstep(0.20, 0.82, broad + (cellular - 0.5) * 0.44 + (fine - 0.5) * 0.14);
         float feather = smoothstep(0.03, 0.82, front);
         float capillary = smoothstep(0.64, 0.93, cellular + fine * 0.10) *
@@ -783,6 +833,41 @@ float CenterSeepPool(float2 uv, float3 worldPos, float seed, float age, float sp
     shape *= smoothstep(0.004, 0.032, border) * smoothstep(0.02, 0.55, grow);
     thickness = saturate(darkCore * (0.78 + grow * 0.14) + sharedSoak * 0.12);
     return shape;
+}
+
+float IrregularPuddleSupport(float2 uv, float3 worldPos, float seed, float age, float waterLiquid)
+{
+    float2 p = uv * 2.0 - 1.0;
+    float angle = seed * 6.2831853 + Hash21(float2(seed * 11.0, 7.0)) * 2.2;
+    float2 q = Rotate2(p, angle);
+    float2 aspect = float2(0.66 + Hash21(float2(seed * 13.0, 11.0)) * 0.34,
+                           0.96 + Hash21(float2(seed * 17.0, 13.0)) * 0.68);
+    q *= aspect;
+    float theta = atan2(q.y, q.x);
+    float broad = Fbm3(float3(worldPos.xz * (0.70 + seed * 0.17) + seed * 19.0, seed * 31.0));
+    float mid = Fbm3(float3(worldPos.xz * (2.1 + seed * 0.31) + seed * 7.0, seed * 43.0));
+    float fine = Noise3(float3(worldPos.xz * (7.5 + seed * 0.80) + seed * 13.0, seed * 59.0));
+    float edge = sin(theta * (3.0 + floor(Hash21(float2(seed * 23.0, 17.0)) * 3.0)) + seed * 8.0) * 0.13;
+    edge += sin(theta * 5.0 - seed * 5.7) * 0.070;
+    edge += (broad - 0.5) * 0.26 + (mid - 0.5) * 0.12 + (fine - 0.5) * 0.040;
+    float lobeField = 1.0 - smoothstep(0.58 + edge, 1.18 + edge * 0.35, length(q));
+    float satellites = 0.0;
+    [unroll]
+    for (int i = 0; i < 4; ++i)
+    {
+        float fi = (float)i;
+        float enabled = step(0.24, Hash21(float2(seed * 37.0 + fi, 29.0)));
+        float a = seed * 6.2831853 + fi * 1.71 + Hash21(float2(seed * 41.0, fi + 31.0)) * 1.10;
+        float r = 0.30 + Hash21(float2(seed * 43.0 + fi, 37.0)) * 0.44;
+        float2 c = float2(cos(a), sin(a)) * r;
+        float2 lq = Rotate2(p - c, a + 1.13);
+        lq *= float2(0.74 + Hash21(float2(seed * 47.0, fi + 41.0)) * 0.42,
+                     1.04 + Hash21(float2(seed * 53.0 + fi, 43.0)) * 0.62);
+        float oval = 1.0 - smoothstep(0.30, 0.72, length(lq) + (mid - 0.5) * 0.16);
+        satellites = max(satellites, oval * enabled * (0.45 + Hash21(float2(seed * 59.0, fi + 47.0)) * 0.42));
+    }
+    float feedAge = smoothstep(1.0, lerp(34.0, 24.0, waterLiquid), age);
+    return saturate(max(lobeField, satellites * feedAge));
 }
 
 )" R"(
@@ -1454,6 +1539,24 @@ float3 ExitSignLight(float3 worldPos, float3 worldN, float materialId)
             step(9.5, materialId) * (1.0 - step(10.5, materialId)));
         float spill = portalEnabled * roomDepth * width * height * receiver;
         result += float3(0.035, 0.32, 0.13) * strength * spill * (0.08 + signNear * 0.12) * (0.84 + doorOrTrim * 0.50);
+
+        float hallDepth = -axial;
+        float maxHallDepth = max(gMaze1.w * 14.0, 14.0);
+        float hallLength = smoothstep(0.08, 0.42, hallDepth) *
+            (1.0 - smoothstep(maxHallDepth - gMaze1.w * 1.20, maxHallDepth + gMaze1.w * 0.35, hallDepth));
+        float hallWidth = smoothstep(doorHalfW * 2.35, doorHalfW * 0.30, lateral);
+        float hallHeight = smoothstep(-0.18, 0.04, worldPos.y) * (1.0 - smoothstep(gMaze1.z + 0.04, gMaze1.z + 0.24, worldPos.y));
+        float floorReceiver2 = smoothstep(0.42, 0.82, worldN.y);
+        float ceilingReceiver2 = smoothstep(0.42, 0.82, -worldN.y);
+        float wallReceiver2 = (1.0 - floorReceiver2) * (1.0 - ceilingReceiver2) *
+            smoothstep(-0.14, 0.58, max(abs(dot(worldN, portalRight)) * 0.92, abs(dot(worldN, portalDir)) * 0.38));
+        float receiver2 = saturate(floorReceiver2 * 0.92 + wallReceiver2 * 0.56 + ceilingReceiver2 * 0.74);
+        float lampSpacing = max(gMaze1.w * 1.75, 2.2);
+        float lampBand = pow(saturate(sin(hallDepth / lampSpacing * 6.2831853) * 0.5 + 0.5), 0.55);
+        float lampBands = 0.74 + 0.34 * lampBand;
+        float hallFade = 1.0 - smoothstep(maxHallDepth - gMaze1.w * 2.15, maxHallDepth + gMaze1.w * 0.45, hallDepth);
+        result += float3(1.0, 0.90, 0.58) * strength * hallLength * hallWidth * hallHeight * hallFade *
+            (receiver2 * (0.72 + lampBands * 0.34) + 0.08);
     }
 
     float doorStrength = gExitLight2.w * (1.0 - saturate(gTransition0.z));
@@ -1748,6 +1851,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float ceilingStreamCount = wallLeakSurface > 0.5
             ? streamCount
             : clamp(round(streamCount * lerp(0.32, 0.70, bloodQuality)), 2.0, streamCount);
+        float canvasStreamCount = clamp(round(lerp(4.0, 12.0, bloodQuality)), 4.0, 12.0);
         float streamWidthScale = max(0.10, gBlood1.z) * lerp(1.55, 1.0, bloodQuality);
         static const bool highBloodDetail = BRM_ENABLE_HIGH_BLOOD != 0;
 
@@ -1960,8 +2064,10 @@ float4 PSMain(VSOut input) : SV_TARGET
                 float soakField = 0.0;
                 float lobeThickness = 0.0;
                 float finiteReachField = 0.0;
-                float delayedWallContact = waterLiquid * (1.0 - centerCode);
-                float downstreamWater = waterLiquid * downstreamCode;
+                float sideSourceCount = saturate(sideActive0 + sideActive1 + sideActive2 + sideActive3);
+                float delayedWallContact = (1.0 - centerCode) * sideSourceCount * (1.0 - downstreamCode);
+                float downstreamFlow = downstreamCode * sideSourceCount;
+                float downstreamWater = waterLiquid * downstreamFlow;
                 float sideActives[4] = {sideActive0, sideActive1, sideActive2, sideActive3};
                 [loop]
                 for (int sideIndex = 0; sideIndex < 4; ++sideIndex)
@@ -1974,23 +2080,24 @@ float4 PSMain(VSOut input) : SV_TARGET
                     float awayMeters = sideIndex < 2 ? bloodUvMeters.y : bloodUvMeters.x;
                     float sideSalt = sideIndex < 2 ? 0.0 : 0.347;
                     [loop]
-                    for (int i = 0; i < 24; ++i)
+                    for (int i = 0; i < 18; ++i)
                     {
                         float fi = (float)i;
+                        if (fi >= canvasStreamCount) break;
                         float r0 = Hash21(float2(seed * 47.0 + fi + sideSalt, 3.0));
                         float r1 = Hash21(float2(seed * 31.0 + sideSalt, fi + 5.0));
                         float r2 = Hash21(float2(fi + 9.0, seed * 71.0 + sideSalt));
                         float clusterCount = 2.0 + floor(Hash21(float2(seed * 83.0 + sideSalt, 19.0)) * 3.0);
                         float clusterId = floor(fmod(fi + floor(seed * 31.0 + sideSalt * 7.0), clusterCount));
-                        float uniformCenter = 0.040 + ((fi + 0.20 + r0 * 0.60) / 24.0) * 0.92;
+                        float uniformCenter = 0.040 + ((fi + 0.20 + r0 * 0.60) / max(1.0, canvasStreamCount)) * 0.92;
                         float clusterCenter = 0.055 + Hash21(float2(seed * 89.0 + clusterId * 5.7 + sideSalt, 13.0)) * 0.89;
                         float clusterSpread = 0.030 + Hash21(float2(seed * 97.0 + clusterId + sideSalt, 29.0)) * 0.22;
                         float sourceU = clamp(lerp(uniformCenter, clusterCenter + (r1 - 0.5) * clusterSpread, 0.70), 0.025, 0.975);
                         float sideWorld = (sideU - sourceU) * alongMeters;
                         float awayWorld = away * awayMeters;
-                        float contactDelay = delayedWallContact * lerp(5.8 + r0 * 2.2 + fi * 0.018, 8.5 + r0 * 3.2 + fi * 0.040, waterLiquid);
-                        float travelDelay = delayedWallContact * (away * lerp(9.5, 34.0, waterLiquid));
-                        float downstreamDelay = downstreamWater * (18.0 + r0 * 9.0 + away * 16.0);
+                        float contactDelay = delayedWallContact * lerp(12.0 + r0 * 4.0 + fi * 0.040, 5.8 + r0 * 2.2 + fi * 0.026, waterLiquid);
+                        float travelDelay = delayedWallContact * (away * lerp(20.0, 34.0, waterLiquid));
+                        float downstreamDelay = downstreamFlow * lerp(22.0 + r0 * 7.0 + away * 18.0, 18.0 + r0 * 9.0 + away * 16.0, waterLiquid);
                         float flowAge = max(0.0, leakAge - r0 * lerp(9.0, 7.8, waterLiquid) - fi * lerp(0.030, 0.070, waterLiquid) - contactDelay - travelDelay - downstreamDelay);
                         float grow = smoothstep(0.0, 1.0, saturate(flowAge * lerp(0.030 + r1 * 0.026, 0.018 + r1 * 0.016, waterLiquid) * lerp(1.0, 0.46, downstreamWater)));
                         float awayContinue = sideIndex == 0 ? edgeContinue1 : (sideIndex == 1 ? edgeContinue0 : (sideIndex == 2 ? edgeContinue3 : edgeContinue2));
@@ -2033,12 +2140,15 @@ float4 PSMain(VSOut input) : SV_TARGET
                         soakField = max(soakField, (1.0 - smoothstep(0.72, 1.18, dot(sq, sq) + soakBreak)) * grow * 0.42);
                     }
                 }
+                float centerDelay = centerCode * downstreamCode * lerp(7.5, 3.8, waterLiquid);
+                float centerLeakAge = max(0.0, leakAge - centerDelay);
+)" R"(
                 if (centerCode > 0.5)
                 {
                     float centerThickness = 0.0;
                     float centerSpeed = lerp(0.026, 0.0075, waterLiquid) * 0.72;
                     float centerRadius = lerp(0.62, 1.06, waterLiquid);
-                    float centerSource = CenterSeepPool(cuv, input.worldPos, seed, leakAge, centerSpeed, centerRadius, centerThickness);
+                    float centerSource = CenterSeepPool(cuv, input.worldPos, seed, centerLeakAge, centerSpeed, centerRadius, centerThickness);
                     float noiseBloom = smoothstep(0.24, 0.70,
                         Fbm3(float3(input.worldPos.xz * 3.6 + seed * 13.0, seed * 47.0)) +
                         (Noise3(float3(input.worldPos.xz * 13.0 + seed * 19.0, seed * 71.0)) - 0.5) * 0.18);
@@ -2047,16 +2157,13 @@ float4 PSMain(VSOut input) : SV_TARGET
                     lobeThickness = max(lobeThickness, centerThickness);
                     soakField = max(soakField, centerSource * noiseBloom * 0.38);
                 }
-                float reachGrow = smoothstep(0.0, 1.0, saturate(leakAge * lerp(0.024, 0.010, waterLiquid)));
+                float reachGrow = smoothstep(0.0, 1.0, saturate(centerLeakAge * lerp(0.024, 0.010, waterLiquid)));
                 float sourceReachMask = saturate(finiteReachField);
                 if (centerCode > 0.5)
                 {
-                    float2 centerQ = (cuv - 0.5) * float2(bloodUvMeters.x / max(0.05, min(bloodUvMeters.x, bloodUvMeters.y)),
-                        bloodUvMeters.y / max(0.05, min(bloodUvMeters.x, bloodUvMeters.y)));
-                    float radialNoise = (Fbm3(float3(input.worldPos.xz * 2.4 + seed * 23.0, seed * 43.0)) - 0.5) * 0.22;
-                    float radius = 0.38 + reachGrow * lerp(0.22, 0.30, waterLiquid) +
-                        saturate(edgeContinue0 + edgeContinue1 + edgeContinue2 + edgeContinue3) * 0.035;
-                    sourceReachMask = max(sourceReachMask, 1.0 - smoothstep(radius + radialNoise, radius + radialNoise + 0.20, length(centerQ)));
+                    float centerReach = IrregularPuddleSupport(cuv, input.worldPos, seed + 0.17, centerLeakAge, waterLiquid) *
+                        smoothstep(0.02, 0.58, reachGrow);
+                    sourceReachMask = max(sourceReachMask, centerReach);
                 }
                 float merged = saturate(max(pooled, smoothstep(0.42, 1.18, pooledField + wetRim * 0.42)) + soakField * 0.62 + wetRim * 0.34);
                 merged *= sourceReachMask;
@@ -2064,12 +2171,7 @@ float4 PSMain(VSOut input) : SV_TARGET
                 soakField *= sourceReachMask;
                 if (waterLiquid > 0.5 && centerCode > 0.5)
                 {
-                    float2 centerOrganicQ = cuv * 2.0 - 1.0;
-                    float centerOrganicNoise =
-                        (Fbm3(float3(input.worldPos.xz * 1.15 + seed * 17.0, seed * 29.0)) - 0.5) * 0.34 +
-                        (Noise3(float3(input.worldPos.xz * 4.6 + seed * 23.0, seed * 47.0)) - 0.5) * 0.12;
-                    float centerAspect = length(centerOrganicQ * float2(0.86, 1.10));
-                    float centerSupport = 1.0 - smoothstep(0.52 + centerOrganicNoise, 1.06 + centerOrganicNoise * 0.55, centerAspect);
+                    float centerSupport = IrregularPuddleSupport(cuv, input.worldPos, seed + 0.31, centerLeakAge, waterLiquid);
                     float channelSupport = saturate(finiteReachField + wetRim * 0.72 + soakField * 0.48);
                     float supportMix = max(centerSupport, channelSupport);
                     merged *= supportMix;
@@ -2105,13 +2207,12 @@ float4 PSMain(VSOut input) : SV_TARGET
                     float broadPuddleNoise = Fbm3(float3(input.worldPos.xz * 0.62 + seed * 19.0, seed * 31.0));
                     float midPuddleNoise = Fbm3(float3(input.worldPos.xz * 1.85 + seed * 7.0, seed * 43.0));
                     float finePuddleNoise = Noise3(float3(input.worldPos.xz * 7.5 + seed * 13.0, seed * 59.0));
-                    float2 organicQ = cuv * 2.0 - 1.0;
-                    float radialFalloff = 1.0 - smoothstep(0.55 + (broadPuddleNoise - 0.5) * 0.34, 1.34, dot(organicQ, organicQ));
+                    float puddleShape = IrregularPuddleSupport(cuv, input.worldPos, seed + 0.49, leakAge, waterLiquid);
                     float drainageAge = smoothstep(18.0, 72.0, leakAge);
                     float downstreamCoverageGate = lerp(1.0, smoothstep(22.0, 58.0, leakAge), downstreamWater);
                     float organicCoverage = smoothstep(0.18, 0.74,
                         broadPuddleNoise * 0.54 + midPuddleNoise * 0.32 + finePuddleNoise * 0.14 +
-                        radialFalloff * 0.34 + sourceReachMask * 0.28 - drainageAge * 0.30) * downstreamCoverageGate;
+                        puddleShape * 0.36 + sourceReachMask * 0.26 - drainageAge * 0.30) * downstreamCoverageGate;
                     float edgeDissolve = smoothstep(0.03, 0.42, tileEdgeFade + broadPuddleNoise * 0.34 + midPuddleNoise * 0.16);
                     float waterDecay = organicCoverage * edgeDissolve;
                     merged *= waterDecay;
@@ -2379,15 +2480,16 @@ float4 PSMain(VSOut input) : SV_TARGET
                     float awayMeters = sideIndex < 2 ? bloodUvMeters.y : bloodUvMeters.x;
                     float sideSalt = sideIndex < 2 ? 0.0 : 0.347;
                     [loop]
-                    for (int i = 0; i < 24; ++i)
+                    for (int i = 0; i < 18; ++i)
                     {
                         float fi = (float)i;
+                        if (fi >= canvasStreamCount) break;
                         float r0 = Hash21(float2(seed * 47.0 + fi + sideSalt, 3.0));
                         float r1 = Hash21(float2(seed * 31.0 + sideSalt, fi + 5.0));
                         float r2 = Hash21(float2(fi + 9.0, seed * 71.0 + sideSalt));
                         float clusterCount = 2.0 + floor(Hash21(float2(seed * 83.0 + sideSalt, 19.0)) * 3.0);
                         float clusterId = floor(fmod(fi + floor(seed * 31.0 + sideSalt * 7.0), clusterCount));
-                        float uniformCenter = 0.045 + ((fi + 0.20 + r0 * 0.60) / 24.0) * 0.91;
+                        float uniformCenter = 0.045 + ((fi + 0.20 + r0 * 0.60) / max(1.0, canvasStreamCount)) * 0.91;
                         float clusterCenter = 0.060 + Hash21(float2(seed * 89.0 + clusterId * 5.7 + sideSalt, 13.0)) * 0.88;
                         float sourceU = clamp(lerp(uniformCenter, clusterCenter + (r1 - 0.5) * 0.26, 0.66), 0.025, 0.975);
                         float flowAge = max(0.0, leakAge - r0 * lerp(8.5, 3.4, waterLiquid) - fi * 0.026);
@@ -2446,12 +2548,9 @@ float4 PSMain(VSOut input) : SV_TARGET
                 float sourceReachMask = saturate(topFiniteReachField);
                 if (centerCode > 0.5)
                 {
-                    float2 centerQ = (cuv - 0.5) * float2(bloodUvMeters.x / max(0.05, min(bloodUvMeters.x, bloodUvMeters.y)),
-                        bloodUvMeters.y / max(0.05, min(bloodUvMeters.x, bloodUvMeters.y)));
-                    float radialNoise = (Fbm3(float3(input.worldPos.xz * 2.1 + seed * 23.0, seed * 43.0)) - 0.5) * 0.25;
-                    float radius = 0.36 + reachGrow * lerp(0.20, 0.28, waterLiquid) +
-                        saturate(edgeContinue0 + edgeContinue1 + edgeContinue2 + edgeContinue3) * 0.035;
-                    sourceReachMask = max(sourceReachMask, 1.0 - smoothstep(radius + radialNoise, radius + radialNoise + 0.22, length(centerQ)));
+                    float centerReach = IrregularPuddleSupport(cuv, input.worldPos, seed + 0.23, leakAge, waterLiquid) *
+                        smoothstep(0.02, 0.58, reachGrow);
+                    sourceReachMask = max(sourceReachMask, centerReach);
                 }
                 float edgeNoiseN = (Fbm3(float3(input.worldPos.x * 1.55 + seed * 11.0, input.worldPos.z * 0.31, seed * 23.0)) - 0.5) * 0.16;
                 float edgeNoiseS = (Fbm3(float3(input.worldPos.x * 1.47 + seed * 17.0, input.worldPos.z * 0.35, seed * 29.0)) - 0.5) * 0.16;
@@ -2475,12 +2574,11 @@ float4 PSMain(VSOut input) : SV_TARGET
                     float broadTopNoise = Fbm3(float3(input.worldPos.xz * 0.58 + seed * 23.0, seed * 37.0));
                     float midTopNoise = Fbm3(float3(input.worldPos.xz * 1.72 + seed * 11.0, seed * 53.0));
                     float fineTopNoise = Noise3(float3(input.worldPos.xz * 7.0 + seed * 17.0, seed * 67.0));
-                    float2 organicQ = cuv * 2.0 - 1.0;
-                    float ceilingFalloff = 1.0 - smoothstep(0.58 + (broadTopNoise - 0.5) * 0.30, 1.38, dot(organicQ, organicQ));
+                    float ceilingShape = IrregularPuddleSupport(cuv, input.worldPos, seed + 0.61, leakAge, waterLiquid);
                     float ceilingDryAge = smoothstep(20.0, 84.0, leakAge);
                     float ceilingCoverage = smoothstep(0.20, 0.76,
                         broadTopNoise * 0.52 + midTopNoise * 0.34 + fineTopNoise * 0.14 +
-                        ceilingFalloff * 0.30 + sourceReachMask * 0.26 - ceilingDryAge * 0.26);
+                        ceilingShape * 0.30 + sourceReachMask * 0.26 - ceilingDryAge * 0.26);
                     float ceilingEdgeDissolve = smoothstep(0.03, 0.44, tileEdgeFade + broadTopNoise * 0.34 + midTopNoise * 0.16);
                     merged *= ceilingCoverage * ceilingEdgeDissolve;
                     topThickness *= lerp(0.62, 1.0, ceilingCoverage);
@@ -3802,6 +3900,7 @@ float4 PSMain(VSOut input) : SV_TARGET
 )";
 
         ComPtr<ID3DBlob> vs;
+        ComPtr<ID3DBlob> instancedVs;
         ComPtr<ID3DBlob> hs;
         ComPtr<ID3DBlob> ds;
         ComPtr<ID3DBlob> ps;
@@ -4074,6 +4173,7 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         ComPtr<ID3DBlob> postPs;
         ComPtr<ID3DBlob> liquidPs;
         if (!CompileShader(generalShader.c_str(), "VSMain", "vs_4_0", vs)) return false;
+        if (!CompileShader(generalShader.c_str(), "VSInstanced", "vs_4_0", instancedVs)) return false;
         if (featureLevel_ >= D3D_FEATURE_LEVEL_11_0) {
             if (!CompileShader(generalShader.c_str(), "HSMain", "hs_5_0", hs)) return false;
             if (!CompileShader(generalShader.c_str(), "DSMain", "ds_5_0", ds)) return false;
@@ -4089,6 +4189,8 @@ float4 PostPS(PostVSOut input) : SV_TARGET
         if (!CompileShader(postShader, "PostVS", "vs_4_0", postVs)) return false;
         if (!CompileShader(postShader, "PostPS", "ps_4_0", postPs)) return false;
         HRESULT hr = device_->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &vertexShader_);
+        if (FAILED(hr)) return false;
+        hr = device_->CreateVertexShader(instancedVs->GetBufferPointer(), instancedVs->GetBufferSize(), nullptr, &instancedVertexShader_);
         if (FAILED(hr)) return false;
         if (featureLevel_ >= D3D_FEATURE_LEVEL_11_0) {
             hr = device_->CreateHullShader(hs->GetBufferPointer(), hs->GetBufferSize(), nullptr, &hullShader_);
@@ -4123,6 +4225,20 @@ float4 PostPS(PostVSOut input) : SV_TARGET
             {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, offsetof(Vertex, material), D3D11_INPUT_PER_VERTEX_DATA, 0}
         };
         hr = device_->CreateInputLayout(desc, ARRAYSIZE(desc), vs->GetBufferPointer(), vs->GetBufferSize(), &inputLayout_);
+        if (FAILED(hr)) return false;
+        D3D11_INPUT_ELEMENT_DESC instancedDesc[] = {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, pos), D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, normal), D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, tangent), D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(Vertex, uv), D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, offsetof(Vertex, material), D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, offsetof(StaticInstanceData, axisXOriginX), D3D11_INPUT_PER_INSTANCE_DATA, 1},
+            {"TEXCOORD", 6, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, offsetof(StaticInstanceData, axisYOriginY), D3D11_INPUT_PER_INSTANCE_DATA, 1},
+            {"TEXCOORD", 7, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, offsetof(StaticInstanceData, axisZOriginZ), D3D11_INPUT_PER_INSTANCE_DATA, 1},
+            {"TEXCOORD", 8, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, offsetof(StaticInstanceData, materialOverrideVariant), D3D11_INPUT_PER_INSTANCE_DATA, 1}
+        };
+        hr = device_->CreateInputLayout(instancedDesc, ARRAYSIZE(instancedDesc),
+            instancedVs->GetBufferPointer(), instancedVs->GetBufferSize(), &instancedInputLayout_);
         if (FAILED(hr)) return false;
         D3D11_INPUT_ELEMENT_DESC overlayDesc[] = {
             {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(OverlayVertex, pos), D3D11_INPUT_PER_VERTEX_DATA, 0},

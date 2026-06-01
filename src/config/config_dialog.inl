@@ -277,7 +277,7 @@ Settings SettingsFromConfigControls(const ConfigState* state) {
     s.debugInvincible = ParseConfigInt(state, L"Debug", L"Invincible", s.debugInvincible ? 1 : 0) != 0;
     s.tileWidthMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"TileWidthMeters", s.tileWidthMeters), 1.2f, 8.0f);
     s.tileLengthMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"TileLengthMeters", s.tileLengthMeters), 1.2f, 8.0f);
-    s.wallHeightMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"WallHeightMeters", s.wallHeightMeters), 1.8f, 8.0f);
+    s.wallHeightMeters = std::clamp(ParseConfigFloat(state, L"Maze", L"WallHeightMeters", s.wallHeightMeters), 2.85f, 8.0f);
     s.runVariation = std::clamp(ParseConfigFloat(state, L"Randomization", L"RunVariation", s.runVariation), 0.0f, 1.0f);
 
     s.assetFolder = ParseConfigString(state, L"Textures", L"AssetFolder", s.assetFolder.c_str());

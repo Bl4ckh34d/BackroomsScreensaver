@@ -28,6 +28,18 @@ This was acceptable for a visual-first screensaver/prototype. It becomes costly 
 - Convert include-based modules into `.h/.cpp` units only after their dependencies are clear.
 - Add focused tests or smoke checks around each moved boundary.
 
+## Execution Adjustment
+
+The current codebase already makes the ownership problem visible: the `.inl` files are grouped by domain, but most are still included inside `Renderer`. Keep Phase 1 brief and do not let ownership comments block extraction work.
+
+Near-term execution order:
+
+- First extract the `Maze` public API into `maze.h` while keeping implementation include-based if that is the smallest compile-clean slice.
+- Treat `PlayableSnapshot` as pause/restore state, not the future render-facing world snapshot.
+- Introduce `PlayerState` before moving controller behavior.
+- Introduce `MonsterState` before moving AI behavior.
+- Move gameplay audio through explicit events after player and monster state boundaries exist.
+
 ## Target Ownership
 
 ### App / Platform
@@ -205,12 +217,12 @@ Goal: make maze/pathing reusable without depending on renderer internals.
 
 ### 2.1 Maze Header Split
 
-- [ ] Create `src/maze/maze.h`.
-- [ ] Move `Tile` dependency decision into a stable header location.
-- [ ] Move `Maze` declarations into `maze.h`.
-- [ ] Keep implementation temporarily in `maze.inl` if needed for a small first slice.
-- [ ] Update include sites to use `maze.h` where possible.
-- [ ] Confirm no renderer-specific types leak into the public maze API.
+- [x] Create `src/maze/maze.h`.
+- [x] Move `Tile` dependency decision into a stable header location.
+- [x] Move `Maze` declarations into `maze.h`.
+- [x] Keep implementation temporarily in `maze.inl` if needed for a small first slice.
+- [x] Update include sites to use `maze.h` where possible.
+- [x] Confirm no renderer-specific types leak into the public maze API.
 
 ### 2.2 Maze Implementation Split
 
@@ -233,7 +245,7 @@ Goal: make maze/pathing reusable without depending on renderer internals.
 
 Verification:
 
-- [ ] Release build passes.
+- [x] Release build passes.
 - [ ] `/selftest` passes.
 - [ ] Game smoke path passes.
 - [ ] Maze generation appears deterministic versus baseline.
@@ -242,11 +254,11 @@ Verification:
 
 Completion notes:
 
-- Agent:
-- Date:
-- Public APIs added:
-- Files removed or deprecated:
-- Behavior changes:
+- Agent: Codex
+- Date: 2026-06-02
+- Public APIs added: `src/maze/maze.h` now owns `MazeWallFeature` and `Maze` declarations.
+- Files removed or deprecated: none; `maze.inl` remains the include-based implementation for this slice.
+- Behavior changes: none intended. Release build passed for `BackroomsMaze.scr` and `BackroomsMazeGame.exe`.
 
 ## Phase 3: Extract Player Controller
 

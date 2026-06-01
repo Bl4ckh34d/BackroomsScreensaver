@@ -355,6 +355,26 @@
         float dist = MonsterDistance();
         bool debugEffectMonster = runtimeMode_ == RendererRuntimeMode::DebugViewer && gDebugSliceEffect != DebugSliceEffect::Props;
         float tileScale = std::max(maze_.TileAverage(), 0.1f);
+        float bodyLengthMeters = std::min(11.5f, 5.9f + static_cast<float>(std::max(0, monsterKillCount_)) * 0.72f);
+        auto sampleTrail = [&](float targetDistance) {
+            if (monsterTrail_.empty()) return monster_;
+            XMFLOAT3 prev = monsterTrail_.front();
+            float travelled = 0.0f;
+            for (size_t i = 1; i < monsterTrail_.size(); ++i) {
+                XMFLOAT3 next = monsterTrail_[i];
+                float dx = next.x - prev.x;
+                float dz = next.z - prev.z;
+                float len = std::sqrt(dx * dx + dz * dz);
+                if (travelled + len >= targetDistance && len > 0.001f) {
+                    float t = (targetDistance - travelled) / len;
+                    return XMFLOAT3{Lerp(prev.x, next.x, t), 0.0f, Lerp(prev.z, next.z, t)};
+                }
+                travelled += len;
+                prev = next;
+            }
+            float back = std::max(0.0f, targetDistance - travelled);
+            return XMFLOAT3{prev.x - std::sin(monsterYaw_) * back, 0.0f, prev.z - std::cos(monsterYaw_) * back};
+        };
         XMFLOAT3 toMonster = Sub3(monster_, camera_);
         float planarMonsterDist = std::sqrt(toMonster.x * toMonster.x + toMonster.z * toMonster.z);
         XMFLOAT3 cameraForward = Forward();
@@ -363,34 +383,56 @@
             : 1.0f;
         bool monsterInFront = forwardDot > -0.10f;
         bool canTrackPlayer = false;
-        bool monsterTileVisible = monsterPreview_ || debugEffectMonster || deathActive_;
+        bool specialMonsterView = monsterPreview_ || debugEffectMonster || deathActive_;
+        bool monsterTileVisible = specialMonsterView;
+        bool monsterAnyPartVisible = specialMonsterView;
+        bool monsterViewRelevant = specialMonsterView;
         bool monsterOccluded = false;
-        if (!monsterPreview_ && !debugEffectMonster && !deathActive_) {
+        if (!specialMonsterView) {
             Tile cameraTile = CameraTile();
-            Tile monsterTile = MonsterTile();
-            monsterTileVisible = maze_.IsOpen(cameraTile.x, cameraTile.y) &&
-                maze_.IsOpen(monsterTile.x, monsterTile.y) &&
-                maze_.LineClear(cameraTile, monsterTile);
-            monsterOccluded = !monsterTileVisible;
-            if (monsterOccluded || !monsterInFront) {
-                monsterBodySmoothTime_ = -1000.0f;
-                monsterLimbAnchors_.clear();
-                return;
+            bool cameraTileOpen = maze_.IsOpen(cameraTile.x, cameraTile.y);
+            XMFLOAT3 viewForward = DirectionFromYawPitch(yaw_, lookPitch_);
+            float renderRadius = std::max(tileScale * 0.58f, modelXZ * 0.85f);
+            float maxRenderDistance = std::max(settings_.fogEndMeters + bodyLengthMeters + tileScale * 2.0f,
+                tileScale * 10.0f);
+            auto sampleVisible = [&](const XMFLOAT3& sample, float radius) {
+                if (!cameraTileOpen) return false;
+                XMFLOAT3 toSample = Sub3(sample, camera_);
+                float padded = maxRenderDistance + radius;
+                if (Dot3(toSample, toSample) > padded * padded) return false;
+                if (Dot3(toSample, viewForward) <= -radius * 2.0f) return false;
+                Tile sampleTile = maze_.TileFromWorld(sample.x, sample.z);
+                return maze_.IsOpen(sampleTile.x, sampleTile.y) && maze_.LineClear(cameraTile, sampleTile);
+            };
+
+            // Walls already depth-test the pieces; the CPU cull only decides when every sampled body section is hidden.
+            monsterTileVisible = sampleVisible(monster_, renderRadius);
+            monsterAnyPartVisible = monsterTileVisible;
+            float sampleStep = std::max(tileScale * 0.82f, 0.72f);
+            int sampleCount = std::clamp(static_cast<int>(std::ceil(bodyLengthMeters / sampleStep)) + 1, 3, 10);
+            for (int i = 1; i < sampleCount && !monsterAnyPartVisible; ++i) {
+                float t = static_cast<float>(i) / static_cast<float>(sampleCount - 1);
+                monsterAnyPartVisible = sampleVisible(sampleTrail(bodyLengthMeters * t), renderRadius);
             }
-            canTrackPlayer = MonsterVisualEncounterPlayer();
+            if (monsterAnyPartVisible) monsterRenderVisibleUntil_ = time_ + 0.24f;
+            monsterViewRelevant = monsterAnyPartVisible || time_ <= monsterRenderVisibleUntil_;
+            monsterOccluded = !monsterAnyPartVisible;
+            canTrackPlayer = monsterTileVisible && MonsterVisualEncounterPlayer();
         }
-        bool monsterViewRelevant = monsterPreview_ || debugEffectMonster || deathActive_ ||
-            (monsterTileVisible && monsterInFront);
         if (!monsterViewRelevant) {
-            monsterBodySmoothTime_ = -1000.0f;
-            monsterLimbAnchors_.clear();
+            if (!specialMonsterView && time_ > monsterRenderVisibleUntil_ + 0.18f) {
+                monsterBodySmoothTime_ = -1000.0f;
+                monsterSmoothedBodyPoints_.clear();
+                monsterSmoothedBodyUps_.clear();
+                monsterLimbAnchors_.clear();
+            }
             return;
         }
         bool highDetailMonster = monsterPreview_ || deathActive_ || canTrackPlayer ||
-            monsterHeadChaseBlend_ > 0.62f || (monsterTileVisible && monsterInFront && dist < tileScale * 4.2f);
+            monsterHeadChaseBlend_ > 0.62f || (monsterAnyPartVisible && dist < tileScale * 4.2f);
         bool mediumDetailMonster = highDetailMonster || (!monsterOccluded && (monsterHasLastKnown_ || monsterHasSound_)) ||
             monsterHeadChaseBlend_ > 0.18f || (monsterInFront && dist < tileScale * 8.5f) ||
-            (monsterTileVisible && monsterInFront);
+            monsterAnyPartVisible || monsterViewRelevant;
         int monsterDetail = debugEffectMonster ? 1 : (highDetailMonster ? 2 : (mediumDetailMonster ? 1 : 0));
         float faceYaw = monsterYaw_;
         if (canTrackPlayer) {
@@ -492,25 +534,6 @@
         bool allowBodySurfaceClimb = monsterPreview_ || debugEffectMonster;
         bool allowCeilingLimbContacts = monsterPreview_ || debugEffectMonster;
 
-        auto sampleTrail = [&](float targetDistance) {
-            if (monsterTrail_.empty()) return monster_;
-            XMFLOAT3 prev = monsterTrail_.front();
-            float travelled = 0.0f;
-            for (size_t i = 1; i < monsterTrail_.size(); ++i) {
-                XMFLOAT3 next = monsterTrail_[i];
-                float dx = next.x - prev.x;
-                float dz = next.z - prev.z;
-                float len = std::sqrt(dx * dx + dz * dz);
-                if (travelled + len >= targetDistance && len > 0.001f) {
-                    float t = (targetDistance - travelled) / len;
-                    return XMFLOAT3{Lerp(prev.x, next.x, t), 0.0f, Lerp(prev.z, next.z, t)};
-                }
-                travelled += len;
-                prev = next;
-            }
-            float back = std::max(0.0f, targetDistance - travelled);
-            return XMFLOAT3{prev.x - std::sin(monsterYaw_) * back, 0.0f, prev.z - std::cos(monsterYaw_) * back};
-        };
         struct SurfaceContact {
             XMFLOAT3 point;
             XMFLOAT3 normal;
@@ -635,7 +658,6 @@
         std::array<float, maxBodyCount> bodyUvShift{};
         float bodySpacing = maze_.TileMinimum() * (debugEffectMonster ? 0.21f : (monsterDetail >= 2 ? 0.19f : (monsterDetail == 1 ? 0.24f : 0.32f)));
         float visualBodySpacing = maze_.TileMinimum() * (debugEffectMonster ? 0.19f : (monsterDetail >= 2 ? 0.17f : (monsterDetail == 1 ? 0.22f : 0.29f)));
-        float bodyLengthMeters = std::min(11.5f, 5.9f + static_cast<float>(std::max(0, monsterKillCount_)) * 0.72f);
         int bodyCount = debugEffectMonster
             ? 22
             : std::clamp(static_cast<int>(std::ceil(bodyLengthMeters / std::max(0.12f, bodySpacing))) + 1,
@@ -1603,7 +1625,7 @@
             float distanceT = Clamp01(lightingDist / maxDist);
             float distanceScale = Lerp(0.52f, 0.085f, distanceT);
             if (p.nearLayer > 0.5f) {
-                distanceScale = std::max(distanceScale, p.nearLayer > 1.5f ? 0.92f : 0.72f);
+                distanceScale = std::max(distanceScale, p.nearLayer > 1.5f ? 0.70f : 0.60f);
             }
             float size = p.size * distanceScale * (1.0f + focusBlur * 0.24f);
             float projectedPixels = (size / std::max(0.06f, cameraDepth)) * static_cast<float>(std::max<LONG>(1, height_)) * 0.72f;

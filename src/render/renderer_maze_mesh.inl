@@ -244,10 +244,13 @@
                                  UINT rangeStart,
                                  UINT rangeCount,
                                  std::vector<uint32_t>& destIndices,
-                                 std::vector<StaticIndexChunk>& chunks) const {
-        constexpr int kChunkTiles = 4;
-        int chunksX = std::max(1, (maze_.w + kChunkTiles - 1) / kChunkTiles);
-        int chunksY = std::max(1, (maze_.h + kChunkTiles - 1) / kChunkTiles);
+                                 std::vector<StaticIndexChunk>& chunks,
+                                 int chunkTiles = 4,
+                                 int tilePadding = 1) const {
+        const int safeChunkTiles = std::clamp(chunkTiles, 1, 16);
+        const int safeTilePadding = std::max(0, tilePadding);
+        int chunksX = std::max(1, (maze_.w + safeChunkTiles - 1) / safeChunkTiles);
+        int chunksY = std::max(1, (maze_.h + safeChunkTiles - 1) / safeChunkTiles);
         struct ChunkBuild {
             std::vector<uint32_t> indices;
             XMFLOAT3 min{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
@@ -283,8 +286,8 @@
             float cz = (a.z + b.z + c.z) / 3.0f;
             int tileX = std::clamp(static_cast<int>(std::floor((cx - ox) / std::max(0.001f, maze_.tileW))), 0, std::max(0, maze_.w - 1));
             int tileY = std::clamp(static_cast<int>(std::floor((cz - oz) / std::max(0.001f, maze_.tileD))), 0, std::max(0, maze_.h - 1));
-            int chunkX = std::clamp(tileX / kChunkTiles, 0, chunksX - 1);
-            int chunkY = std::clamp(tileY / kChunkTiles, 0, chunksY - 1);
+            int chunkX = std::clamp(tileX / safeChunkTiles, 0, chunksX - 1);
+            int chunkY = std::clamp(tileY / safeChunkTiles, 0, chunksY - 1);
             ChunkBuild& chunk = build[static_cast<size_t>(chunkY * chunksX + chunkX)];
             chunk.minTileX = std::min(chunk.minTileX, tileX);
             chunk.minTileY = std::min(chunk.minTileY, tileY);
@@ -314,10 +317,10 @@
             float dy = b.max.y - chunk.center.y;
             float dz = b.max.z - chunk.center.z;
             chunk.radius = std::sqrt(dx * dx + dy * dy + dz * dz);
-            chunk.minTileX = std::clamp(b.minTileX - 1, 0, std::max(0, maze_.w - 1));
-            chunk.minTileY = std::clamp(b.minTileY - 1, 0, std::max(0, maze_.h - 1));
-            chunk.maxTileX = std::clamp(b.maxTileX + 1, 0, std::max(0, maze_.w - 1));
-            chunk.maxTileY = std::clamp(b.maxTileY + 1, 0, std::max(0, maze_.h - 1));
+            chunk.minTileX = std::clamp(b.minTileX - safeTilePadding, 0, std::max(0, maze_.w - 1));
+            chunk.minTileY = std::clamp(b.minTileY - safeTilePadding, 0, std::max(0, maze_.h - 1));
+            chunk.maxTileX = std::clamp(b.maxTileX + safeTilePadding, 0, std::max(0, maze_.w - 1));
+            chunk.maxTileY = std::clamp(b.maxTileY + safeTilePadding, 0, std::max(0, maze_.h - 1));
             destIndices.insert(destIndices.end(), b.indices.begin(), b.indices.end());
             chunks.push_back(chunk);
         }
@@ -343,6 +346,14 @@
         staticFloorCeilingChunks_.clear();
         staticWaterChunks_.clear();
         staticTransparentChunks_.clear();
+        staticPropShadowChunks_.clear();
+        instancedOpaqueChunks_.clear();
+        instancedPropShadowChunks_.clear();
+        instancedVertexBuffer_.Reset();
+        instancedIndexBuffer_.Reset();
+        instancedInstanceBuffer_.Reset();
+        instancedIndexCount_ = 0;
+        instancedInstanceCount_ = 0;
         mapOverlayCachedVerts_.clear();
         mapOverlayNextUpdateTime_ = 0.0f;
         lampDamagePixels_.assign(static_cast<size_t>(std::max(0, maze_.w * maze_.h)), 0);
@@ -532,6 +543,7 @@
                 std::max(tileAvg * 7.5f, settings_.fogEndMeters + tileAvg * 3.0f),
                 tileAvg * 14.0f);
             float vestibuleHalf = openingHalf;
+            vestibuleH = wallH;
 
             auto wallPoint = [&](float along, float y, float push = 0.0f) {
                 return Add3(exitPortal.wallCenter,
@@ -635,20 +647,30 @@
                 CeilingUv(vc0.x, vc0.z), CeilingUv(vc1.x, vc1.z),
                 CeilingUv(vc2.x, vc2.z), CeilingUv(vc3.x, vc3.z),
                 2.0f);
-            XMFLOAT3 exitLampCenter = p(0.0f, 0.0f, std::min(tileAvg * 0.55f, vestibuleLength * 0.22f));
-            float exitLampSeed = LampSeed(exitPortal.tile.x, exitPortal.tile.y) * 0.73f + 0.19f;
-            AddCeilingCard(vertices, indices, {exitLampCenter.x, 0.0f, exitLampCenter.z},
-                tileW * (0.94f / 3.0f), tileD * (0.94f / 3.0f), 0.0f, vestibuleH - 0.004f, 3.0f + std::fmod(exitLampSeed, 0.49f));
-            runtimeLamps_.push_back({
-                exitPortal.tile,
-                {exitLampCenter.x, vestibuleH - 0.08f, exitLampCenter.z},
-                0.0f,
-                RandRange(0.08f, 0.72f),
-                false,
-                1,
-                false,
-                0.0f
-            });
+            {
+                const float lampSpacing = std::max(tileAvg * 1.75f, 2.2f);
+                const int lampCount = std::clamp(static_cast<int>(std::floor(vestibuleLength / lampSpacing)), 2, 7);
+                const float firstDepth = std::min(tileAvg * 0.70f, vestibuleLength * 0.20f);
+                const float lastDepth = std::max(firstDepth, vestibuleLength - tileAvg * 0.85f);
+                for (int i = 0; i < lampCount; ++i) {
+                    float t = lampCount <= 1 ? 0.0f : static_cast<float>(i) / static_cast<float>(lampCount - 1);
+                    float depth = Lerp(firstDepth, lastDepth, t);
+                    XMFLOAT3 exitLampCenter = p(0.0f, 0.0f, depth);
+                    float exitLampSeed = std::fmod(LampSeed(exitPortal.tile.x + i * 3, exitPortal.tile.y + i * 5) * 0.73f + 0.19f, 0.49f);
+                    AddCeilingCard(vertices, indices, {exitLampCenter.x, 0.0f, exitLampCenter.z},
+                        tileW * (0.94f / 3.0f), tileD * (0.94f / 3.0f), 0.0f, vestibuleH - 0.004f, 3.0f + exitLampSeed);
+                    runtimeLamps_.push_back({
+                        exitPortal.tile,
+                        {exitLampCenter.x, vestibuleH - 0.08f, exitLampCenter.z},
+                        0.0f,
+                        RandRange(0.08f, 0.72f),
+                        false,
+                        1,
+                        false,
+                        0.0f
+                    });
+                }
+            }
             auto addVestibuleSide = [&](float side) {
                 XMFLOAT3 normal = Scale3(exitPortal.right, -side);
                 AddQuadUV(vertices, indices,
@@ -1034,6 +1056,182 @@
             return candidates[static_cast<size_t>(pick)];
         };
 
+        struct InstancedMeshRange {
+            const StaticPropMesh* mesh = nullptr;
+            UINT startIndex = 0;
+            UINT indexCount = 0;
+            INT baseVertex = 0;
+            XMFLOAT3 min{};
+            XMFLOAT3 max{};
+        };
+        struct PendingStaticInstance {
+            UINT meshId = 0;
+            StaticInstanceData data{};
+            XMFLOAT3 min{};
+            XMFLOAT3 max{};
+            XMFLOAT3 center{};
+            float radius = 0.0f;
+            int minTileX = 0;
+            int minTileY = 0;
+            int maxTileX = 0;
+            int maxTileY = 0;
+            bool castsShadow = false;
+        };
+        std::vector<Vertex> instancedVertices;
+        std::vector<uint32_t> instancedIndices;
+        std::vector<StaticInstanceData> instancedInstanceData;
+        std::vector<PendingStaticInstance> pendingStaticInstances;
+        std::vector<InstancedMeshRange> instancedMeshRanges;
+        instancedVertices.reserve(4096);
+        instancedIndices.reserve(4096);
+        pendingStaticInstances.reserve(maze_.w * maze_.h / 2);
+
+        auto tileBoundsForWorldBounds = [&](XMFLOAT3 minP, XMFLOAT3 maxP, int& minTileX, int& minTileY, int& maxTileX, int& maxTileY) {
+            Tile a = maze_.TileFromWorld(minP.x, minP.z);
+            Tile b = maze_.TileFromWorld(maxP.x, maxP.z);
+            minTileX = std::clamp(std::min(a.x, b.x), 0, std::max(0, maze_.w - 1));
+            maxTileX = std::clamp(std::max(a.x, b.x), 0, std::max(0, maze_.w - 1));
+            minTileY = std::clamp(std::min(a.y, b.y), 0, std::max(0, maze_.h - 1));
+            maxTileY = std::clamp(std::max(a.y, b.y), 0, std::max(0, maze_.h - 1));
+        };
+        auto registerInstancedStaticMesh = [&](const StaticPropMesh& mesh) -> int {
+            if (mesh.vertices.empty()) return -1;
+            for (size_t i = 0; i < instancedMeshRanges.size(); ++i) {
+                if (instancedMeshRanges[i].mesh == &mesh) return static_cast<int>(i);
+            }
+            if (instancedVertices.size() + mesh.vertices.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) return -1;
+
+            InstancedMeshRange range{};
+            range.mesh = &mesh;
+            range.baseVertex = static_cast<INT>(instancedVertices.size());
+            range.startIndex = static_cast<UINT>(instancedIndices.size());
+            range.indexCount = static_cast<UINT>(mesh.vertices.size());
+            range.min = mesh.min;
+            range.max = mesh.max;
+
+            XMFLOAT3 meshSpan{
+                std::max(0.001f, mesh.max.x - mesh.min.x),
+                std::max(0.001f, mesh.max.y - mesh.min.y),
+                std::max(0.001f, mesh.max.z - mesh.min.z)
+            };
+            auto generatedUv = [&](const Vertex& src) {
+                float nx = (src.pos.x - mesh.min.x) / meshSpan.x;
+                float ny = (src.pos.y - mesh.min.y) / meshSpan.y;
+                float nz = (src.pos.z - mesh.min.z) / meshSpan.z;
+                XMFLOAT3 nAbs{std::abs(src.normal.x), std::abs(src.normal.y), std::abs(src.normal.z)};
+                XMFLOAT2 uv = nAbs.y >= nAbs.x && nAbs.y >= nAbs.z
+                    ? XMFLOAT2{nx, nz}
+                    : (nAbs.x >= nAbs.z ? XMFLOAT2{nz, 1.0f - ny} : XMFLOAT2{nx, 1.0f - ny});
+                int materialId = std::clamp(static_cast<int>(std::floor(src.material)), 0, kMaterialCount - 1);
+                if (materialId == 22) {
+                    uv = {0.20f + uv.x * 0.60f, 0.28f + uv.y * 0.36f};
+                }
+                return uv;
+            };
+
+            instancedVertices.reserve(instancedVertices.size() + mesh.vertices.size());
+            instancedIndices.reserve(instancedIndices.size() + mesh.vertices.size());
+            for (const Vertex& src : mesh.vertices) {
+                Vertex out = src;
+                if (mesh.generatedUvFallback) {
+                    out.uv = generatedUv(src);
+                }
+                instancedVertices.push_back(out);
+            }
+            for (UINT n = 0; n < range.indexCount; ++n) {
+                instancedIndices.push_back(n);
+            }
+            instancedMeshRanges.push_back(range);
+            return static_cast<int>(instancedMeshRanges.size() - 1);
+        };
+        auto transformInstancePoint = [](XMFLOAT3 origin, XMFLOAT3 axisX, XMFLOAT3 axisY, XMFLOAT3 axisZ, XMFLOAT3 p) {
+            return Add3(origin, Add3(Scale3(axisX, p.x), Add3(Scale3(axisY, p.y), Scale3(axisZ, p.z))));
+        };
+        auto addInstancedStaticProp = [&](const StaticPropMesh& mesh, XMFLOAT3 origin, float yaw,
+                                          float scaleX, float scaleY, float scaleZ,
+                                          float pitch = 0.0f, float materialOverride = -1.0f,
+                                          bool castsShadow = false, float materialVariant = 0.0f) {
+            int meshId = registerInstancedStaticMesh(mesh);
+            if (meshId < 0) return false;
+
+            float c = std::cos(yaw);
+            float s = std::sin(yaw);
+            XMFLOAT3 right{c, 0.0f, -s};
+            XMFLOAT3 worldUp{0.0f, 1.0f, 0.0f};
+            XMFLOAT3 forward{s, 0.0f, c};
+            float cp = std::cos(pitch);
+            float sp = std::sin(pitch);
+            XMFLOAT3 up = Normalize3(Add3(Scale3(worldUp, cp), Scale3(forward, sp)), worldUp);
+            forward = Normalize3(Add3(Scale3(forward, cp), Scale3(worldUp, -sp)), forward);
+            XMFLOAT3 axisX = Scale3(right, scaleX);
+            XMFLOAT3 axisY = Scale3(up, scaleY);
+            XMFLOAT3 axisZ = Scale3(forward, scaleZ);
+
+            const InstancedMeshRange& range = instancedMeshRanges[static_cast<size_t>(meshId)];
+            XMFLOAT3 minP{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+            XMFLOAT3 maxP{-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max()};
+            for (int xi = 0; xi <= 1; ++xi) {
+                for (int yi = 0; yi <= 1; ++yi) {
+                    for (int zi = 0; zi <= 1; ++zi) {
+                        XMFLOAT3 local{
+                            xi ? range.max.x : range.min.x,
+                            yi ? range.max.y : range.min.y,
+                            zi ? range.max.z : range.min.z
+                        };
+                        XMFLOAT3 p = transformInstancePoint(origin, axisX, axisY, axisZ, local);
+                        minP.x = std::min(minP.x, p.x);
+                        minP.y = std::min(minP.y, p.y);
+                        minP.z = std::min(minP.z, p.z);
+                        maxP.x = std::max(maxP.x, p.x);
+                        maxP.y = std::max(maxP.y, p.y);
+                        maxP.z = std::max(maxP.z, p.z);
+                    }
+                }
+            }
+
+            PendingStaticInstance pending{};
+            pending.meshId = static_cast<UINT>(meshId);
+            pending.data.axisXOriginX = {axisX.x, axisX.y, axisX.z, origin.x};
+            pending.data.axisYOriginY = {axisY.x, axisY.y, axisY.z, origin.y};
+            pending.data.axisZOriginZ = {axisZ.x, axisZ.y, axisZ.z, origin.z};
+            pending.data.materialOverrideVariant = {materialOverride, materialVariant, 0.0f, 0.0f};
+            pending.min = minP;
+            pending.max = maxP;
+            pending.center = {(minP.x + maxP.x) * 0.5f, (minP.y + maxP.y) * 0.5f, (minP.z + maxP.z) * 0.5f};
+            float dx = maxP.x - pending.center.x;
+            float dy = maxP.y - pending.center.y;
+            float dz = maxP.z - pending.center.z;
+            pending.radius = std::sqrt(dx * dx + dy * dy + dz * dz);
+            tileBoundsForWorldBounds(minP, maxP, pending.minTileX, pending.minTileY, pending.maxTileX, pending.maxTileY);
+            pending.castsShadow = castsShadow;
+            pendingStaticInstances.push_back(pending);
+            return true;
+        };
+        auto addInstancedStaticPropGrounded = [&](const StaticPropMesh& mesh, XMFLOAT3 floorCenter, float yaw,
+                                                 float scaleX, float scaleY, float scaleZ,
+                                                 float pitch = 0.0f, float materialOverride = -1.0f,
+                                                 bool castsShadow = false, float materialVariant = 0.0f) {
+            if (mesh.vertices.empty()) return false;
+
+            float c = std::cos(yaw);
+            float s = std::sin(yaw);
+            XMFLOAT3 right{c, 0.0f, -s};
+            XMFLOAT3 worldUp{0.0f, 1.0f, 0.0f};
+            XMFLOAT3 forward{s, 0.0f, c};
+            float cp = std::cos(pitch);
+            float sp = std::sin(pitch);
+            XMFLOAT3 up = Normalize3(Add3(Scale3(worldUp, cp), Scale3(forward, sp)), worldUp);
+            forward = Normalize3(Add3(Scale3(forward, cp), Scale3(worldUp, -sp)), forward);
+
+            float minY = std::numeric_limits<float>::max();
+            for (const Vertex& src : mesh.vertices) {
+                float y = right.y * src.pos.x * scaleX + up.y * src.pos.y * scaleY + forward.y * src.pos.z * scaleZ;
+                minY = std::min(minY, y);
+            }
+            XMFLOAT3 origin{floorCenter.x, floorCenter.y - minY, floorCenter.z};
+            return addInstancedStaticProp(mesh, origin, yaw, scaleX, scaleY, scaleZ, pitch, materialOverride, castsShadow, materialVariant);
+        };
+
         auto nearestLampXZ = [&](float px, float pz) {
             float strideX = tileW;
             float strideZ = tileD;
@@ -1079,8 +1277,8 @@
                     placeYaw, 0.075f, LampHash(c.x + 2.3f, c.z - 1.7f))) return false;
             float scale = waitingChair ? 1.04f : 1.10f;
             float fabricVariant = LampHash(px + placeYaw * 1.7f + (waitingChair ? 0.31f : 0.73f), pz - placeYaw * 0.9f);
-            AppendStaticPropMeshGrounded(vertices, indices, *chairMesh, {px, 0.0f, pz}, placeYaw, scale, scale, scale,
-                0.0f, -1.0f, &propShadowIndices, fabricVariant);
+            addInstancedStaticPropGrounded(*chairMesh, {px, 0.0f, pz}, placeYaw, scale, scale, scale,
+                0.0f, -1.0f, true, fabricVariant);
             addBakedPropShadow(px, pz, waitingChair ? 0.88f : 0.94f, waitingChair ? 0.82f : 0.90f,
                 waitingChair ? 0.96f : 1.05f, placeYaw, LampHash(px + 5.1f, pz - 2.8f));
             propLookPoints_.push_back({px, 0.72f, pz});
@@ -1153,8 +1351,8 @@
             float scaleX = depth / propSpan(deskPropMesh_, 0);
             float scaleY = topY + 0.035f;
             float scaleZ = width / propSpan(deskPropMesh_, 2);
-            AppendStaticPropMesh(vertices, indices, deskPropMesh_, {px, 0.0f, pz}, yaw + kPi * 0.5f, scaleX, scaleY, scaleZ,
-                0.0f, -1.0f, &propShadowIndices);
+            addInstancedStaticProp(deskPropMesh_, {px, 0.0f, pz}, yaw + kPi * 0.5f, scaleX, scaleY, scaleZ,
+                0.0f, -1.0f, true);
             addBakedPropShadow(px, pz, width, depth, topY + 0.08f, yaw, seed);
             propLookPoints_.push_back({px, topY, pz});
             return true;
@@ -1197,8 +1395,8 @@
             float scaleX = depth / propSpan(deskPropMesh_, 0);
             float scaleY = height + 0.030f;
             float scaleZ = width / propSpan(deskPropMesh_, 2);
-            AppendStaticPropMesh(vertices, indices, deskPropMesh_, {px, 0.0f, pz}, yaw + kPi * 0.5f, scaleX, scaleY, scaleZ,
-                0.0f, -1.0f, &propShadowIndices);
+            addInstancedStaticProp(deskPropMesh_, {px, 0.0f, pz}, yaw + kPi * 0.5f, scaleX, scaleY, scaleZ,
+                0.0f, -1.0f, true);
             addBakedPropShadow(px, pz, width, depth, height + 0.06f, yaw, seed);
             propLookPoints_.push_back({px, height * 0.72f, pz});
             return true;
@@ -1248,8 +1446,8 @@
                     yaw, 0.075f, seed)) return false;
             float scale = waitingChair ? 1.02f : 1.08f;
             float pitch = seed < 0.5f ? kPi * 0.5f : -kPi * 0.5f;
-            AppendStaticPropMeshGrounded(vertices, indices, *chairMesh, {px, 0.0f, pz}, yaw, scale, scale, scale, pitch,
-                -1.0f, &propShadowIndices, seed);
+            addInstancedStaticPropGrounded(*chairMesh, {px, 0.0f, pz}, yaw, scale, scale, scale, pitch,
+                -1.0f, true, seed);
             addBakedPropShadow(px, pz, waitingChair ? 1.10f : 1.18f, waitingChair ? 1.26f : 1.34f,
                 0.46f, yaw, seed);
             propLookPoints_.push_back({px, 0.22f, pz});
@@ -1287,8 +1485,8 @@
             float footprintD = tipped ? targetHeight + 0.16f : footprintW;
             if (!reserveRealisticFloorFootprint(px, pz, footprintW, footprintD, yaw, tipped ? 0.065f : 0.055f, seed)) return false;
             float pitch = tipped ? (seed < 0.5f ? kPi * 0.5f : -kPi * 0.5f) : 0.0f;
-            AppendStaticPropMeshGrounded(vertices, indices, trashBinPropMesh_, {px, 0.0f, pz}, yaw,
-                scale, scale, scale, pitch, -1.0f, &propShadowIndices);
+            addInstancedStaticPropGrounded(trashBinPropMesh_, {px, 0.0f, pz}, yaw,
+                scale, scale, scale, pitch, -1.0f, true);
             addBakedPropShadow(px, pz, footprintW, footprintD, tipped ? diameter * 0.62f : targetHeight, yaw, seed);
             propLookPoints_.push_back({px, tipped ? diameter * 0.45f : targetHeight * 0.55f, pz});
             return true;
@@ -1306,8 +1504,8 @@
             XMFLOAT3 p = Add3({px, 0.0f, pz}, Add3(Scale3(right, ox), Scale3(forward, oz)));
             constexpr float targetHeight = 0.42f;
             float scale = targetHeight / propSpan(deskLampPropMesh_, 1);
-            AppendStaticPropMeshGrounded(vertices, indices, deskLampPropMesh_, {p.x, surfaceY + 0.012f, p.z},
-                tableYaw + (seed - 0.5f) * 0.85f, scale, scale, scale, 0.0f, -1.0f, &propShadowIndices);
+            addInstancedStaticPropGrounded(deskLampPropMesh_, {p.x, surfaceY + 0.012f, p.z},
+                tableYaw + (seed - 0.5f) * 0.85f, scale, scale, scale, 0.0f, -1.0f, true);
             propLookPoints_.push_back({p.x, surfaceY + targetHeight * 0.62f, p.z});
             return true;
         };
@@ -1318,8 +1516,8 @@
             float depth = 0.064f;
             if (!floorFootprintClear(px, pz, width, depth, yaw, 0.024f)) return false;
             float scale = width / propSpan(cassettePropMesh_, 0);
-            AppendStaticPropMeshGrounded(vertices, indices, cassettePropMesh_, {px, floorY + 0.002f, pz},
-                yaw + (seed - 0.5f) * 0.38f, scale, scale, scale, 0.0f, -1.0f, &propShadowIndices);
+            addInstancedStaticPropGrounded(cassettePropMesh_, {px, floorY + 0.002f, pz},
+                yaw + (seed - 0.5f) * 0.38f, scale, scale, scale, 0.0f, -1.0f, true);
             return true;
         };
 
@@ -1581,6 +1779,21 @@
 
         constexpr float kA4PaperShortMeters = 0.210f;
         constexpr float kA4PaperLongMeters = 0.297f;
+        StaticPropMesh loosePaperInstancedMesh;
+        {
+            const float hw = kA4PaperShortMeters * 0.5f;
+            const float hd = kA4PaperLongMeters * 0.5f;
+            loosePaperInstancedMesh.min = {-hw, 0.0f, -hd};
+            loosePaperInstancedMesh.max = { hw, 0.0f,  hd};
+            loosePaperInstancedMesh.vertices = {
+                {{-hw, 0.0f,  hd}, {0, 1, 0}, {1, 0, 0}, {0, 0}, static_cast<float>(kRandomLoosePageMaterial)},
+                {{ hw, 0.0f,  hd}, {0, 1, 0}, {1, 0, 0}, {1, 0}, static_cast<float>(kRandomLoosePageMaterial)},
+                {{ hw, 0.0f, -hd}, {0, 1, 0}, {1, 0, 0}, {1, 1}, static_cast<float>(kRandomLoosePageMaterial)},
+                {{-hw, 0.0f,  hd}, {0, 1, 0}, {1, 0, 0}, {0, 0}, static_cast<float>(kRandomLoosePageMaterial)},
+                {{ hw, 0.0f, -hd}, {0, 1, 0}, {1, 0, 0}, {1, 1}, static_cast<float>(kRandomLoosePageMaterial)},
+                {{-hw, 0.0f, -hd}, {0, 1, 0}, {1, 0, 0}, {0, 1}, static_cast<float>(kRandomLoosePageMaterial)}
+            };
+        }
         auto loosePaperMaterial = [&](float seed, float variantSeed) {
             if (seed < 0.50f) {
                 int slot = std::clamp(static_cast<int>(variantSeed * static_cast<float>(kRandomLoosePageAtlasSlots)), 0, kRandomLoosePageAtlasSlots - 1);
@@ -1593,8 +1806,8 @@
         auto addPaperAt = [&](float px, float pz, float yaw, float lift, float material) {
             if (!floorFootprintClear(px, pz, kA4PaperShortMeters, kA4PaperLongMeters, yaw)) return false;
             float paperY = std::clamp(lift, 0.0025f, 0.0105f);
-            AddFloorCard(vertices, indices, {px, 0.0f, pz}, kA4PaperShortMeters, kA4PaperLongMeters, yaw, paperY, material);
-            return true;
+            return addInstancedStaticProp(loosePaperInstancedMesh, {px, paperY, pz}, yaw, 1.0f, 1.0f, 1.0f,
+                0.0f, material, false);
         };
 
         auto addLoosePapers = [&](Tile t, int count, bool hallwaySpill) {
@@ -1653,7 +1866,7 @@
                 float spanY = std::max(0.001f, propSpan(airVentPropMesh_, 1));
                 float scale = std::min(ventW / spanX, ventH / spanY);
                 scale = std::clamp(scale, 0.05f, 8.0f);
-                if (AppendStaticPropMesh(vertices, indices, airVentPropMesh_, center, yaw, scale, scale, scale)) {
+                if (addInstancedStaticProp(airVentPropMesh_, center, yaw, scale, scale, scale)) {
                     XMFLOAT3 right{std::cos(yaw), 0.0f, -std::sin(yaw)};
                     XMFLOAT3 up{0.0f, 1.0f, 0.0f};
                     XMFLOAT3 forward{std::sin(yaw), 0.0f, std::cos(yaw)};
@@ -1699,8 +1912,8 @@
             float scaleX = width / propSpan(cabinetPropMesh_, 0);
             float scaleY = height / propSpan(cabinetPropMesh_, 1);
             float scaleZ = depth / propSpan(cabinetPropMesh_, 2);
-            AppendStaticPropMesh(vertices, indices, cabinetPropMesh_, {px, 0.0f, pz}, yaw, scaleX, scaleY, scaleZ,
-                0.0f, 10.0f, &propShadowIndices);
+            addInstancedStaticProp(cabinetPropMesh_, {px, 0.0f, pz}, yaw, scaleX, scaleY, scaleZ,
+                0.0f, 10.0f, true);
             addBakedPropShadow(px, pz, width, depth, height, yaw, seed);
             propLookPoints_.push_back({px, height * 0.74f, pz});
             return true;
@@ -1812,13 +2025,14 @@
             XMFLOAT3 up{0.0f, 1.0f, 0.0f};
             XMFLOAT3 right = exitPortal.right;
             constexpr float fixedDoorHalfW = 0.60f;
+            const bool menuExitDoor = runtimeMode_ == RendererRuntimeMode::MainMenu;
             constexpr float fixedDoorHalfH = 1.05f;
             constexpr float fixedFramePostHalfW = 0.055f;
             constexpr float fixedFrameTopHalfH = 0.070f;
             constexpr float fixedFrameDepthHalf = 0.022f;
             constexpr float fixedFrameForwardOffset = -0.012f;
             constexpr float fixedFrameMaterial = 21.37f;
-            const float fixedDoorCenterY = runtimeMode_ == RendererRuntimeMode::MainMenu ? 1.068f : 1.05f;
+            const float fixedDoorCenterY = menuExitDoor ? 1.068f : 1.05f;
             XMFLOAT3 doorCenter{bx + inward.x * 0.026f, fixedDoorCenterY, bz + inward.z * 0.026f};
             XMFLOAT3 forward = inward;
             exitDoorCenter_ = doorCenter;
@@ -1848,10 +2062,17 @@
             addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, -framePostCenterX, framePostCenterY - doorCenter.y, fixedFrameForwardOffset)), {fixedFramePostHalfW, framePostHalfH, fixedFrameDepthHalf}, false);
             addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, framePostCenterX, framePostCenterY - doorCenter.y, fixedFrameForwardOffset)), {fixedFramePostHalfW, framePostHalfH, fixedFrameDepthHalf}, false);
             addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, frameTopCenterY - doorCenter.y, fixedFrameForwardOffset)), {frameOuterHalfW, fixedFrameTopHalfH, fixedFrameDepthHalf}, true);
-            constexpr float fixedSignTargetH = 0.28f;
+            const float fixedSignTargetH = menuExitDoor ? 0.28f : 0.22f;
+            const float signBackingHalfH = fixedSignTargetH * 0.5f + 0.016f;
+            constexpr float signCeilingClearance = 0.12f;
+            const float signForwardOffset = menuExitDoor ? 0.028f : 0.074f;
             float signY = doorCenter.y + fixedDoorHalfH + fixedSignTargetH * 0.5f + 0.24f;
-            signY = std::min(signY, wallH - fixedSignTargetH * 0.5f - 0.12f);
-            XMFLOAT3 sign = {bx + forward.x * 0.028f, signY, bz + forward.z * 0.028f};
+            if (!menuExitDoor) {
+                const float frameTopY = frameTopCenterY + fixedFrameTopHalfH;
+                signY = frameTopY + signBackingHalfH + 0.120f;
+            }
+            signY = std::min(signY, wallH - signBackingHalfH - signCeilingClearance);
+            XMFLOAT3 sign = {bx + forward.x * signForwardOffset, signY, bz + forward.z * signForwardOffset};
             exitSignLightPos_ = Add3(sign, OrientedOffset(right, up, forward, 0.0f, -0.01f, 0.30f));
             exitSignLightStrength_ = 4.35f;
             float targetW = std::min(1.04f, exitPortal.halfSpan * 1.30f);
@@ -1872,7 +2093,7 @@
                 auto appendExitSignModel = [&](XMFLOAT3 signCenter, XMFLOAT3 signRight, XMFLOAT3 signForward, float yaw) {
                     XMFLOAT3 origin = Add3(signCenter, Add3(Scale3(signRight, -localCenter.x * scale),
                         Add3(Scale3(up, -localCenter.y * scale), Scale3(signForward, -localCenter.z * scale))));
-                    return AppendStaticPropMesh(vertices, indices, exitSignPropMesh_, origin, yaw, scale, scale, scale, 0.0f, 7.0f);
+                    return addInstancedStaticProp(exitSignPropMesh_, origin, yaw, scale, scale, scale, 0.0f, 7.0f);
                 };
                 bool appended = appendExitSignModel(Add3(sign, Scale3(forward, 0.012f)), right, forward, exitPortal.yaw);
                 if (!appended) {
@@ -1891,7 +2112,9 @@
         float chairChance = std::min(1.0f, 0.030f * std::clamp(settings_.chairDensity, 0.0f, 4.0f));
         float loosePaperChance = std::min(1.0f, 0.082f * paperDensity);
         float paperHallwayChance = std::min(1.0f, 0.13f * hallwayPaperDensity);
-        float ventChance = gEffectDebugViewer && gDebugSliceEffect == DebugSliceEffect::AirVents ? 1.0f : 0.026f;
+        float ventChance = runtimeMode_ == RendererRuntimeMode::MainMenu
+            ? 0.0f
+            : (gEffectDebugViewer && gDebugSliceEffect == DebugSliceEffect::AirVents ? 1.0f : 0.026f);
         float waterDamageChance = 0.0f;
         float waterLikeDamageChance = std::min(1.0f, 0.003f * std::clamp(settings_.waterDamageDensity, 0.0f, 4.0f));
 
@@ -2799,12 +3022,25 @@
                 }
                 return true;
             };
+            auto liquidSourceSideToward = [](Tile tile, Tile sourceTile) {
+                int dx = sourceTile.x - tile.x;
+                int dy = sourceTile.y - tile.y;
+                if (dx == 0 && dy == 0) return 0u;
+                if (std::abs(dx) >= std::abs(dy) && dx != 0) {
+                    return 1u << static_cast<uint32_t>(dx < 0 ? 2 : 3);
+                }
+                return 1u << static_cast<uint32_t>(dy < 0 ? 0 : 1);
+            };
             auto markLiquidCanvasArea = [&](float px, float pz, float width, float depth, float yaw,
                                             bool water, bool ceiling, uint32_t sourceMask, bool centerSource,
-                                            float seed, float score, bool downstream = false) {
+                                            float seed, float score, bool downstream = false,
+                                            float sourceX = std::numeric_limits<float>::quiet_NaN(),
+                                            float sourceZ = std::numeric_limits<float>::quiet_NaN()) {
                 if (width <= 0.02f || depth <= 0.02f) return false;
                 FloorFootprint area = makeFootprint(px, pz, width, depth, yaw, 0.0f);
-                Tile sourceTile = maze_.TileFromWorld(px, pz);
+                if (!std::isfinite(sourceX)) sourceX = px;
+                if (!std::isfinite(sourceZ)) sourceZ = pz;
+                Tile sourceTile = maze_.TileFromWorld(sourceX, sourceZ);
                 float cYaw = std::cos(yaw);
                 float sYaw = std::sin(yaw);
                 XMFLOAT3 right{cYaw, 0.0f, -sYaw};
@@ -2836,20 +3072,13 @@
                         XMFLOAT3 tc = maze_.WorldCenter(tile, 0.0f);
                         FloorFootprint tileArea = makeFootprint(tc.x, tc.z, tileW * 1.002f, tileD * 1.002f, 0.0f, 0.0f);
                         if (!footprintOverlap(area, tileArea)) continue;
-                        float tileMinX = ox + static_cast<float>(tx) * tileW;
-                        float tileMaxX = tileMinX + tileW;
-                        float tileMinZ = oz + static_cast<float>(ty) * tileD;
-                        float tileMaxZ = tileMinZ + tileD;
-                        uint32_t tileMask = sourceMask;
-                        if (!water) {
-                            float edgePadX = tileW * 0.020f;
-                            float edgePadZ = tileD * 0.020f;
-                            if (minZ <= tileMinZ + edgePadZ) tileMask |= 1u << 0;
-                            if (maxZ >= tileMaxZ - edgePadZ) tileMask |= 1u << 1;
-                            if (minX <= tileMinX + edgePadX) tileMask |= 1u << 2;
-                            if (maxX >= tileMaxX - edgePadX) tileMask |= 1u << 3;
-                        }
                         bool tileCenterSource = centerSource && tile == sourceTile;
+                        uint32_t tileMask = 0u;
+                        if (!tileCenterSource) {
+                            tileMask = (tile == sourceTile)
+                                ? (sourceMask & 0x0fu)
+                                : liquidSourceSideToward(tile, sourceTile);
+                        }
                         marked = markLiquidCanvasTile(tile, water, ceiling, tileMask, tileCenterSource, downstream, seed, score) || marked;
                     }
                 }
@@ -2884,7 +3113,7 @@
                             if (edgeContinues(tx - 1, ty)) continueMask |= 1u << 2;
                             if (edgeContinues(tx + 1, ty)) continueMask |= 1u << 3;
                             float ux = static_cast<float>(code);
-                            float vy = static_cast<float>(continueMask | ((water && surface.downstream) ? 0x10u : 0u));
+                            float vy = static_cast<float>(continueMask | (surface.downstream ? 0x10u : 0u));
                             float u0 = ux + 0.001f;
                             float u1 = ux + 0.999f;
                             float v0 = vy + 0.001f;
@@ -2929,13 +3158,11 @@
                 if (!emitWaterLiquid) return;
                 float floorW = w * (0.46f + Rand01(static_cast<int>(seed * 10000.0f), 817, scatterSeed) * 0.18f);
                 float floorD = d * (0.46f + Rand01(static_cast<int>(seed * 10000.0f), 823, scatterSeed) * 0.18f);
-                float offsetX = (Rand01(static_cast<int>(seed * 10000.0f), 829, scatterSeed) - 0.5f) * std::min(tileW, floorW) * 0.18f;
-                float offsetZ = (Rand01(static_cast<int>(seed * 10000.0f), 839, scatterSeed) - 0.5f) * std::min(tileD, floorD) * 0.18f;
-                float floorX = px + offsetX;
-                float floorZ = pz + offsetZ;
+                float floorX = px;
+                float floorZ = pz;
                 if (!footprintFitsMaze(floorX, floorZ, floorW, floorD, yaw, kLiquidFloorReservationPad)) return;
                 markLiquidCanvasArea(floorX, floorZ, floorW, floorD, yaw,
-                    true, false, 0u, true, seed + 0.19f, std::max(floorW, floorD));
+                    true, false, 0u, true, seed + 0.19f, std::max(floorW, floorD), true, floorX, floorZ);
                 MarkWetFootstepArea(floorX, floorZ, floorW, floorD, yaw, 0.01f, 9.0f);
                 MarkWetCeilingDripEmitter({floorX, 0.10f, floorZ}, seed);
                 addBloodScare({floorX, 0.10f, floorZ}, std::max(floorW, floorD));
@@ -2954,21 +3181,28 @@
                 return true;
             };
 
-            auto addLiquidCeilingOverlay = [&](float px, float pz, float w, float d, float yaw, float seed, float rawSeed) {
+            auto addLiquidCeilingOverlay = [&](float px, float pz, float w, float d, float yaw, float seed, float rawSeed,
+                                               uint32_t sourceMask = 0u,
+                                               float sourceX = std::numeric_limits<float>::quiet_NaN(),
+                                               float sourceZ = std::numeric_limits<float>::quiet_NaN()) {
                 if (!footprintFitsMaze(px, pz, w, d, yaw, 0.010f)) return false;
                 bloodCeilingReservations.push_back(makeFootprint(px, pz, w, d, yaw, 0.002f));
-                bool fromWall = rawSeed >= 0.96f;
-                markLiquidCanvasArea(px, pz, w, d, yaw, emitWaterLiquid, true, 0u, !fromWall, seed, std::max(w, d));
+                bool fromWall = rawSeed >= 0.96f || sourceMask != 0u;
+                markLiquidCanvasArea(px, pz, w, d, yaw, emitWaterLiquid, true, sourceMask, !fromWall, seed, std::max(w, d), false, sourceX, sourceZ);
                 addWaterCeilingDripFloorResponse(px, pz, w, d, yaw, seed);
                 addBloodScare({px, wallH - 0.08f, pz}, std::max(w, d));
                 return true;
             };
 
-            auto addLiquidFloorOverlay = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift, float rawSeed) {
+            auto addLiquidFloorOverlay = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift, float rawSeed,
+                                             uint32_t sourceMask = 0u,
+                                             float sourceX = std::numeric_limits<float>::quiet_NaN(),
+                                             float sourceZ = std::numeric_limits<float>::quiet_NaN(),
+                                             bool downstream = false) {
                 if (!footprintFitsMaze(px, pz, w, d, yaw, kLiquidFloorReservationPad)) return false;
                 floorReservations.push_back(makeFootprint(px, pz, w, d, yaw, 0.002f));
-                bool fromWall = rawSeed >= 0.96f;
-                markLiquidCanvasArea(px, pz, w, d, yaw, emitWaterLiquid, false, 0u, !fromWall, seed, std::max(w, d));
+                bool fromWall = rawSeed >= 0.96f || sourceMask != 0u;
+                markLiquidCanvasArea(px, pz, w, d, yaw, emitWaterLiquid, false, sourceMask, !fromWall, seed, std::max(w, d), downstream, sourceX, sourceZ);
                 MarkWetFootstepArea(px, pz, w, d, yaw);
                 addBloodScare({px, 0.10f, pz}, std::max(w, d));
                 return true;
@@ -2997,7 +3231,7 @@
                 if (!bloodCeilingFootprintClear(px, pz, w, d, yaw, 0.010f)) return false;
                 floorReservations.push_back(makeFootprint(px, pz, floorW, floorD, yaw, kLiquidFloorReservationPad));
                 bloodCeilingReservations.push_back(makeFootprint(px, pz, w, d, yaw, 0.010f));
-                markLiquidCanvasArea(px, pz, floorW, floorD, yaw, emitWaterLiquid, false, 0u, true, seed, std::max(floorW, floorD));
+                markLiquidCanvasArea(px, pz, floorW, floorD, yaw, emitWaterLiquid, false, 0u, true, seed, std::max(floorW, floorD), true, px, pz);
                 MarkWetFootstepArea(px, pz, floorW, floorD, yaw);
                 MarkWetCeilingDripEmitter({px, 0.10f, pz}, seed);
                 markLiquidCanvasArea(px, pz, w, d, yaw, emitWaterLiquid, true, 0u, true, seed, std::max(w, d));
@@ -3387,7 +3621,9 @@
                     false,
                     seed + 0.41f,
                     std::max(continuationWidth, continuationDepth),
-                    true);
+                    true,
+                    nearCenter.x,
+                    nearCenter.z);
                 MarkWetFootstepArea(cx,
                     cz,
                     continuationWidth,
@@ -3407,16 +3643,20 @@
                 float depth = 0.0f;
                 float yaw = 0.0f;
                 float material = 25.0f;
+                float sourceX = 0.0f;
+                float sourceZ = 0.0f;
                 bool water = false;
             };
             std::vector<PendingLiquidFloorSeam> pendingLiquidFloorSeams;
             pendingLiquidFloorSeams.reserve(128);
-            auto queueLiquidFloorSeam = [&](Tile owner, int side, float cx, float cz, float width, float depth, float yaw, float material) {
-                pendingLiquidFloorSeams.push_back({owner, side, cx, cz, width, depth, yaw, material, emitWaterLiquid});
+            auto queueLiquidFloorSeam = [&](Tile owner, int side, float cx, float cz, float width, float depth, float yaw,
+                                            float material, float sourceX, float sourceZ) {
+                pendingLiquidFloorSeams.push_back({owner, side, cx, cz, width, depth, yaw, material, sourceX, sourceZ, emitWaterLiquid});
             };
             auto drawLiquidFloorSeam = [&](const PendingLiquidFloorSeam& p) {
                 markLiquidCanvasArea(p.cx, p.cz, p.width, p.depth, p.yaw,
-                    p.water, false, 1u << static_cast<uint32_t>(p.side), false, p.material, std::max(p.width, p.depth));
+                    p.water, false, 1u << static_cast<uint32_t>(p.side), false, p.material, std::max(p.width, p.depth),
+                    false, p.sourceX, p.sourceZ);
                 MarkWetFootstepArea(p.cx, p.cz, p.width, p.depth, p.yaw, 0.02f, p.water ? 7.5f : 0.0f);
             };
             auto emitMergedLiquidFloorSeams = [&]() {
@@ -3737,7 +3977,8 @@
                     XMFLOAT3 seamCenter = Add3(seamWallEdge, Scale3(inward, kBloodLeakSeamInset));
                     XMFLOAT3 ceilingCenter = Add3(seamCenter, Scale3(inward, depth * 0.5f));
                     markLiquidCanvasArea(ceilingCenter.x, ceilingCenter.z, leakW, depth, liquidCardYawForSide(side),
-                        emitWaterLiquid, true, 1u << static_cast<uint32_t>(side), false, seed + 0.37f, depth);
+                        emitWaterLiquid, true, 1u << static_cast<uint32_t>(side), false, seed + 0.37f, depth,
+                        false, seamCenter.x, seamCenter.z);
                 };
 
                 auto addFloorSeamCard = [&](float width, float depth, float material) {
@@ -3745,7 +3986,8 @@
                         Scale3(inward, -kBloodLeakWallDecalInset));
                     XMFLOAT3 seamCenter = Add3(seamWallEdge, Scale3(inward, kBloodLeakSeamInset));
                     XMFLOAT3 floorCenter = Add3(seamCenter, Scale3(inward, depth * 0.5f));
-                    queueLiquidFloorSeam(t, side, floorCenter.x, floorCenter.z, width, depth, liquidCardYawForSide(side), material);
+                    queueLiquidFloorSeam(t, side, floorCenter.x, floorCenter.z, width, depth, liquidCardYawForSide(side), material,
+                        seamCenter.x, seamCenter.z);
                 };
 
                 float axisLength = (side == 0 || side == 1) ? tileD : tileW;
@@ -3894,7 +4136,8 @@
                 return 25.0f + rawSeed + std::fmod(std::abs(seed) * 0.0017f, 0.0009f);
             };
 
-            auto addWaterLikeFloor = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift, float rawSeed) {
+            auto addWaterLikeFloor = [&](float px, float pz, float w, float d, float yaw, float seed, float layerLift,
+                                         float rawSeed, bool downstream = false) {
                 float widthScale = 1.0f;
                 float depthScale = 1.0f;
                 const float widthScales[] = {2.18f, 1.86f, 1.56f, 1.28f, 1.0f, 0.86f};
@@ -3926,7 +4169,8 @@
                     }
                 }
                 if (!found) return false;
-                return addLiquidFloorOverlay(px, pz, w * widthScale, d * depthScale, yaw, seed, 0.010f + layerLift, rawSeed);
+                return addLiquidFloorOverlay(px, pz, w * widthScale, d * depthScale, yaw, seed, 0.010f + layerLift, rawSeed,
+                    0u, px, pz, downstream);
             };
 
             auto addWaterLikeCeiling = [&](float px, float pz, float w, float d, float yaw, float seed, float rawSeed) {
@@ -3965,7 +4209,7 @@
             };
 
             auto addWaterLikeCeilingFromWall = [&](XMFLOAT3 edge, XMFLOAT3 inward, float w, float d, float yaw,
-                                                   float seed, float rawSeed) {
+                                                   float seed, float rawSeed, uint32_t sourceMask) {
                 const float widthScales[] = {1.40f, 1.22f, 1.0f, 0.86f, 0.72f, 0.60f};
                 const float depthScales[] = {3.65f, 3.05f, 2.46f, 1.94f, 1.54f, 1.24f, 1.0f};
                 for (float dw : widthScales) {
@@ -3974,14 +4218,16 @@
                         float ddMeters = d * dd;
                         XMFLOAT3 center = Add3(edge, Scale3(inward, ddMeters * 0.5f + 0.010f));
                         if (!footprintFitsMaze(center.x, center.z, ww, ddMeters, yaw, 0.010f)) continue;
-                        return addLiquidCeilingOverlay(center.x, center.z, ww, ddMeters, yaw, seed, rawSeed);
+                        XMFLOAT3 source = Add3(edge, Scale3(inward, 0.012f));
+                        return addLiquidCeilingOverlay(center.x, center.z, ww, ddMeters, yaw, seed, rawSeed,
+                            sourceMask, source.x, source.z);
                     }
                 }
                 return false;
             };
 
             auto addWaterLikeFloorFromWall = [&](XMFLOAT3 edge, XMFLOAT3 inward, float w, float d, float yaw,
-                                                 float seed, float layerLift, float rawSeed) {
+                                                 float seed, float layerLift, float rawSeed, uint32_t sourceMask) {
                 const float widthScales[] = {1.34f, 1.18f, 1.0f, 0.86f, 0.72f, 0.60f};
                 const float depthScales[] = {3.85f, 3.20f, 2.62f, 2.08f, 1.62f, 1.28f, 1.0f};
                 for (float dw : widthScales) {
@@ -3990,8 +4236,9 @@
                         float ddMeters = d * dd;
                         XMFLOAT3 center = Add3(edge, Scale3(inward, ddMeters * 0.5f + 0.010f));
                         if (!footprintFitsMaze(center.x, center.z, ww, ddMeters, yaw, kLiquidFloorReservationPad)) continue;
+                        XMFLOAT3 source = Add3(edge, Scale3(inward, 0.012f));
                         return addLiquidFloorOverlay(center.x, center.z, ww, ddMeters, yaw,
-                            seed, 0.010f + layerLift, rawSeed);
+                            seed, 0.010f + layerLift, rawSeed, sourceMask, source.x, source.z);
                     }
                 }
                 return false;
@@ -4020,7 +4267,8 @@
                 float pz = c.z + (Rand01(dripIndex, 2327, scatterSeed) - 0.5f) * tileD * 0.10f;
                 float seed = Rand01(dripIndex, 2331, scatterSeed);
                 bool ceilingPlaced = addWaterLikeCeiling(px, pz, w, d, 0.0f, seed, 0.43f + std::fmod(seed, 0.50f));
-                bool floorPlaced = addWaterLikeFloor(px, pz, w, d, 0.0f, seed, 0.0f, 0.43f + std::fmod(seed, 0.50f));
+                bool floorPlaced = addWaterLikeFloor(px, pz, w, d, 0.0f, seed, 0.0f,
+                    0.43f + std::fmod(seed, 0.50f), true);
                 bool placed = ceilingPlaced && floorPlaced;
                 if (placed) {
                     MarkWetCeilingDripEmitter({px, 0.10f, pz}, seed);
@@ -4107,11 +4355,14 @@
                 float seamYaw = liquidCardYawForSide(side);
                 XMFLOAT3 ceilingEdge = Add3({wallCenter.x, wallH - kBloodCeilingDecalInset, wallCenter.z},
                     Scale3(inward, -kWaterLikeWallDecalInset));
-                bool ceilingPlaced = addWaterLikeCeilingFromWall(ceilingEdge, inward, leakW, sourceD, seamYaw, seed, 0.965f + seed * 0.025f);
+                uint32_t sourceMask = 1u << static_cast<uint32_t>(side);
+                bool ceilingPlaced = addWaterLikeCeilingFromWall(ceilingEdge, inward, leakW, sourceD, seamYaw, seed,
+                    0.965f + seed * 0.025f, sourceMask);
                 float poolD = axisLength * (0.86f + Rand01(leakIndex, 2427, scatterSeed) * 0.12f);
                 if (canSpreadForward) poolD += axisLength * (0.18f + Rand01(leakIndex, 2429, scatterSeed) * 0.24f);
                 XMFLOAT3 floorEdge{wallCenter.x, 0.0f, wallCenter.z};
-                bool floorPlaced = addWaterLikeFloorFromWall(floorEdge, inward, leakW, poolD, seamYaw, seed, 0.0f, 0.965f + seed * 0.025f);
+                bool floorPlaced = addWaterLikeFloorFromWall(floorEdge, inward, leakW, poolD, seamYaw, seed, 0.0f,
+                    0.965f + seed * 0.025f, sourceMask);
                 XMFLOAT3 floorCenter = Add3(floorEdge, Scale3(inward, poolD * 0.5f + 0.006f));
                 if (floorPlaced && canSpreadForward) {
                     addWaterFloorBorderContinuation(t, side, wallCenter, right, inward, leakW, poolD,
@@ -4144,6 +4395,16 @@
             auto emitWaterLikeDamage = [&]() {
                 bool waterDebug = gEffectDebugViewer && DebugSliceEffectIsWater(gDebugSliceEffect);
                 if (!waterDebug && waterLikeDamageChance <= 0.0001f) return;
+                struct ScopedWaterLiquidFlag {
+                    bool& flag;
+                    bool previous;
+                    ScopedWaterLiquidFlag(bool& target, bool value) : flag(target), previous(target) {
+                        flag = value;
+                    }
+                    ~ScopedWaterLiquidFlag() {
+                        flag = previous;
+                    }
+                } waterLiquidScope(emitWaterLiquid, true);
                 if (waterDebug) {
                     int debugIndex = 0;
                     for (Tile t : openTiles) {
@@ -4466,7 +4727,7 @@
             UINT oldOpaqueCount = floorCeilingStartIndex_;
             UINT oldFloorCeilingStart = floorCeilingStartIndex_;
             UINT oldFloorCeilingCount = floorCeilingIndexCount_;
-            AppendStaticIndexChunks(vertices, indices, 0, oldOpaqueCount, chunkedStaticIndices, staticOpaqueChunks_);
+            AppendStaticIndexChunks(vertices, indices, 0, oldOpaqueCount, chunkedStaticIndices, staticOpaqueChunks_, 1, 0);
             floorCeilingStartIndex_ = static_cast<UINT>(chunkedStaticIndices.size());
             AppendStaticIndexChunks(vertices, indices, oldFloorCeilingStart, oldFloorCeilingCount, chunkedStaticIndices, staticFloorCeilingChunks_);
             floorCeilingIndexCount_ = static_cast<UINT>(chunkedStaticIndices.size()) - floorCeilingStartIndex_;
@@ -4480,13 +4741,92 @@
         AppendStaticIndexChunks(vertices, transparentIndices, 0, static_cast<UINT>(transparentIndices.size()), indices, staticTransparentChunks_);
         staticTransparentIndexCount_ = static_cast<UINT>(indices.size()) - staticTransparentStartIndex_;
         staticPropShadowStartIndex_ = static_cast<UINT>(indices.size());
-        indices.insert(indices.end(), propShadowIndices.begin(), propShadowIndices.end());
+        AppendStaticIndexChunks(vertices, propShadowIndices, 0, static_cast<UINT>(propShadowIndices.size()), indices, staticPropShadowChunks_, 2, 1);
         staticPropShadowIndexCount_ = static_cast<UINT>(indices.size()) - staticPropShadowStartIndex_;
+
+        if (!pendingStaticInstances.empty()) {
+            auto instanceChunkX = [](const PendingStaticInstance& instance) {
+                return instance.minTileX / 4;
+            };
+            auto instanceChunkY = [](const PendingStaticInstance& instance) {
+                return instance.minTileY / 4;
+            };
+            std::sort(pendingStaticInstances.begin(), pendingStaticInstances.end(),
+                [&](const PendingStaticInstance& a, const PendingStaticInstance& b) {
+                    if (a.meshId != b.meshId) return a.meshId < b.meshId;
+                    if (a.castsShadow != b.castsShadow) return a.castsShadow < b.castsShadow;
+                    if (instanceChunkY(a) != instanceChunkY(b)) return instanceChunkY(a) < instanceChunkY(b);
+                    if (instanceChunkX(a) != instanceChunkX(b)) return instanceChunkX(a) < instanceChunkX(b);
+                    if (a.minTileY != b.minTileY) return a.minTileY < b.minTileY;
+                    return a.minTileX < b.minTileX;
+                });
+
+            size_t i = 0;
+            while (i < pendingStaticInstances.size()) {
+                const PendingStaticInstance& first = pendingStaticInstances[i];
+                const int groupX = instanceChunkX(first);
+                const int groupY = instanceChunkY(first);
+                const bool castsShadow = first.castsShadow;
+                const UINT meshId = first.meshId;
+                const InstancedMeshRange& range = instancedMeshRanges[static_cast<size_t>(meshId)];
+
+                StaticInstanceChunk chunk{};
+                chunk.startIndex = range.startIndex;
+                chunk.indexCount = range.indexCount;
+                chunk.baseVertex = range.baseVertex;
+                chunk.startInstance = static_cast<UINT>(instancedInstanceData.size());
+                chunk.minTileX = first.minTileX;
+                chunk.minTileY = first.minTileY;
+                chunk.maxTileX = first.maxTileX;
+                chunk.maxTileY = first.maxTileY;
+                XMFLOAT3 minP = first.min;
+                XMFLOAT3 maxP = first.max;
+
+                size_t j = i;
+                while (j < pendingStaticInstances.size()) {
+                    const PendingStaticInstance& instance = pendingStaticInstances[j];
+                    if (instance.meshId != meshId || instance.castsShadow != castsShadow ||
+                        instanceChunkX(instance) != groupX || instanceChunkY(instance) != groupY) {
+                        break;
+                    }
+                    instancedInstanceData.push_back(instance.data);
+                    chunk.minTileX = std::min(chunk.minTileX, instance.minTileX);
+                    chunk.minTileY = std::min(chunk.minTileY, instance.minTileY);
+                    chunk.maxTileX = std::max(chunk.maxTileX, instance.maxTileX);
+                    chunk.maxTileY = std::max(chunk.maxTileY, instance.maxTileY);
+                    minP.x = std::min(minP.x, instance.min.x);
+                    minP.y = std::min(minP.y, instance.min.y);
+                    minP.z = std::min(minP.z, instance.min.z);
+                    maxP.x = std::max(maxP.x, instance.max.x);
+                    maxP.y = std::max(maxP.y, instance.max.y);
+                    maxP.z = std::max(maxP.z, instance.max.z);
+                    ++j;
+                }
+
+                chunk.instanceCount = static_cast<UINT>(j - i);
+                chunk.center = {(minP.x + maxP.x) * 0.5f, (minP.y + maxP.y) * 0.5f, (minP.z + maxP.z) * 0.5f};
+                float dx = maxP.x - chunk.center.x;
+                float dy = maxP.y - chunk.center.y;
+                float dz = maxP.z - chunk.center.z;
+                chunk.radius = std::sqrt(dx * dx + dy * dy + dz * dz);
+                instancedOpaqueChunks_.push_back(chunk);
+                if (castsShadow) {
+                    instancedPropShadowChunks_.push_back(chunk);
+                }
+                i = j;
+            }
+            instancedIndexCount_ = static_cast<UINT>(instancedIndices.size());
+            instancedInstanceCount_ = static_cast<UINT>(instancedInstanceData.size());
+        }
 
         {
             std::wstringstream counts;
             counts << L"Static scene geometry: vertices=" << vertices.size()
                 << L", indices=" << indices.size()
+                << L", instancedVertices=" << instancedVertices.size()
+                << L", instancedIndices=" << instancedIndices.size()
+                << L", instancedInstances=" << instancedInstanceData.size()
+                << L", instancedChunks=" << instancedOpaqueChunks_.size()
                 << L", opaqueIndices=" << std::min(floorCeilingStartIndex_, static_cast<UINT>(indices.size()))
                 << L", floorCeilingIndices=" << floorCeilingIndexCount_
                 << L", waterIndices=" << staticWaterIndexCount_
@@ -4512,6 +4852,29 @@
         D3D11_SUBRESOURCE_DATA id{indices.data(), 0, 0};
         device_->CreateBuffer(&ib, &id, &indexBuffer_);
         indexCount_ = static_cast<UINT>(indices.size());
+
+        if (!instancedVertices.empty() && !instancedIndices.empty() && !instancedInstanceData.empty()) {
+            D3D11_BUFFER_DESC instVb{};
+            instVb.ByteWidth = static_cast<UINT>(instancedVertices.size() * sizeof(Vertex));
+            instVb.Usage = D3D11_USAGE_IMMUTABLE;
+            instVb.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+            D3D11_SUBRESOURCE_DATA instVd{instancedVertices.data(), 0, 0};
+            device_->CreateBuffer(&instVb, &instVd, &instancedVertexBuffer_);
+
+            D3D11_BUFFER_DESC instIb{};
+            instIb.ByteWidth = static_cast<UINT>(instancedIndices.size() * sizeof(uint32_t));
+            instIb.Usage = D3D11_USAGE_IMMUTABLE;
+            instIb.BindFlags = D3D11_BIND_INDEX_BUFFER;
+            D3D11_SUBRESOURCE_DATA instId{instancedIndices.data(), 0, 0};
+            device_->CreateBuffer(&instIb, &instId, &instancedIndexBuffer_);
+
+            D3D11_BUFFER_DESC instanceBufferDesc{};
+            instanceBufferDesc.ByteWidth = static_cast<UINT>(instancedInstanceData.size() * sizeof(StaticInstanceData));
+            instanceBufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
+            instanceBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+            D3D11_SUBRESOURCE_DATA instanceData{instancedInstanceData.data(), 0, 0};
+            device_->CreateBuffer(&instanceBufferDesc, &instanceData, &instancedInstanceBuffer_);
+        }
 
         D3D11_BUFFER_DESC mb{};
         mb.ByteWidth = sizeof(Vertex) * 6;

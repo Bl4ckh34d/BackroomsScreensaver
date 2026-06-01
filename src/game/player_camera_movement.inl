@@ -387,6 +387,7 @@
         monsterSmoothedBodyPoints_.clear();
         monsterSmoothedBodyUps_.clear();
         monsterBodySmoothTime_ = -1000.0f;
+        monsterRenderVisibleUntil_ = -1000.0f;
         monsterHandprints_.clear();
         if (MonsterActiveForCurrentMode()) {
             for (int i = 0; i < 96; ++i) {
@@ -433,6 +434,14 @@
         if (settings_.bloodStudyView) {
             ApplyBloodStudyCamera();
             fadeInTimer_ = 0.0f;
+        }
+        if (BenchmarkDemoEnabled()) {
+            benchmarkDemoActive_ = true;
+            benchmarkDemoTimer_ = 0.0f;
+            ApplyBenchmarkDemoCamera(0.0f);
+            fadeInTimer_ = 0.0f;
+            path_.clear();
+            pathIndex_ = 0;
         }
         if (monsterPreview_) {
             monster_ = {0.0f, 0.0f, 0.0f};
@@ -820,6 +829,9 @@
             maze_.GenerateDebugSlice(gDebugSliceTiles);
         } else if (gBloodDebugEveryWall) {
             maze_.GenerateBloodDebugCorridor();
+        } else if (BenchmarkDemoEnabled()) {
+            ApplyBenchmarkDemoSettings(settings_);
+            maze_.GenerateBenchmarkDemo();
         } else {
             maze_.w = settings_.mazeWidth;
             maze_.h = settings_.mazeHeight;
@@ -832,6 +844,60 @@
         ResetSimulation();
         CreateMazeMesh();
         SetupPersistentAudioEmitters();
+    }
+
+    void ApplyBenchmarkDemoCamera(float seconds) {
+        constexpr float kTwoPi = kPi * 2.0f;
+        const float cycle = std::fmod(std::max(0.0f, seconds), 48.0f);
+        XMFLOAT3 eye{};
+        XMFLOAT3 target{};
+
+        auto world = [&](float tx, float ty, float y) {
+            return maze_.WorldCenter({std::clamp(static_cast<int>(std::round(tx)), 1, maze_.w - 2),
+                                      std::clamp(static_cast<int>(std::round(ty)), 1, maze_.h - 2)}, y);
+        };
+        auto lerpWorld = [&](float ax, float ay, float bx, float by, float t, float y) {
+            XMFLOAT3 a = world(ax, ay, y);
+            XMFLOAT3 b = world(bx, by, y);
+            return Lerp3(a, b, SmoothStep(0.0f, 1.0f, Clamp01(t)));
+        };
+
+        if (cycle < 12.0f) {
+            float t = cycle / 12.0f;
+            eye = lerpWorld(16.0f, 55.0f, 55.0f, 55.0f, t, 1.46f);
+            target = world(42.0f + std::sin(t * kTwoPi) * 8.0f, 34.0f, 1.34f);
+        } else if (cycle < 24.0f) {
+            float t = (cycle - 12.0f) / 12.0f;
+            eye = lerpWorld(56.0f, 55.0f, 58.0f, 22.0f, t, 1.52f);
+            target = world(38.0f, 36.0f + std::cos(t * kTwoPi) * 9.0f, 1.24f);
+        } else if (cycle < 36.0f) {
+            float t = (cycle - 24.0f) / 12.0f;
+            eye = lerpWorld(58.0f, 22.0f, 19.0f, 21.0f, t, 1.36f);
+            target = world(36.0f, 38.0f, 1.95f);
+        } else {
+            float t = (cycle - 36.0f) / 12.0f;
+            float orbit = t * kTwoPi;
+            XMFLOAT3 center = world(37.0f, 37.0f, 1.38f);
+            eye = {
+                center.x + std::sin(orbit) * maze_.TileAverage() * 8.5f,
+                1.58f + std::sin(orbit * 2.0f) * 0.12f,
+                center.z + std::cos(orbit) * maze_.TileAverage() * 7.0f
+            };
+            target = {center.x, 1.18f, center.z};
+        }
+
+        camera_ = eye;
+        yaw_ = YawToPoint(target);
+        bodyYaw_ = yaw_;
+        lookPitch_ = std::clamp(PitchToPoint(target), -0.48f, 0.42f);
+        flashlightYaw_ = yaw_;
+        flashlightPitch_ = lookPitch_;
+        previousCameraYaw_ = yaw_;
+        previousCameraPitch_ = lookPitch_;
+        cameraMotionBlur_ = {};
+        smoothedMoveSpeed_ = 1.4f;
+        playerHealth_ = 100.0f;
+        playerStamina_ = 100.0f;
     }
 
     Tile FindBloodStudyTile() const {
@@ -1704,13 +1770,13 @@
         float sizeT = RandRange(0.0f, 1.0f);
         float baseSize = 0.0f;
         if (sizeRoll < 0.50f) {
-            baseSize = Lerp(0.0020f, 0.0052f, std::pow(sizeT, 1.35f));
+            baseSize = Lerp(0.0018f, 0.0048f, std::pow(sizeT, 1.35f));
         } else if (sizeRoll < 0.90f) {
-            baseSize = Lerp(0.0052f, 0.0105f, sizeT);
+            baseSize = Lerp(0.0048f, 0.0083f, sizeT);
         } else {
-            baseSize = Lerp(0.0105f, 0.0185f, std::sqrt(sizeT));
+            baseSize = Lerp(0.0083f, 0.0114f, std::sqrt(sizeT));
         }
-        float layerScale = p.nearLayer > 1.5f ? RandRange(1.85f, 3.10f) : (p.nearLayer > 0.5f ? RandRange(1.25f, 2.05f) : 1.0f);
+        float layerScale = p.nearLayer > 1.5f ? RandRange(1.28f, 2.02f) : (p.nearLayer > 0.5f ? RandRange(1.10f, 1.62f) : 1.0f);
         p.size = baseSize * layerScale * std::clamp(settings_.airParticleSize, 0.20f, 4.0f);
         float aspectRoll = RandRange(0.0f, 1.0f);
         if (aspectRoll < 0.34f) {

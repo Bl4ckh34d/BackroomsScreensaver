@@ -265,7 +265,7 @@
         };
 
         if (runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.scoreScreenActive) {
-            pushRect(0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), {0.0f, 0.0f, 0.0f, 0.54f});
+            pushRect(0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), {0.0f, 0.0f, 0.0f, 0.34f});
         }
 
         float x = 24.0f;

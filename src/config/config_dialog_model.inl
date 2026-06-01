@@ -119,7 +119,7 @@ const ConfigFieldDef kConfigFields[] = {
     {1, 0, kConfigFieldBaseId + 2, L"Maze Size", L"Maze", L"Height", L"Height", L"25", ConfigFieldKind::Text, 90},
     {1, 0, kConfigFieldBaseId + 104, L"Maze Size", L"Maze", L"TileWidthMeters", L"Tile width meters", L"1.6", ConfigFieldKind::Text, 90},
     {1, 0, kConfigFieldBaseId + 105, L"Maze Size", L"Maze", L"TileLengthMeters", L"Tile length meters", L"1.6", ConfigFieldKind::Text, 90},
-    {1, 0, kConfigFieldBaseId + 106, L"Maze Size", L"Maze", L"WallHeightMeters", L"Wall/ceiling height", L"2.4", ConfigFieldKind::Text, 90},
+    {1, 0, kConfigFieldBaseId + 106, L"Maze Size", L"Maze", L"WallHeightMeters", L"Wall/ceiling height", L"2.85", ConfigFieldKind::Text, 90},
     {1, 1, kConfigFieldBaseId + 3, L"Room Generation", L"Maze", L"RoomCount", L"Room count", L"3", ConfigFieldKind::Text, 90},
     {1, 1, kConfigFieldBaseId + 4, L"Room Generation", L"Maze", L"RoomMinRadius", L"Room min radius", L"1.5", ConfigFieldKind::Text, 90},
     {1, 1, kConfigFieldBaseId + 5, L"Room Generation", L"Maze", L"RoomMaxRadius", L"Room max radius", L"3", ConfigFieldKind::Text, 90},

@@ -35,7 +35,8 @@
         settings_.bloodWorldCoverage = 0.0f;
         settings_.fleshFlicker = false;
 
-        settings_.waterDamageDensity = 0.0f;
+        settings_.waterDamageEnabled = DebugSliceEffectIsWater(gDebugSliceEffect);
+        settings_.waterDamageDensity = settings_.waterDamageEnabled ? 1.0f : 0.0f;
         settings_.bloodSplatterDensity = 0.0f;
         settings_.bloodBurstCount = 0;
         settings_.bloodStreamCount = liquidDebug ? 14 : 0;

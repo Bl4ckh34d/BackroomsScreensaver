@@ -69,6 +69,29 @@
             UpdateAirParticleFocus(dt);
             return;
         }
+        if (benchmarkDemoActive_ || BenchmarkDemoEnabled()) {
+            benchmarkDemoActive_ = true;
+            benchmarkDemoTimer_ += dt;
+            UpdateScareEvents(dt);
+            UpdateSparks(dt);
+            UpdateSteamAndDrops(dt);
+            UpdateBrokenRuntimeLampSparks(dt, 3.0f, 9.5f, 0.16f);
+            if (MonsterActiveForCurrentMode()) {
+                UpdateMonsterHeadAnimation(dt, false);
+            }
+            dangerLevel_ = 0.40f + std::sin(time_ * 0.73f) * 0.12f;
+            dreadLevel_ = 0.45f + std::cos(time_ * 0.41f) * 0.10f;
+            UpdateDreadMeterDisplay(dt);
+            ApplyBenchmarkDemoCamera(benchmarkDemoTimer_);
+            UpdateFlashlightAim(dt);
+            UpdateAirParticles(dt);
+            UpdateAirParticleFocus(dt);
+            float duration = BenchmarkDemoDurationSeconds();
+            if (duration > 0.0f && benchmarkDemoTimer_ >= duration && hwnd_) {
+                PostMessageW(hwnd_, WM_CLOSE, 0, 0);
+            }
+            return;
+        }
         UpdateScareEvents(dt);
         UpdateSparks(dt);
         UpdateSteamAndDrops(dt);
@@ -101,6 +124,7 @@
             monsterSmoothedBodyPoints_.clear();
             monsterSmoothedBodyUps_.clear();
             monsterBodySmoothTime_ = -1000.0f;
+            monsterRenderVisibleUntil_ = -1000.0f;
             monsterHasSound_ = false;
             monsterHasLastKnown_ = false;
             monsterChasingVisible_ = false;

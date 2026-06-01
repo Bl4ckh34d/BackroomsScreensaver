@@ -626,7 +626,7 @@
             };
         }
 
-        auto chunkVisible = [](const StaticIndexChunk& chunk, XMFLOAT3 origin, XMFLOAT3 direction, float maxDistance, float coneCos) {
+        auto chunkVisible = [](const auto& chunk, XMFLOAT3 origin, XMFLOAT3 direction, float maxDistance, float coneCos) {
             float dx = chunk.center.x - origin.x;
             float dy = chunk.center.y - origin.y;
             float dz = chunk.center.z - origin.z;
@@ -643,31 +643,73 @@
             return true;
         };
 
-        auto chunkMazeVisible = [&](const StaticIndexChunk& chunk, Tile originTile, int forceTileRadius) {
-            if (!maze_.IsOpen(originTile.x, originTile.y)) return true;
-            if (originTile.x >= chunk.minTileX - forceTileRadius && originTile.x <= chunk.maxTileX + forceTileRadius &&
-                originTile.y >= chunk.minTileY - forceTileRadius && originTile.y <= chunk.maxTileY + forceTileRadius) {
-                return true;
-            }
-
-            auto visibleTile = [&](int x, int y) {
-                Tile t{std::clamp(x, 0, std::max(0, maze_.w - 1)), std::clamp(y, 0, std::max(0, maze_.h - 1))};
-                if (maze_.IsOpen(t.x, t.y) && maze_.LineClear(originTile, t)) return true;
-                const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-                for (auto& d : dirs) {
-                    Tile n{t.x + d[0], t.y + d[1]};
-                    if (maze_.IsOpen(n.x, n.y) && maze_.LineClear(originTile, n)) return true;
+        std::vector<uint8_t> visibleMazeTiles;
+        auto buildMazeVisibility = [&](XMFLOAT3 origin,
+                                       XMFLOAT3 direction,
+                                       float maxDistance,
+                                       float coneCos,
+                                       int wallHaloTiles) {
+            if (maze_.w <= 0 || maze_.h <= 0) return false;
+            Tile originTile = maze_.TileFromWorld(origin.x, origin.z);
+            if (!maze_.IsOpen(originTile.x, originTile.y)) return false;
+            visibleMazeTiles.assign(static_cast<size_t>(maze_.w * maze_.h), 0);
+            auto mark = [&](int x, int y) {
+                if (!maze_.InBounds(x, y)) return;
+                visibleMazeTiles[static_cast<size_t>(y * maze_.w + x)] = 1;
+            };
+            auto markWithHalo = [&](int x, int y) {
+                mark(x, y);
+                for (int yy = -wallHaloTiles; yy <= wallHaloTiles; ++yy) {
+                    for (int xx = -wallHaloTiles; xx <= wallHaloTiles; ++xx) {
+                        if (std::abs(xx) + std::abs(yy) > wallHaloTiles) continue;
+                        mark(x + xx, y + yy);
+                    }
                 }
-                return false;
             };
 
-            int cx = (chunk.minTileX + chunk.maxTileX) / 2;
-            int cy = (chunk.minTileY + chunk.maxTileY) / 2;
-            if (visibleTile(cx, cy)) return true;
-            if (visibleTile(chunk.minTileX, chunk.minTileY)) return true;
-            if (visibleTile(chunk.maxTileX, chunk.minTileY)) return true;
-            if (visibleTile(chunk.minTileX, chunk.maxTileY)) return true;
-            if (visibleTile(chunk.maxTileX, chunk.maxTileY)) return true;
+            int tileRadius = std::clamp(static_cast<int>(std::ceil(maxDistance / std::max(0.1f, maze_.TileMinimum()))) + wallHaloTiles,
+                1, std::max(maze_.w, maze_.h));
+            int minX = std::max(0, originTile.x - tileRadius);
+            int maxX = std::min(maze_.w - 1, originTile.x + tileRadius);
+            int minY = std::max(0, originTile.y - tileRadius);
+            int maxY = std::min(maze_.h - 1, originTile.y + tileRadius);
+            float maxDistanceSq = maxDistance * maxDistance;
+            float tilePad = std::max(maze_.TileAverage() * 0.85f, 0.1f);
+            float tilePadSq = tilePad * tilePad;
+            for (int y = minY; y <= maxY; ++y) {
+                for (int x = minX; x <= maxX; ++x) {
+                    if (!maze_.IsOpen(x, y)) continue;
+                    XMFLOAT3 center = maze_.WorldCenter({x, y}, origin.y);
+                    float dx = center.x - origin.x;
+                    float dz = center.z - origin.z;
+                    float distSq = dx * dx + dz * dz;
+                    if (distSq > maxDistanceSq + tilePadSq) continue;
+                    if (coneCos > -0.99f && distSq > 0.0001f) {
+                        float invDist = 1.0f / std::sqrt(distSq);
+                        float facing = (dx * direction.x + dz * direction.z) * invDist;
+                        float slack = std::min(0.42f, tilePad * invDist);
+                        if (facing < coneCos - slack) continue;
+                    }
+                    if (!maze_.LineClear(originTile, {x, y})) continue;
+                    markWithHalo(x, y);
+                }
+            }
+            markWithHalo(originTile.x, originTile.y);
+            return true;
+        };
+
+        auto chunkMazeVisible = [&](const auto& chunk, int forceTileRadius) {
+            if (visibleMazeTiles.empty()) return true;
+            int minX = std::max(0, chunk.minTileX - forceTileRadius);
+            int maxX = std::min(maze_.w - 1, chunk.maxTileX + forceTileRadius);
+            int minY = std::max(0, chunk.minTileY - forceTileRadius);
+            int maxY = std::min(maze_.h - 1, chunk.maxTileY + forceTileRadius);
+            for (int y = minY; y <= maxY; ++y) {
+                const size_t row = static_cast<size_t>(y * maze_.w);
+                for (int x = minX; x <= maxX; ++x) {
+                    if (visibleMazeTiles[row + static_cast<size_t>(x)] != 0) return true;
+                }
+            }
             return false;
         };
 
@@ -680,7 +722,6 @@
                                      bool useMazeVisibility = false,
                                      int forceTileRadius = 1) {
             UINT drawn = 0;
-            Tile originTile = maze_.TileFromWorld(origin.x, origin.z);
             for (const StaticIndexChunk& chunk : chunks) {
                 bool forceByDistance = false;
                 if (forceVisibleDistance > 0.0f) {
@@ -693,16 +734,44 @@
                     }
                 }
                 if (!forceByDistance && !chunkVisible(chunk, origin, direction, maxDistance, coneCos)) continue;
-                if (useMazeVisibility && !chunkMazeVisible(chunk, originTile, forceTileRadius)) continue;
+                if (useMazeVisibility && !chunkMazeVisible(chunk, forceTileRadius)) continue;
                 context_->DrawIndexed(chunk.indexCount, chunk.startIndex, 0);
                 drawn += chunk.indexCount;
             }
             return drawn;
         };
 
+        auto drawVisibleInstancedChunks = [&](const std::vector<StaticInstanceChunk>& chunks,
+                                              XMFLOAT3 origin,
+                                              XMFLOAT3 direction,
+                                              float maxDistance,
+                                              float coneCos,
+                                              float forceVisibleDistance = 0.0f,
+                                              bool useMazeVisibility = false,
+                                              int forceTileRadius = 1) {
+            UINT drawn = 0;
+            for (const StaticInstanceChunk& chunk : chunks) {
+                bool forceByDistance = false;
+                if (forceVisibleDistance > 0.0f) {
+                    float dx = chunk.center.x - origin.x;
+                    float dy = chunk.center.y - origin.y;
+                    float dz = chunk.center.z - origin.z;
+                    float force = forceVisibleDistance + chunk.radius;
+                    if (dx * dx + dy * dy + dz * dz <= force * force) {
+                        forceByDistance = true;
+                    }
+                }
+                if (!forceByDistance && !chunkVisible(chunk, origin, direction, maxDistance, coneCos)) continue;
+                if (useMazeVisibility && !chunkMazeVisible(chunk, forceTileRadius)) continue;
+                context_->DrawIndexedInstanced(chunk.indexCount, chunk.instanceCount, chunk.startIndex, chunk.baseVertex, chunk.startInstance);
+                drawn += chunk.indexCount * chunk.instanceCount;
+            }
+            return drawn;
+        };
+
         float mainHalfFov = fovDegrees * 0.5f * kPi / 180.0f;
         float mainHorizontalHalfFov = std::atan(std::tan(mainHalfFov) * std::max(0.1f, aspect));
-        float mainConeCos = std::cos(std::min(kPi * 0.98f, std::max(mainHalfFov, mainHorizontalHalfFov) + 0.58f));
+        float mainConeCos = std::cos(std::min(kPi * 0.98f, std::max(mainHalfFov, mainHorizontalHalfFov) + 0.82f));
         float mainCullDistance = monsterPreview_
             ? 1000.0f
             : std::max(viewFarMeters, settings_.fogEndMeters + maze_.TileAverage() * 12.0f);
@@ -710,6 +779,9 @@
         float transparentCullDistance = monsterPreview_
             ? mainCullDistance
             : std::min(mainCullDistance, std::max(maze_.TileAverage() * 8.0f, settings_.fogEndMeters + maze_.TileAverage() * 4.0f));
+        if (!monsterPreview_) {
+            buildMazeVisibility(eyePos, viewDirFloat, mainCullDistance, mainConeCos, 4);
+        }
 
         auto renderDepthShadow = [&](ID3D11DepthStencilView* shadowDsv, UINT shadowSize, const XMMATRIX& shadowViewProj,
                                      XMFLOAT3 shadowOrigin, XMFLOAT3 shadowDirection, float shadowRange, float shadowConeCos) {
@@ -755,8 +827,10 @@
             if (!monsterPreview_) {
                 if (!staticOpaqueChunks_.empty() || !staticFloorCeilingChunks_.empty()) {
                     StartupProfileLine(L"Render before ShadowStatic chunked DrawIndexed");
-                    UINT drawn = drawVisibleChunks(staticOpaqueChunks_, shadowOrigin, shadowDirection, shadowRange, shadowConeCos);
-                    drawn += drawVisibleChunks(staticFloorCeilingChunks_, shadowOrigin, shadowDirection, shadowRange, shadowConeCos);
+                    UINT drawn = drawVisibleChunks(staticOpaqueChunks_, shadowOrigin, shadowDirection, shadowRange, shadowConeCos,
+                        maze_.TileAverage() * 1.4f, false, 1);
+                    drawn += drawVisibleChunks(staticFloorCeilingChunks_, shadowOrigin, shadowDirection, shadowRange, shadowConeCos,
+                        maze_.TileAverage() * 1.4f, false, 1);
                     if (drawn == 0) {
                         UINT shadowStaticIndexCount = staticWaterStartIndex_ > 0 ? staticWaterStartIndex_ :
                             (staticTransparentStartIndex_ > 0 ? staticTransparentStartIndex_ : indexCount_);
@@ -774,14 +848,42 @@
                 }
                 if (staticPropShadowIndexCount_ > 0) {
                     context_->PSSetShader(nullptr, nullptr, 0);
-                    StartupProfileLine(L"Render before StaticPropShadow DrawIndexed");
-                    context_->DrawIndexed(staticPropShadowIndexCount_, staticPropShadowStartIndex_, 0);
+                    StartupProfileLine(staticPropShadowChunks_.empty()
+                        ? L"Render before StaticPropShadow DrawIndexed"
+                        : L"Render before StaticPropShadow chunked DrawIndexed");
+                    UINT drawn = 0;
+                    if (!staticPropShadowChunks_.empty()) {
+                        drawn = drawVisibleChunks(staticPropShadowChunks_, shadowOrigin, shadowDirection, shadowRange, shadowConeCos,
+                            maze_.TileAverage() * 1.4f, false, 1);
+                    }
+                    if (staticPropShadowChunks_.empty()) {
+                        context_->DrawIndexed(staticPropShadowIndexCount_, staticPropShadowStartIndex_, 0);
+                    }
                     renderProfile.Mark(L"StaticPropShadow");
+                    context_->PSSetShader(shadowPixelShader_.Get(), nullptr, 0);
+                }
+                if (!instancedPropShadowChunks_.empty() && instancedVertexBuffer_ && instancedIndexBuffer_ && instancedInstanceBuffer_) {
+                    ID3D11Buffer* instBuffers[] = {instancedVertexBuffer_.Get(), instancedInstanceBuffer_.Get()};
+                    UINT instStrides[] = {sizeof(Vertex), sizeof(StaticInstanceData)};
+                    UINT instOffsets[] = {0, 0};
+                    context_->IASetInputLayout(instancedInputLayout_.Get());
+                    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    context_->IASetVertexBuffers(0, 2, instBuffers, instStrides, instOffsets);
+                    context_->IASetIndexBuffer(instancedIndexBuffer_.Get(), DXGI_FORMAT_R32_UINT, 0);
+                    context_->VSSetShader(instancedVertexShader_.Get(), nullptr, 0);
+                    context_->HSSetShader(nullptr, nullptr, 0);
+                    context_->DSSetShader(nullptr, nullptr, 0);
+                    context_->PSSetShader(nullptr, nullptr, 0);
+                    context_->VSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+                    StartupProfileLine(L"Render before InstancedPropShadow DrawIndexedInstanced");
+                    drawVisibleInstancedChunks(instancedPropShadowChunks_, shadowOrigin, shadowDirection, shadowRange, shadowConeCos,
+                        maze_.TileAverage() * 1.4f, false, 1);
+                    renderProfile.Mark(L"InstancedPropShadow");
                     context_->PSSetShader(shadowPixelShader_.Get(), nullptr, 0);
                 }
             }
 
-            if (dynamicOpaqueVertexCount_ > 0) {
+            if (dynamicOpaqueVertexCount_ > 0 && runtimeMode_ != RendererRuntimeMode::MainMenu) {
                 context_->HSSetShader(nullptr, nullptr, 0);
                 context_->DSSetShader(nullptr, nullptr, 0);
                 context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -899,6 +1001,24 @@
             context_->PSSetSamplers(0, 2, samplers);
         };
 
+        auto bindInstancedScenePipeline = [&]() {
+            ID3D11Buffer* buffers[] = {instancedVertexBuffer_.Get(), instancedInstanceBuffer_.Get()};
+            UINT strides[] = {sizeof(Vertex), sizeof(StaticInstanceData)};
+            UINT offsets[] = {0, 0};
+            context_->IASetInputLayout(instancedInputLayout_.Get());
+            context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            context_->IASetVertexBuffers(0, 2, buffers, strides, offsets);
+            context_->IASetIndexBuffer(instancedIndexBuffer_.Get(), DXGI_FORMAT_R32_UINT, 0);
+            context_->VSSetShader(instancedVertexShader_.Get(), nullptr, 0);
+            context_->HSSetShader(nullptr, nullptr, 0);
+            context_->DSSetShader(nullptr, nullptr, 0);
+            context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
+            context_->VSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+            context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
+            context_->PSSetShaderResources(0, 14, srvs);
+            context_->PSSetSamplers(0, 2, samplers);
+        };
+
         auto bindDynamicScenePipeline = [&]() {
             context_->IASetInputLayout(inputLayout_.Get());
             context_->HSSetShader(nullptr, nullptr, 0);
@@ -924,7 +1044,7 @@
                 UINT drawn = 0;
                 if (!staticOpaqueChunks_.empty()) {
                     drawn = drawVisibleChunks(staticOpaqueChunks_, eyePos, viewDirFloat, mainCullDistance, mainConeCos,
-                        mainForceVisibleDistance, false, 2);
+                        mainForceVisibleDistance, false, 1);
                     if (StartupProfileEnabled()) {
                         std::wstringstream counts;
                         counts << L"MainOpaque visible indices=" << drawn << L"/" << opaqueIndexCount;
@@ -933,6 +1053,19 @@
                 }
                 if (staticOpaqueChunks_.empty() || drawn == 0) {
                     context_->DrawIndexed(opaqueIndexCount, 0, 0);
+                }
+                if (!instancedOpaqueChunks_.empty() && instancedVertexBuffer_ && instancedIndexBuffer_ && instancedInstanceBuffer_) {
+                    bindInstancedScenePipeline();
+                    StartupProfileLine(L"Render before MainOpaque instanced DrawIndexedInstanced");
+                    UINT instancedDrawn = drawVisibleInstancedChunks(instancedOpaqueChunks_, eyePos, viewDirFloat, mainCullDistance, mainConeCos,
+                        mainForceVisibleDistance, true, 3);
+                    if (StartupProfileEnabled()) {
+                        std::wstringstream counts;
+                        counts << L"MainOpaque visible instanced indices=" << instancedDrawn
+                            << L"/" << (static_cast<uint64_t>(instancedIndexCount_) * static_cast<uint64_t>(instancedInstanceCount_));
+                        StartupProfileLine(counts.str());
+                    }
+                    bindStaticScenePipeline();
                 }
                 renderProfile.Mark(L"MainOpaque");
             }
@@ -944,7 +1077,7 @@
                 UINT drawn = 0;
                 if (!staticFloorCeilingChunks_.empty()) {
                     drawn = drawVisibleChunks(staticFloorCeilingChunks_, eyePos, viewDirFloat, mainCullDistance, mainConeCos,
-                        mainForceVisibleDistance, false, 2);
+                        mainForceVisibleDistance, false, 1);
                     if (StartupProfileEnabled()) {
                         std::wstringstream counts;
                         counts << L"FloorCeiling visible indices=" << drawn << L"/" << floorCeilingIndexCount_;
@@ -983,7 +1116,7 @@
                 StartupProfileLine(L"Render before StaticWater DrawIndexed");
                 if (!staticWaterChunks_.empty()) {
                     drawVisibleChunks(staticWaterChunks_, eyePos, viewDirFloat, transparentCullDistance, mainConeCos,
-                        mainForceVisibleDistance, true, 2);
+                        mainForceVisibleDistance, true, 4);
                 } else {
                     context_->DrawIndexed(staticWaterIndexCount_, staticWaterStartIndex_, 0);
                 }
@@ -999,7 +1132,7 @@
                 StartupProfileLine(L"Render before StaticTransparent DrawIndexed");
                 if (!staticTransparentChunks_.empty()) {
                     drawVisibleChunks(staticTransparentChunks_, eyePos, viewDirFloat, transparentCullDistance, mainConeCos,
-                        mainForceVisibleDistance, true, 2);
+                        mainForceVisibleDistance, true, 4);
                 } else {
                     context_->DrawIndexed(staticTransparentIndexCount_, staticTransparentStartIndex_, 0);
                 }

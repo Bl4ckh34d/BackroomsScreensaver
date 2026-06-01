@@ -169,6 +169,7 @@
             monsterSmoothedBodyPoints_.clear();
             monsterSmoothedBodyUps_.clear();
             monsterBodySmoothTime_ = -1000.0f;
+            monsterRenderVisibleUntil_ = -1000.0f;
             monsterGoal_ = {-1000, -1000};
             monsterSoundTile_ = {-1000, -1000};
             monsterLastKnownTile_ = {-1000, -1000};
@@ -379,6 +380,11 @@
             std::wstring key = L"LayerPage" + std::to_wstring(i) + L"Collected";
             playableRun_.layerPageCollected[i] = SaveInt(values, key.c_str(), 0) != 0 ? 1 : 0;
         }
+        if (playableRun_.customGame && !playableRun_.customSpec.eightPages) {
+            playableRun_.layerPagesCollected = 0;
+            playableRun_.layerPageCollected.fill(0);
+            playableRun_.levelPageTargets.fill(0);
+        }
         playableRun_.runSeconds = std::max(0.0f, SaveFloat(values, L"RunSeconds", 0.0f));
         playableRun_.levelSeconds = std::max(0.0f, SaveFloat(values, L"LevelSeconds", 0.0f));
         playableRun_.totalScore = std::max(0, SaveInt(values, L"TotalScore", 0));
@@ -546,7 +552,8 @@
         playableRun_.saveItemTarget = PickLayerSaveItemTarget();
         playableRun_.completed.reserve(1);
         playableRun_.levelPageTargets.fill(0);
-        playableRun_.layerPageCollected.fill(customSpec.eightPages ? 0 : 1);
+        playableRun_.layerPageCollected.fill(0);
+        playableRun_.layerPagesCollected = 0;
         if (customSpec.eightPages) playableRun_.levelPageTargets[0] = kCollectiblePageMaterialCount;
 
         PlayableLevelSpec level{};
@@ -583,6 +590,9 @@
         settings_.fogEndMeters = std::max(settings_.fogStartMeters + 0.1f, static_cast<float>(customSpec.fogEndMeters));
         settings_.fogDarkness = static_cast<float>(customSpec.fogDarknessPercent) / 100.0f;
         ApplyCustomGameScareToggles(customSpec);
+        if (BenchmarkDemoEnabled()) {
+            ApplyBenchmarkDemoSettings(settings_);
+        }
         maze_.w = settings_.mazeWidth;
         maze_.h = settings_.mazeHeight;
         maze_.tileW = settings_.tileWidthMeters;

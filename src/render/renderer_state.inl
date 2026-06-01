@@ -49,10 +49,15 @@
     ComPtr<ID3D11VertexShader> postVertexShader_;
     ComPtr<ID3D11PixelShader> postPixelShader_;
     ComPtr<ID3D11InputLayout> inputLayout_;
+    ComPtr<ID3D11VertexShader> instancedVertexShader_;
+    ComPtr<ID3D11InputLayout> instancedInputLayout_;
     ComPtr<ID3D11InputLayout> overlayInputLayout_;
     ComPtr<ID3D11InputLayout> texturedOverlayInputLayout_;
     ComPtr<ID3D11Buffer> vertexBuffer_;
     ComPtr<ID3D11Buffer> indexBuffer_;
+    ComPtr<ID3D11Buffer> instancedVertexBuffer_;
+    ComPtr<ID3D11Buffer> instancedIndexBuffer_;
+    ComPtr<ID3D11Buffer> instancedInstanceBuffer_;
     ComPtr<ID3D11Buffer> monsterBuffer_;
     ComPtr<ID3D11Buffer> dynamicBuffer_;
     ComPtr<ID3D11Buffer> overlayBuffer_;
@@ -122,6 +127,7 @@
     struct GpuProfileFrame {
         ComPtr<ID3D11Query> disjoint;
         std::array<ComPtr<ID3D11Query>, kGpuProfileMarkerCount> timestamps;
+        std::array<double, kGpuProfileMarkerCount> cpuMarkersMs{};
         bool issued = false;
         bool open = false;
         uint64_t frameId = 0;
@@ -148,10 +154,15 @@
     UINT staticTransparentIndexCount_ = 0;
     UINT staticPropShadowStartIndex_ = 0;
     UINT staticPropShadowIndexCount_ = 0;
+    UINT instancedIndexCount_ = 0;
+    UINT instancedInstanceCount_ = 0;
     std::vector<StaticIndexChunk> staticOpaqueChunks_;
     std::vector<StaticIndexChunk> staticFloorCeilingChunks_;
     std::vector<StaticIndexChunk> staticWaterChunks_;
     std::vector<StaticIndexChunk> staticTransparentChunks_;
+    std::vector<StaticIndexChunk> staticPropShadowChunks_;
+    std::vector<StaticInstanceChunk> instancedOpaqueChunks_;
+    std::vector<StaticInstanceChunk> instancedPropShadowChunks_;
     std::vector<OverlayVertex> mapOverlayCachedVerts_;
     float mapOverlayNextUpdateTime_ = 0.0f;
     LONG mapOverlayCacheWidth_ = 0;
@@ -236,6 +247,8 @@
     float tunnelLeanSideTarget_ = 1.0f;
     float tunnelLeanSide_ = 1.0f;
     bool previousInteractInput_ = false;
+    bool benchmarkDemoActive_ = false;
+    float benchmarkDemoTimer_ = 0.0f;
     std::array<CollectiblePage, kCollectiblePageMaterialCount> collectiblePages_{};
     int collectiblePagesCollected_ = 0;
     SavePoint savePoint_{};
@@ -456,6 +469,7 @@
     std::vector<XMFLOAT3> monsterSmoothedBodyPoints_;
     std::vector<XMFLOAT3> monsterSmoothedBodyUps_;
     float monsterBodySmoothTime_ = -1000.0f;
+    float monsterRenderVisibleUntil_ = -1000.0f;
     std::vector<MonsterHandprint> monsterHandprints_;
     size_t monsterPathIndex_ = 0;
     float monsterRepath_ = 0.0f;

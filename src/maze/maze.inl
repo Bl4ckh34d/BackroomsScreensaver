@@ -1,60 +1,45 @@
 // Maze layout generation and navigation queries.
-// Included from main.cpp before renderer code.
+// Included after maze.h while the implementation remains include-based.
 
-enum class MazeWallFeature : uint8_t {
-    None = 0,
-    Window = 1,
-    Tunnel = 2
-};
+#include "maze.h"
 
-struct Maze {
-    int w = kMazeW;
-    int h = kMazeH;
-    float tileW = kTile;
-    float tileD = kTile;
-    std::vector<uint8_t> open;
-    std::vector<uint8_t> wallFeatures;
-    Tile start{1, 1};
-    Tile exit{kMazeW - 2, kMazeH - 2};
-    std::mt19937 rng{0xBACC2026u};
-
-    bool InBounds(int x, int y) const {
+inline bool Maze::InBounds(int x, int y) const {
         return x >= 0 && y >= 0 && x < w && y < h;
     }
 
-    bool IsOpen(int x, int y) const {
+inline bool Maze::IsOpen(int x, int y) const {
         return InBounds(x, y) && open[static_cast<size_t>(y * w + x)] != 0;
     }
 
-    void SetOpen(int x, int y, bool v = true) {
+inline void Maze::SetOpen(int x, int y, bool v) {
         if (!InBounds(x, y)) return;
         const size_t idx = static_cast<size_t>(y * w + x);
         open[idx] = v ? 1 : 0;
         if (v && idx < wallFeatures.size()) wallFeatures[idx] = 0;
     }
 
-    MazeWallFeature WallFeature(int x, int y) const {
+inline MazeWallFeature Maze::WallFeature(int x, int y) const {
         if (!InBounds(x, y)) return MazeWallFeature::None;
         const size_t idx = static_cast<size_t>(y * w + x);
         if (idx >= wallFeatures.size()) return MazeWallFeature::None;
         return static_cast<MazeWallFeature>(wallFeatures[idx]);
     }
 
-    bool HasWallFeature(int x, int y) const {
+inline bool Maze::HasWallFeature(int x, int y) const {
         return WallFeature(x, y) != MazeWallFeature::None;
     }
 
-    bool IsVisionOpen(int x, int y) const {
+inline bool Maze::IsVisionOpen(int x, int y) const {
         return IsOpen(x, y) || WallFeature(x, y) == MazeWallFeature::Window;
     }
 
-    XMFLOAT3 WorldCenter(Tile t, float y = 0.0f) const {
+inline XMFLOAT3 Maze::WorldCenter(Tile t, float y) const {
         float ox = -static_cast<float>(w) * tileW * 0.5f;
         float oz = -static_cast<float>(h) * tileD * 0.5f;
         return {ox + (static_cast<float>(t.x) + 0.5f) * tileW, y, oz + (static_cast<float>(t.y) + 0.5f) * tileD};
     }
 
-    Tile TileFromWorld(float x, float z) const {
+inline Tile Maze::TileFromWorld(float x, float z) const {
         float ox = -static_cast<float>(w) * tileW * 0.5f;
         float oz = -static_cast<float>(h) * tileD * 0.5f;
         return {
@@ -63,31 +48,22 @@ struct Maze {
         };
     }
 
-    float TileAverage() const {
+inline float Maze::TileAverage() const {
         return (tileW + tileD) * 0.5f;
     }
 
-    float TileMinimum() const {
+inline float Maze::TileMinimum() const {
         return std::min(tileW, tileD);
     }
 
-    std::vector<Tile> Neighbors(Tile t) const {
+inline std::vector<Tile> Maze::Neighbors(Tile t) const {
         std::vector<Tile> out;
         out.reserve(4);
         ForEachNeighbor(t, [&](Tile n) { out.push_back(n); });
         return out;
     }
 
-    template <typename Fn>
-    void ForEachNeighbor(Tile t, Fn&& fn) const {
-        const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        for (auto& d : dirs) {
-            Tile n{t.x + d[0], t.y + d[1]};
-            if (IsOpen(n.x, n.y)) fn(n);
-        }
-    }
-
-    int OpenNeighborCount(Tile t) const {
+inline int Maze::OpenNeighborCount(Tile t) const {
         int count = 0;
         const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (auto& d : dirs) {
@@ -96,7 +72,7 @@ struct Maze {
         return count;
     }
 
-    int LocalOpenCount(Tile t, int radius = 2) const {
+inline int Maze::LocalOpenCount(Tile t, int radius) const {
         int count = 0;
         for (int y = t.y - radius; y <= t.y + radius; ++y) {
             for (int x = t.x - radius; x <= t.x + radius; ++x) {
@@ -106,7 +82,7 @@ struct Maze {
         return count;
     }
 
-    void AddExtraConnectors(const Settings& settings) {
+inline void Maze::AddExtraConnectors(const Settings& settings) {
         float minRatio = std::clamp(settings.extraConnectorMinRatio, 0.015f, 0.20f);
         float maxRatio = std::clamp(settings.extraConnectorMaxRatio, minRatio, 0.20f);
         if (maxRatio <= 0.0f) return;
@@ -145,7 +121,7 @@ struct Maze {
         }
     }
 
-    void GenerateWallFeatures(const Settings& settings) {
+inline void Maze::GenerateWallFeatures(const Settings& settings) {
         wallFeatures.assign(static_cast<size_t>(w * h), 0);
 
         std::vector<Tile> candidates;
@@ -184,7 +160,7 @@ struct Maze {
         }
     }
 
-    void Generate(const Settings& settings) {
+inline void Maze::Generate(const Settings& settings) {
         open.assign(static_cast<size_t>(w * h), 0);
         wallFeatures.assign(static_cast<size_t>(w * h), 0);
         start = {1, 1};
@@ -240,7 +216,7 @@ struct Maze {
         GenerateWallFeatures(settings);
     }
 
-    void GenerateBloodDebugCorridor() {
+inline void Maze::GenerateBloodDebugCorridor() {
         w = std::max(9, w);
         h = std::max(5, h);
         open.assign(static_cast<size_t>(w * h), 0);
@@ -253,7 +229,50 @@ struct Maze {
         exit = {w - 2, row};
     }
 
-    void GenerateDebugSlice(int tiles) {
+inline void Maze::GenerateBenchmarkDemo() {
+        w = 75;
+        h = 75;
+        open.assign(static_cast<size_t>(w * h), 0);
+        wallFeatures.assign(static_cast<size_t>(w * h), 0);
+
+        auto openRect = [&](int x0, int y0, int x1, int y1) {
+            for (int y = std::max(1, y0); y <= std::min(h - 2, y1); ++y) {
+                for (int x = std::max(1, x0); x <= std::min(w - 2, x1); ++x) {
+                    SetOpen(x, y);
+                }
+            }
+        };
+        auto closeRect = [&](int x0, int y0, int x1, int y1) {
+            for (int y = std::max(1, y0); y <= std::min(h - 2, y1); ++y) {
+                for (int x = std::max(1, x0); x <= std::min(w - 2, x1); ++x) {
+                    SetOpen(x, y, false);
+                }
+            }
+        };
+
+        openRect(8, 14, 66, 60);
+        openRect(2, 34, 72, 40);
+        openRect(34, 2, 40, 72);
+        openRect(4, 8, 12, 24);
+        openRect(58, 50, 70, 68);
+
+        closeRect(22, 24, 25, 33);
+        closeRect(48, 22, 52, 31);
+        closeRect(31, 46, 37, 51);
+        closeRect(53, 42, 58, 47);
+        closeRect(15, 44, 19, 52);
+
+        openRect(24, 29, 31, 30);
+        openRect(36, 48, 46, 49);
+        openRect(51, 44, 54, 44);
+
+        start = {13, 54};
+        exit = {61, 20};
+        SetOpen(start.x, start.y);
+        SetOpen(exit.x, exit.y);
+    }
+
+inline void Maze::GenerateDebugSlice(int tiles) {
         tiles = std::clamp(tiles, 1, 5);
         w = tiles + 2;
         h = tiles + 2;
@@ -269,7 +288,7 @@ struct Maze {
         exit = {mid, 1};
     }
 
-    void GenerateMenuRoom() {
+inline void Maze::GenerateMenuRoom() {
         w = 14;
         h = 24;
         open.assign(static_cast<size_t>(w * h), 0);
@@ -287,7 +306,7 @@ struct Maze {
         }
     }
 
-    Tile FarthestReachable(Tile from) const {
+inline Tile Maze::FarthestReachable(Tile from) const {
         std::vector<int> dist = ReachableDistances(from);
         Tile best = from;
         auto idx = [this](Tile t) { return static_cast<size_t>(t.y * w + t.x); };
@@ -300,7 +319,7 @@ struct Maze {
         return best;
     }
 
-    Tile FarthestPerimeterReachable(Tile from) const {
+inline Tile Maze::FarthestPerimeterReachable(Tile from) const {
         std::vector<int> dist = ReachableDistances(from);
         Tile best = from;
         int bestDist = -1;
@@ -320,7 +339,7 @@ struct Maze {
         return bestDist >= 0 ? best : FarthestReachable(from);
     }
 
-    std::vector<int> ReachableDistances(Tile from) const {
+inline std::vector<int> Maze::ReachableDistances(Tile from) const {
         std::vector<int> dist(static_cast<size_t>(w * h), -1);
         std::queue<Tile> q;
         q.push(from);
@@ -339,7 +358,7 @@ struct Maze {
         return dist;
     }
 
-    bool LineClear(Tile a, Tile b) const {
+inline bool Maze::LineClear(Tile a, Tile b) const {
         XMFLOAT3 aw = WorldCenter(a, 1.5f);
         XMFLOAT3 bw = WorldCenter(b, 1.5f);
         float dx = bw.x - aw.x;
@@ -354,7 +373,7 @@ struct Maze {
         return true;
     }
 
-    std::vector<Tile> Path(Tile from, Tile to) const {
+inline std::vector<Tile> Maze::Path(Tile from, Tile to) const {
         if (!IsOpen(from.x, from.y) || !IsOpen(to.x, to.y)) return {};
         const int count = w * h;
         std::vector<float> cost(static_cast<size_t>(count), std::numeric_limits<float>::infinity());
@@ -396,7 +415,7 @@ struct Maze {
         return out;
     }
 
-    int PathLength(Tile from, Tile to, int minLength = 0) const {
+inline int Maze::PathLength(Tile from, Tile to, int minLength) const {
         if (!IsOpen(from.x, from.y) || !IsOpen(to.x, to.y)) return 0;
         const int count = w * h;
         std::vector<int> dist(static_cast<size_t>(count), -1);
@@ -420,4 +439,3 @@ struct Maze {
         (void)minLength;
         return 0;
     }
-};

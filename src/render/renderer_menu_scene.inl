@@ -4,9 +4,9 @@
         settings_.wallHeightMeters = std::max(settings_.wallHeightMeters, 2.85f);
         settings_.mapOverlay = false;
         settings_.debugAiMapOverlay = false;
-        settings_.chairDensity = 0.35f;
-        settings_.paperDensity = 0.55f;
-        settings_.hallwayPaperRunDensity = 0.40f;
+        settings_.chairDensity = 0.0f;
+        settings_.paperDensity = 0.0f;
+        settings_.hallwayPaperRunDensity = 0.0f;
         settings_.metalCabinetDensity = 0.0f;
         settings_.waterDamageDensity = 0.0f;
         settings_.lampOnRatio = 1.0f;
@@ -66,7 +66,8 @@
     bool MainMenuCustomPanelLampTile(Tile lampTile) const {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return false;
         const int panelX = std::clamp(maze_.start.x + 2, 1, maze_.w - 2);
-        return lampTile.x == panelX && (lampTile.y == maze_.start.y || lampTile.y == maze_.start.y - 1);
+        const int panelY = std::max(1, maze_.start.y - 1);
+        return lampTile.x == panelX && lampTile.y == panelY;
     }
 
     bool MainMenuExitLampTile(Tile lampTile) const {
@@ -89,17 +90,24 @@
     bool MainMenuAllowedLampTile(Tile lampTile) const {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return true;
         return MainMenuExitLampTile(lampTile) || MainMenuAlwaysLitLampTile(lampTile) ||
-            MainMenuPrimaryLampTile(lampTile);
+            MainMenuCustomPanelLampTile(lampTile);
     }
 
     bool MainMenuLampShouldBeLit(Tile lampTile) const {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return true;
         if (MainMenuExitLampTile(lampTile)) return !(menuDarkLayerOneRun_ && menuLampBurstPlayed_);
         if (MainMenuAlwaysLitLampTile(lampTile)) return true;
+        if (MainMenuCustomPanelLampTile(lampTile)) return true;
         if (menuStartTransitionActive_ || menuStartTransitionComplete_) return false;
-        if (MainMenuPrimaryLampTile(lampTile)) return !menuCustomViewTarget_;
-        if (MainMenuCustomPanelLampTile(lampTile)) return false;
+        if (MainMenuPrimaryLampTile(lampTile)) return false;
         return false;
+    }
+
+    uint8_t MainMenuLampDamageValue(Tile lampTile) const {
+        if (!MainMenuLampShouldBeLit(lampTile)) return 255;
+        constexpr uint8_t kMenuCustomPanelFlickerDamage = 126;
+        if (MainMenuCustomPanelLampTile(lampTile)) return kMenuCustomPanelFlickerDamage;
+        return 0;
     }
 
     void UpdateMainMenuLampOverrides() {
@@ -111,7 +119,7 @@
                 if (!MainMenuAllowedLampTile(lampTile)) continue;
                 size_t index = static_cast<size_t>(y * maze_.w + x);
                 if (index >= lampDamagePixels_.size()) continue;
-                uint8_t desired = MainMenuLampShouldBeLit(lampTile) ? 0 : 255;
+                uint8_t desired = MainMenuLampDamageValue(lampTile);
                 if (lampDamagePixels_[index] != desired) {
                     lampDamagePixels_[index] = desired;
                     changed = true;
@@ -120,9 +128,9 @@
         }
         for (RuntimeLampState& lamp : runtimeLamps_) {
             if (!MainMenuAllowedLampTile(lamp.tile)) continue;
-            bool lit = MainMenuLampShouldBeLit(lamp.tile);
-            lamp.broken = !lit;
-            lamp.damage = lit ? 0.0f : 1.0f;
+            uint8_t damageValue = MainMenuLampDamageValue(lamp.tile);
+            lamp.damage = static_cast<float>(damageValue) / 255.0f;
+            lamp.broken = lamp.damage >= 0.995f;
         }
         if (changed) lampDamageDirty_ = true;
     }

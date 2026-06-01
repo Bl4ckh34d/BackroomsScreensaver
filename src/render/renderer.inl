@@ -8,6 +8,8 @@
 
 #include "../audio/audio_engine.inl"
 
+#include "../maze/maze.h"
+
 #include "../maze/maze.inl"
 
 #include "../gameplay/playable_progression_types.inl"
