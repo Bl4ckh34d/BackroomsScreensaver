@@ -2464,6 +2464,9 @@
                 bool openE = maze_.IsOpen(x + 1, y);
                 bool corridorNS = openN && openS && !openW && !openE;
                 bool corridorEW = openW && openE && !openN && !openS;
+                auto plainWallNeighbor = [&](int nx, int ny) {
+                    return !maze_.IsOpen(nx, ny) && maze_.WallFeature(nx, ny) == MazeWallFeature::None;
+                };
 
                 if (h0 < chairChance && IsRoomLike(t)) {
                     float chairX = c.x + (h1 - 0.5f) * std::max(0.0f, tileW - 1.12f) * 0.42f;
@@ -2485,10 +2488,10 @@
 
                 int ventSides[4]{};
                 int ventSideCount = 0;
-                if (!openN) ventSides[ventSideCount++] = 0;
-                if (!openS) ventSides[ventSideCount++] = 1;
-                if (!openW) ventSides[ventSideCount++] = 2;
-                if (!openE) ventSides[ventSideCount++] = 3;
+                if (plainWallNeighbor(x, y - 1)) ventSides[ventSideCount++] = 0;
+                if (plainWallNeighbor(x, y + 1)) ventSides[ventSideCount++] = 1;
+                if (plainWallNeighbor(x - 1, y)) ventSides[ventSideCount++] = 2;
+                if (plainWallNeighbor(x + 1, y)) ventSides[ventSideCount++] = 3;
                 if (ventSideCount > 0 && tileHash(x, y, 31.0f) < ventChance) {
                     int sideIndex = std::min(ventSideCount - 1, static_cast<int>(tileHash(x, y, 32.0f) * ventSideCount));
                     addWallVent(t, ventSides[sideIndex], tileHash(x, y, 33.0f));

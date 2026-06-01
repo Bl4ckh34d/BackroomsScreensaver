@@ -196,7 +196,6 @@ int RunGame(HINSTANCE hInstance) {
                 app.renderer.RuntimeMode() == RendererRuntimeMode::MainMenu;
             if (rendererMenuScene) {
                 app.renderer.TickFixed(dt);
-                if (app.gameCustomMenuOpen) UpdateCustomGameControls(hwnd);
             }
             HDC dc = GetDC(hwnd);
             if (dc) {

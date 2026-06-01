@@ -39,6 +39,20 @@
         return std::clamp(playableRun_.levelPageTargets[static_cast<size_t>(index)], 0, kCollectiblePageMaterialCount - start);
     }
 
+    int LayerPagesCollectedForLevel(int levelInLayer) const {
+        int start = LayerPageStartForLevel(levelInLayer);
+        int count = LayerPageCountForLevel(levelInLayer);
+        int found = 0;
+        for (int i = 0; i < count; ++i) {
+            int pageIndex = start + i;
+            if (pageIndex >= 0 && pageIndex < kCollectiblePageMaterialCount &&
+                playableRun_.layerPageCollected[static_cast<size_t>(pageIndex)] != 0) {
+                ++found;
+            }
+        }
+        return found;
+    }
+
     bool PickChance(float chance) {
         return chance > 0.0f && UnitRandom() < chance;
     }
@@ -606,9 +620,14 @@
         for (uint8_t collected : playableRun_.layerPageCollected) {
             if (collected) ++secretsFound;
         }
-        playableRun_.layerPagesCollected = std::max(playableRun_.layerPagesCollected, secretsFound);
-        secretsFound = playableRun_.layerPagesCollected;
-        int secretTotal = (playableRun_.customGame && !playableRun_.customSpec.eightPages) ? 0 : kCollectiblePageMaterialCount;
+        int layerSecretTotal = (playableRun_.customGame && !playableRun_.customSpec.eightPages) ? 0 : kCollectiblePageMaterialCount;
+        playableRun_.layerPagesCollected = layerSecretTotal > 0
+            ? std::clamp(std::max(playableRun_.layerPagesCollected, secretsFound), 0, layerSecretTotal)
+            : 0;
+        int levelSecretTotal = LayerPageCountForLevel(result.levelInLayer);
+        int levelSecretsFound = levelSecretTotal > 0
+            ? std::clamp(LayerPagesCollectedForLevel(result.levelInLayer), 0, levelSecretTotal)
+            : 0;
 
         if (playableRun_.customGame || playableRun_.levelInLayer >= PlayableRunState::kLevelsPerLayer) {
             playableRun_.runFinished = true;
@@ -620,9 +639,11 @@
             pathIndex_ = 0;
             std::wostringstream notice;
             notice << L"Layer complete\nTime " << FormatRunSeconds(playableRun_.runSeconds)
-                   << L"   Score " << playableRun_.totalScore
-                   << L"\nSecrets found " << secretsFound << L"/" << secretTotal
-                   << L"\nPress Esc for menu";
+                   << L"   Score " << playableRun_.totalScore;
+            if (levelSecretTotal > 0) {
+                notice << L"\nSecrets found " << levelSecretsFound << L"/" << levelSecretTotal;
+            }
+            notice << L"\nPress Esc for menu";
             ShowGameNotification(notice.str(), 3600.0f);
             return;
         }
@@ -630,9 +651,11 @@
         std::wostringstream notice;
         notice << L"Level " << result.levelInLayer << L" clear\n"
                << L"Time " << FormatRunSeconds(result.levelSeconds) << L"   Score +" << result.score
-               << L"   Total " << playableRun_.totalScore
-               << L"\nSecrets found " << secretsFound << L"/" << secretTotal
-               << L"\nPress Interact to continue";
+               << L"   Total " << playableRun_.totalScore;
+        if (levelSecretTotal > 0) {
+            notice << L"\nSecrets found " << levelSecretsFound << L"/" << levelSecretTotal;
+        }
+        notice << L"\nPress Interact to continue";
         ShowGameNotification(notice.str(), 3600.0f);
         exitTransitionActive_ = false;
     }

@@ -69,12 +69,6 @@
         return lampTile.x == panelX && (lampTile.y == maze_.start.y || lampTile.y == maze_.start.y - 1);
     }
 
-    bool MainMenuWhiteboardLampTile(Tile lampTile) const {
-        if (runtimeMode_ != RendererRuntimeMode::MainMenu) return false;
-        const int panelX = std::clamp(maze_.start.x + 2, 1, maze_.w - 2);
-        return lampTile.x == panelX && lampTile.y == maze_.start.y - 1;
-    }
-
     bool MainMenuExitLampTile(Tile lampTile) const {
         return runtimeMode_ == RendererRuntimeMode::MainMenu && lampTile == maze_.start;
     }
@@ -95,14 +89,13 @@
     bool MainMenuAllowedLampTile(Tile lampTile) const {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return true;
         return MainMenuExitLampTile(lampTile) || MainMenuAlwaysLitLampTile(lampTile) ||
-            MainMenuPrimaryLampTile(lampTile) || MainMenuWhiteboardLampTile(lampTile);
+            MainMenuPrimaryLampTile(lampTile);
     }
 
     bool MainMenuLampShouldBeLit(Tile lampTile) const {
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return true;
         if (MainMenuExitLampTile(lampTile)) return !(menuDarkLayerOneRun_ && menuLampBurstPlayed_);
         if (MainMenuAlwaysLitLampTile(lampTile)) return true;
-        if (MainMenuWhiteboardLampTile(lampTile)) return true;
         if (menuStartTransitionActive_ || menuStartTransitionComplete_) return false;
         if (MainMenuPrimaryLampTile(lampTile)) return !menuCustomViewTarget_;
         if (MainMenuCustomPanelLampTile(lampTile)) return false;
