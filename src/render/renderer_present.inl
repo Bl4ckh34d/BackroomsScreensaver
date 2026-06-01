@@ -160,7 +160,8 @@
                 XMStoreFloat4x4(&cb.fixtureLightViewProj, fixtureLightViewProj);
             }
         }
-        float flashlightIntensity = settings_.flashlightIntensity * DreadFlashlightMultiplier();
+        float flashlightIntensity = settings_.flashlightIntensity *
+            (runtimeMode_ == RendererRuntimeMode::MainMenu ? 1.0f : DreadFlashlightMultiplier());
         if (runtimeMode_ == RendererRuntimeMode::PlayableGame && !flashlightEnabled_) flashlightIntensity = 0.0f;
         if (monsterPreview_) flashlightIntensity = 1.45f;
         cb.cameraPosTime = {eyePos.x, eyePos.y, eyePos.z, time_};
@@ -300,10 +301,14 @@
         };
         float dirtProgression = 0.48f;
         if (IsPlayableSimulationMode(runtimeMode_) && playableRun_.active) {
-            float levelProgress = Clamp01((static_cast<float>(playableRun_.levelInLayer) - 1.0f) /
-                static_cast<float>(std::max(1, PlayableRunState::kLevelsPerLayer - 1)));
-            float layerProgress = Clamp01(static_cast<float>(std::max(0, playableRun_.layer - 1)) * 0.18f);
-            dirtProgression = Clamp01(levelProgress + layerProgress);
+            if (playableRun_.customGame) {
+                dirtProgression = Clamp01(static_cast<float>(playableRun_.customSpec.mapDirtPercent) / 100.0f);
+            } else {
+                float levelProgress = Clamp01((static_cast<float>(playableRun_.levelInLayer) - 1.0f) /
+                    static_cast<float>(std::max(1, PlayableRunState::kLevelsPerLayer - 1)));
+                float layerProgress = Clamp01(static_cast<float>(std::max(0, playableRun_.layer - 1)) * 0.18f);
+                dirtProgression = Clamp01(levelProgress + layerProgress);
+            }
         } else if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
             dirtProgression = menuDarkLayerOneRun_ ? 0.72f : 0.42f;
         } else if (gEffectDebugViewer && DebugSliceEffectIsWater(gDebugSliceEffect)) {
@@ -709,9 +714,9 @@
         auto renderDepthShadow = [&](ID3D11DepthStencilView* shadowDsv, UINT shadowSize, const XMMATRIX& shadowViewProj,
                                      XMFLOAT3 shadowOrigin, XMFLOAT3 shadowDirection, float shadowRange, float shadowConeCos) {
             if (!shadowDsv) return;
-            ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-            context_->PSSetShaderResources(0, 11, nullSrvs);
-            context_->DSSetShaderResources(0, 11, nullSrvs);
+            ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+            context_->PSSetShaderResources(0, 14, nullSrvs);
+            context_->DSSetShaderResources(0, 14, nullSrvs);
             context_->ClearDepthStencilView(shadowDsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
             context_->OMSetRenderTargets(0, nullptr, shadowDsv);
 
@@ -821,6 +826,7 @@
         renderProfile.Mark(L"UploadSceneConstants");
         UploadLampDamageTexture();
         renderProfile.Mark(L"UploadLampDamageTexture");
+        UpdateCustomMenuTexture();
         MarkGpuProfile(GpuProfileMarker::Uploads);
 
         ID3D11ShaderResourceView* srvs[] = {
@@ -834,7 +840,17 @@
             monsterEyeShadowSrv_[0].Get(),
             monsterEyeShadowSrv_[1].Get(),
             loosePagesSrv_.Get(),
-            fixtureShadowSrv_.Get()
+            fixtureShadowSrv_.Get(),
+            ceilingAlbedoSrv_.Get(),
+            ceilingNormalSrv_.Get(),
+            ceilingPropsSrv_.Get(),
+            customMenuSrv_.Get(),
+            doorAlbedoSrv_.Get(),
+            doorNormalSrv_.Get(),
+            doorPropsSrv_.Get(),
+            doorFrameAlbedoSrv_.Get(),
+            doorFrameNormalSrv_.Get(),
+            doorFramePropsSrv_.Get()
         };
         ID3D11SamplerState* samplers[] = {sampler_.Get(), shadowSampler_.Get()};
         context_->OMSetRenderTargets(1, &sceneTarget, dsv_.Get());
@@ -851,9 +867,9 @@
         context_->HSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
         context_->DSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
         context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
-        context_->PSSetShaderResources(0, 11, srvs);
+        context_->PSSetShaderResources(0, static_cast<UINT>(std::size(srvs)), srvs);
         if (useFleshTessellation) {
-            context_->DSSetShaderResources(0, 11, srvs);
+            context_->DSSetShaderResources(0, static_cast<UINT>(std::size(srvs)), srvs);
             context_->DSSetSamplers(0, 1, sampler_.GetAddressOf());
         }
         context_->PSSetSamplers(0, 2, samplers);
@@ -875,9 +891,9 @@
             context_->HSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
             context_->DSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
             context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
-            context_->PSSetShaderResources(0, 11, srvs);
+            context_->PSSetShaderResources(0, 14, srvs);
             if (useFleshTessellation) {
-                context_->DSSetShaderResources(0, 11, srvs);
+                context_->DSSetShaderResources(0, 14, srvs);
                 context_->DSSetSamplers(0, 1, sampler_.GetAddressOf());
             }
             context_->PSSetSamplers(0, 2, samplers);
@@ -893,7 +909,7 @@
             context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
             context_->VSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
             context_->PSSetConstantBuffers(0, 1, constantBuffer_.GetAddressOf());
-            context_->PSSetShaderResources(0, 11, srvs);
+            context_->PSSetShaderResources(0, 14, srvs);
             context_->PSSetSamplers(0, 2, samplers);
         };
 
@@ -1005,9 +1021,9 @@
         }
         MarkGpuProfile(GpuProfileMarker::DynamicTransparent);
 
-        ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-        context_->PSSetShaderResources(0, 11, nullSrvs);
-        context_->DSSetShaderResources(0, 11, nullSrvs);
+        ID3D11ShaderResourceView* nullSrvs[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+        context_->PSSetShaderResources(0, 14, nullSrvs);
+        context_->DSSetShaderResources(0, 14, nullSrvs);
         context_->HSSetShader(nullptr, nullptr, 0);
         context_->DSSetShader(nullptr, nullptr, 0);
         if (postAvailable) {
@@ -1030,8 +1046,8 @@
         }
         MarkGpuProfile(GpuProfileMarker::Overlays);
 
-        context_->PSSetShaderResources(0, 11, nullSrvs);
-        context_->DSSetShaderResources(0, 11, nullSrvs);
+        context_->PSSetShaderResources(0, 14, nullSrvs);
+        context_->DSSetShaderResources(0, 14, nullSrvs);
         context_->HSSetShader(nullptr, nullptr, 0);
         context_->DSSetShader(nullptr, nullptr, 0);
         EndGpuProfileFrame();

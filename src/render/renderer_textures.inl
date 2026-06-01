@@ -127,6 +127,458 @@
         return true;
     }
 
+    bool CreateTexture2DSrvRGBA(int size, const std::vector<uint8_t>& pixels, ComPtr<ID3D11ShaderResourceView>& srv) {
+        if (size <= 0 || pixels.size() < static_cast<size_t>(size) * size * 4) return false;
+        UINT mipLevels = 1;
+        for (int s = size; s > 1; s >>= 1) {
+            ++mipLevels;
+        }
+
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = static_cast<UINT>(size);
+        td.Height = static_cast<UINT>(size);
+        td.MipLevels = mipLevels;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        td.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+        ComPtr<ID3D11Texture2D> tex;
+        HRESULT hr = device_->CreateTexture2D(&td, nullptr, &tex);
+        if (FAILED(hr)) return false;
+
+        context_->UpdateSubresource(tex.Get(), 0, nullptr, pixels.data(), static_cast<UINT>(size * 4), 0);
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = td.Format;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        sd.Texture2D.MostDetailedMip = 0;
+        sd.Texture2D.MipLevels = mipLevels;
+        hr = device_->CreateShaderResourceView(tex.Get(), &sd, &srv);
+        if (FAILED(hr)) return false;
+        context_->GenerateMips(srv.Get());
+        return true;
+    }
+
+    void UpdateCustomMenuTexture() {
+        if (!customMenuTextureDirty_ && customMenuSrv_) return;
+        customMenuTextureDirty_ = false;
+
+        constexpr int size = kCustomMenuTextureSize;
+        constexpr int logicalSize = 512;
+        std::vector<uint8_t> dib(static_cast<size_t>(size) * size * 4, 0);
+        BITMAPINFO bmi{};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = size;
+        bmi.bmiHeader.biHeight = -size;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        HDC screen = GetDC(nullptr);
+        HDC dc = CreateCompatibleDC(screen);
+        HBITMAP bitmap = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (bitmap && bits) {
+            HGDIOBJ oldBitmap = SelectObject(dc, bitmap);
+            std::memset(bits, 0xFF, dib.size());
+            SetMapMode(dc, MM_ANISOTROPIC);
+            SetWindowExtEx(dc, logicalSize, logicalSize, nullptr);
+            SetViewportExtEx(dc, size, size, nullptr);
+            SetBkMode(dc, TRANSPARENT);
+
+            HPEN inkPen = CreatePen(PS_SOLID, 2, RGB(12, 12, 10));
+            HPEN boldInkPen = CreatePen(PS_SOLID, 3, RGB(5, 5, 4));
+            HPEN hoverPen = CreatePen(PS_SOLID, 4, RGB(4, 4, 3));
+            HPEN dimInkPen = CreatePen(PS_SOLID, 1, RGB(62, 62, 55));
+            HBRUSH yellowBrush = CreateSolidBrush(RGB(246, 220, 64));
+            HGDIOBJ oldPen = SelectObject(dc, inkPen);
+            HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+
+            HFONT titleFont = CreateFontW(-31, 0, -20, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                DEFAULT_PITCH | FF_SCRIPT, L"Segoe Print");
+            HFONT bodyFont = CreateFontW(-20, 0, -10, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                DEFAULT_PITCH | FF_SCRIPT, L"Segoe Print");
+            HFONT smallFont = CreateFontW(-16, 0, -8, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                DEFAULT_PITCH | FF_SCRIPT, L"Segoe Print");
+
+            auto text = [&](const wchar_t* value, RECT r, HFONT font, UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE) {
+                HGDIOBJ oldFont = SelectObject(dc, font);
+                SetTextColor(dc, RGB(9, 9, 8));
+                DrawTextW(dc, value, -1, &r, flags);
+                SelectObject(dc, oldFont);
+            };
+            auto isHover = [&](CustomGameMenuControl control) {
+                return customMenuHoverControl_ == static_cast<int>(control);
+            };
+            auto markerLine = [&](int x0, int y0, int x1, int y1, HPEN pen) {
+                HGDIOBJ previousPen = SelectObject(dc, pen);
+                MoveToEx(dc, x0, y0, nullptr);
+                LineTo(dc, x1, y1);
+                SelectObject(dc, previousPen);
+            };
+            auto fillYellow = [&](RECT r, int inset = 2) {
+                if (!yellowBrush) return;
+                r.left += inset;
+                r.top += inset;
+                r.right -= inset;
+                r.bottom -= inset;
+                HGDIOBJ previousBrush = SelectObject(dc, yellowBrush);
+                HGDIOBJ previousPen = SelectObject(dc, GetStockObject(NULL_PEN));
+                RoundRect(dc, r.left, r.top, r.right, r.bottom, 8, 8);
+                SelectObject(dc, previousPen);
+                SelectObject(dc, previousBrush);
+            };
+            auto row = [&](CustomGameMenuControl control, const wchar_t* label, bool checked) {
+                RECT r{};
+                if (!CustomGameControlPixelRect(control, r)) return;
+                RECT box{r.left + 10, r.top + 6, r.left + 26, r.top + 22};
+                if (checked) fillYellow({box.left - 3, box.top - 3, box.right + 3, box.bottom + 3}, 0);
+                SelectObject(dc, inkPen);
+                Rectangle(dc, box.left, box.top, box.right, box.bottom);
+                if (checked) {
+                    HGDIOBJ previousPen = SelectObject(dc, boldInkPen);
+                    MoveToEx(dc, box.left + 3, box.top + 8, nullptr);
+                    LineTo(dc, box.left + 7, box.bottom - 4);
+                    LineTo(dc, box.right - 3, box.top + 3);
+                    SelectObject(dc, previousPen);
+                }
+                RECT tr{r.left + 36, r.top, r.right - 10, r.bottom};
+                text(label, tr, bodyFont);
+            };
+            auto button = [&](CustomGameMenuControl control, const wchar_t* label) {
+                RECT r{};
+                if (!CustomGameControlPixelRect(control, r)) return;
+                if (isHover(control)) fillYellow(r, 1);
+                SelectObject(dc, isHover(control) ? hoverPen : inkPen);
+                RoundRect(dc, r.left, r.top, r.right, r.bottom, 10, 10);
+                text(label, r, bodyFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            };
+            auto stepper = [&](CustomGameMenuControl minusControl, CustomGameMenuControl plusControl, int y, const wchar_t* label, int value) {
+                RECT lr{52, y, 154, y + 28};
+                text(label, lr, bodyFont);
+                button(minusControl, L"-");
+                RECT valueRect{204, y, 268, y + 28};
+                wchar_t number[24]{};
+                swprintf_s(number, L"%d", value);
+                text(number, valueRect, bodyFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                button(plusControl, L"+");
+            };
+            auto timingStepper = [&](CustomGameMenuControl minusControl, CustomGameMenuControl plusControl, int y, const wchar_t* label, const wchar_t* value) {
+                RECT lr{66, y, 172, y + 28};
+                text(label, lr, bodyFont);
+                button(minusControl, L"-");
+                RECT valueRect{210, y, 302, y + 28};
+                text(value, valueRect, bodyFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                button(plusControl, L"+");
+            };
+            auto detailButton = [&](CustomGameMenuControl control) {
+                RECT r{};
+                if (!CustomGameControlPixelRect(control, r)) return;
+                if (isHover(control)) fillYellow(r, 1);
+                SelectObject(dc, isHover(control) ? hoverPen : inkPen);
+                RoundRect(dc, r.left + 3, r.top + 4, r.right - 3, r.bottom - 3, 7, 7);
+                text(L">", r, smallFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            };
+
+            text(L"Custom Game", {30, 22, 482, 68}, titleFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            markerLine(72, 68, 438, 62, inkPen);
+
+            if (customMenuSelectedScare_ == -2) {
+                auto percentText = [](int value, wchar_t* out, size_t count) {
+                    swprintf_s(out, count, L"%d%%", std::clamp(value, 0, 400));
+                };
+                auto meterText = [](int value, wchar_t* out, size_t count) {
+                    swprintf_s(out, count, L"%dm", std::max(0, value));
+                };
+                text(L"Environment", {40, 80, 472, 116}, bodyFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                markerLine(132, 118, 380, 114, dimInkPen);
+                wchar_t valueText[24]{};
+                percentText(customMenuSpec_.mapDirtPercent, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvDirtMinus, CustomGameMenuControl::EnvDirtPlus, 116, L"Grime", valueText);
+                percentText(customMenuSpec_.paperDensityPercent, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvPaperMinus, CustomGameMenuControl::EnvPaperPlus, 146, L"Papers", valueText);
+                percentText(customMenuSpec_.propDensityPercent, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvPropMinus, CustomGameMenuControl::EnvPropPlus, 176, L"Props", valueText);
+                percentText(customMenuSpec_.lampOnPercent, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvLampOnMinus, CustomGameMenuControl::EnvLampOnPlus, 216, L"Lamps", valueText);
+                percentText(customMenuSpec_.lampFlickerPercent, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvLampFlickerMinus, CustomGameMenuControl::EnvLampFlickerPlus, 246, L"Flicker", valueText);
+                percentText(customMenuSpec_.lampSparkPercent, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvLampSparkMinus, CustomGameMenuControl::EnvLampSparkPlus, 276, L"Sparks", valueText);
+                meterText(customMenuSpec_.fogStartMeters, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvFogStartMinus, CustomGameMenuControl::EnvFogStartPlus, 316, L"Fog start", valueText);
+                meterText(customMenuSpec_.fogEndMeters, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvFogEndMinus, CustomGameMenuControl::EnvFogEndPlus, 346, L"Fog end", valueText);
+                percentText(customMenuSpec_.fogDarknessPercent, valueText, std::size(valueText));
+                timingStepper(CustomGameMenuControl::EnvFogDarkMinus, CustomGameMenuControl::EnvFogDarkPlus, 376, L"Fog dark", valueText);
+                button(CustomGameMenuControl::ScareDetailBack, L"Back");
+                SelectObject(dc, oldBrush);
+                SelectObject(dc, oldPen);
+                SelectObject(dc, oldBitmap);
+                DeleteObject(titleFont);
+                DeleteObject(bodyFont);
+                DeleteObject(smallFont);
+                DeleteObject(inkPen);
+                DeleteObject(boldInkPen);
+                DeleteObject(hoverPen);
+                DeleteObject(dimInkPen);
+                DeleteObject(yellowBrush);
+                std::memcpy(dib.data(), bits, dib.size());
+            } else if (customMenuSelectedScare_ >= 0) {
+                static const wchar_t* scareNames[] = {L"Broken lamps", L"Air vents", L"Water damage", L"Blood world", L"Flesh world"};
+                int idx = std::clamp(customMenuSelectedScare_, 0, CustomGameSpec::kScareTypeCount - 1);
+                text(scareNames[idx], {40, 94, 472, 132}, bodyFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                markerLine(132, 134, 380, 130, dimInkPen);
+                wchar_t chanceText[24]{};
+                swprintf_s(chanceText, L"%d%%", std::clamp(customMenuSpec_.scareChancePercent[static_cast<size_t>(idx)], 0, 100));
+                wchar_t minText[24]{};
+                swprintf_s(minText, L"%ds", std::max(0, customMenuSpec_.scareStartMinSeconds[static_cast<size_t>(idx)]));
+                wchar_t maxText[24]{};
+                swprintf_s(maxText, L"%ds", std::max(0, customMenuSpec_.scareStartMaxSeconds[static_cast<size_t>(idx)]));
+                timingStepper(CustomGameMenuControl::ScareChanceMinus, CustomGameMenuControl::ScareChancePlus, 220, L"Chance", chanceText);
+                timingStepper(CustomGameMenuControl::ScareStartMinMinus, CustomGameMenuControl::ScareStartMinPlus, 270, L"Min", minText);
+                timingStepper(CustomGameMenuControl::ScareStartMaxMinus, CustomGameMenuControl::ScareStartMaxPlus, 320, L"Max", maxText);
+                button(CustomGameMenuControl::ScareDetailBack, L"Back");
+                SelectObject(dc, oldBrush);
+                SelectObject(dc, oldPen);
+                SelectObject(dc, oldBitmap);
+                DeleteObject(titleFont);
+                DeleteObject(bodyFont);
+                DeleteObject(smallFont);
+                DeleteObject(inkPen);
+                DeleteObject(boldInkPen);
+                DeleteObject(hoverPen);
+                DeleteObject(dimInkPen);
+                DeleteObject(yellowBrush);
+                std::memcpy(dib.data(), bits, dib.size());
+            } else {
+            text(L"Layer", {42, 78, 132, 104}, bodyFont);
+            SelectObject(dc, inkPen);
+            RoundRect(dc, 142, 76, 302, 108, 8, 8);
+            markerLine(278, 88, 286, 96, inkPen);
+            markerLine(286, 96, 294, 88, inkPen);
+            text(L"Layer 1", {154, 76, 292, 108}, bodyFont);
+
+            text(L"Jump scares", {42, 104, 470, 126}, smallFont);
+            markerLine(42, 124, 174, 119, dimInkPen);
+            row(CustomGameMenuControl::BrokenLampScares, L"Broken lamps", customMenuSpec_.brokenLampScares);
+            row(CustomGameMenuControl::AirVentScares, L"Air vents", customMenuSpec_.airVentScares);
+            row(CustomGameMenuControl::WaterScares, L"Water damage", customMenuSpec_.waterScares);
+            row(CustomGameMenuControl::BloodWorldScares, L"Blood world", customMenuSpec_.bloodWorldScares);
+            row(CustomGameMenuControl::FleshWorldScares, L"Flesh world", customMenuSpec_.fleshWorldScares);
+            detailButton(CustomGameMenuControl::BrokenLampScareDetails);
+            detailButton(CustomGameMenuControl::AirVentScareDetails);
+            detailButton(CustomGameMenuControl::WaterScareDetails);
+            detailButton(CustomGameMenuControl::BloodWorldScareDetails);
+            detailButton(CustomGameMenuControl::FleshWorldScareDetails);
+
+            text(L"Bosses", {42, 232, 250, 254}, smallFont);
+            markerLine(42, 252, 118, 248, dimInkPen);
+            row(CustomGameMenuControl::OmukadeBoss, L"Omukade", customMenuSpec_.omukadeBoss);
+
+            text(L"Collectibles", {274, 232, 492, 254}, smallFont);
+            markerLine(274, 252, 400, 248, dimInkPen);
+            row(CustomGameMenuControl::EightPages, L"8 pages collectible", customMenuSpec_.eightPages);
+            button(CustomGameMenuControl::EnvironmentDetails, L"Environment");
+
+            text(L"Level size", {42, 300, 470, 320}, smallFont);
+            markerLine(42, 319, 156, 315, dimInkPen);
+            stepper(CustomGameMenuControl::SizeXMinus, CustomGameMenuControl::SizeXPlus, 320, L"X", customMenuSpec_.mazeWidth);
+            stepper(CustomGameMenuControl::SizeYMinus, CustomGameMenuControl::SizeYPlus, 354, L"Y", customMenuSpec_.mazeHeight);
+            stepper(CustomGameMenuControl::RoomCountMinus, CustomGameMenuControl::RoomCountPlus, 388, L"Rooms", customMenuSpec_.roomCount);
+            button(CustomGameMenuControl::Back, L"Back");
+            button(CustomGameMenuControl::Start, L"Start");
+
+            SelectObject(dc, oldBrush);
+            SelectObject(dc, oldPen);
+            SelectObject(dc, oldBitmap);
+            DeleteObject(titleFont);
+            DeleteObject(bodyFont);
+            DeleteObject(smallFont);
+            DeleteObject(inkPen);
+            DeleteObject(boldInkPen);
+            DeleteObject(hoverPen);
+            DeleteObject(dimInkPen);
+            DeleteObject(yellowBrush);
+            std::memcpy(dib.data(), bits, dib.size());
+            }
+        }
+        if (bitmap) DeleteObject(bitmap);
+        if (dc) DeleteDC(dc);
+        if (screen) ReleaseDC(nullptr, screen);
+
+        std::vector<uint8_t> rgba(static_cast<size_t>(size) * size * 4, 0);
+        for (size_t i = 0; i < static_cast<size_t>(size) * size; ++i) {
+            uint8_t b = dib[i * 4 + 0];
+            uint8_t g = dib[i * 4 + 1];
+            uint8_t r = dib[i * 4 + 2];
+            if (r > 170 && g > 130 && b < 150) {
+                rgba[i * 4 + 0] = 238;
+                rgba[i * 4 + 1] = 195;
+                rgba[i * 4 + 2] = 36;
+                rgba[i * 4 + 3] = 150;
+                continue;
+            }
+            int ink = 255 - std::min<int>(r, std::min<int>(g, b));
+            uint8_t a = ink < 7 ? 0 : static_cast<uint8_t>(std::clamp(ink * 2, 0, 255));
+            uint8_t shade = static_cast<uint8_t>(std::clamp(6 + (255 - ink) / 46, 6, 28));
+            rgba[i * 4 + 0] = a > 0 ? shade : 0;
+            rgba[i * 4 + 1] = a > 0 ? shade : 0;
+            rgba[i * 4 + 2] = a > 0 ? static_cast<uint8_t>(std::max<int>(4, shade - 2)) : 0;
+            rgba[i * 4 + 3] = a;
+        }
+        CreateTexture2DSrvRGBA(size, rgba, customMenuSrv_);
+    }
+
+    bool CreateHighResPbrTextures(const std::wstring& base,
+                                  ComPtr<ID3D11ShaderResourceView>& albedoSrv,
+                                  ComPtr<ID3D11ShaderResourceView>& normalSrv,
+                                  ComPtr<ID3D11ShaderResourceView>& propsSrv) {
+        const int size = kHighResCeilingTextureSize;
+        const size_t pixelCount = static_cast<size_t>(size) * size;
+        std::vector<uint8_t> albedo(pixelCount * 4, 255);
+        std::vector<uint8_t> normalHeight(pixelCount * 4, 255);
+        std::vector<uint8_t> props(pixelCount * 4, 255);
+        for (size_t i = 0; i < pixelCount; ++i) {
+            normalHeight[i * 4 + 0] = 128;
+            normalHeight[i * 4 + 1] = 128;
+            normalHeight[i * 4 + 2] = 255;
+            normalHeight[i * 4 + 3] = 128;
+            props[i * 4 + 0] = 255;
+            props[i * 4 + 1] = 178;
+            props[i * 4 + 2] = 0;
+            props[i * 4 + 3] = 255;
+        }
+
+        auto resolvePbrPath = [&](const std::wstring& base, std::initializer_list<const wchar_t*> suffixes) {
+            for (const wchar_t* suffix : suffixes) {
+                std::filesystem::path path = ResolveAsset(settings_, base + suffix);
+                if (!path.empty()) return path;
+            }
+            return std::filesystem::path{};
+        };
+
+        auto copyImage = [&](const ImageRGBA& img, std::vector<uint8_t>& dst) {
+            if (!img.Valid()) return;
+            for (int y = 0; y < size; ++y) {
+                for (int x = 0; x < size; ++x) {
+                    size_t src = static_cast<size_t>((y * img.width + x) * 4);
+                    size_t out = static_cast<size_t>((y * size + x) * 4);
+                    dst[out + 0] = img.pixels[src + 0];
+                    dst[out + 1] = img.pixels[src + 1];
+                    dst[out + 2] = img.pixels[src + 2];
+                    dst[out + 3] = img.pixels[src + 3];
+                }
+            }
+        };
+
+        auto copyScalar = [&](const ImageRGBA& img, std::vector<uint8_t>& dst, int channel) {
+            if (!img.Valid() || channel < 0 || channel > 3) return;
+            for (int y = 0; y < size; ++y) {
+                for (int x = 0; x < size; ++x) {
+                    size_t src = static_cast<size_t>((y * img.width + x) * 4);
+                    size_t out = static_cast<size_t>((y * size + x) * 4);
+                    dst[out + channel] = img.pixels[src];
+                }
+            }
+        };
+
+        auto copyNormal = [&](const ImageRGBA& img, bool flipGreen) {
+            if (!img.Valid()) return;
+            for (int y = 0; y < size; ++y) {
+                for (int x = 0; x < size; ++x) {
+                    size_t src = static_cast<size_t>((y * img.width + x) * 4);
+                    size_t out = static_cast<size_t>((y * size + x) * 4);
+                    normalHeight[out + 0] = img.pixels[src + 0];
+                    normalHeight[out + 1] = flipGreen ? static_cast<uint8_t>(255 - img.pixels[src + 1]) : img.pixels[src + 1];
+                    normalHeight[out + 2] = img.pixels[src + 2];
+                }
+            }
+        };
+
+        ScopedCom com;
+        if (com.Ok()) {
+            ImageRGBA img;
+            if (!base.empty()) {
+                std::filesystem::path path = resolvePbrPath(base, {
+                    L"_color_4k.jpg", L"_color_4k.png",
+                    L"_Color.jpg", L"_Color.png",
+                    L"_BaseColor.jpg", L"_BaseColor.png",
+                    L"_Albedo.jpg", L"_Albedo.png",
+                    L"_Diffuse.jpg", L"_Diffuse.png"
+                });
+                if (!path.empty() && LoadImageWic(path, size, size, img)) copyImage(img, albedo);
+
+                path = resolvePbrPath(base, {
+                    L"_height_4k.png", L"_height_4k.jpg",
+                    L"_Displacement.jpg", L"_Displacement.png",
+                    L"_Height.jpg", L"_Height.png"
+                });
+                if (!path.empty() && LoadImageWic(path, size, size, img)) copyScalar(img, normalHeight, 3);
+
+                path = resolvePbrPath(base, {
+                    L"_normal_directx_4k.png", L"_normal_directx_4k.jpg",
+                    L"_normal_dx_4k.png", L"_normal_dx_4k.jpg",
+                    L"_NormalDX.jpg", L"_NormalDX.png",
+                    L"_NormalDirectX.jpg", L"_NormalDirectX.png"
+                });
+                if (!path.empty() && LoadImageWic(path, size, size, img)) {
+                    copyNormal(img, false);
+                } else {
+                    path = resolvePbrPath(base, {
+                        L"_normal_opengl_4k.png", L"_normal_opengl_4k.jpg",
+                        L"_normal_gl_4k.png", L"_normal_gl_4k.jpg",
+                        L"_NormalGL.jpg", L"_NormalGL.png",
+                        L"_NormalOpenGL.jpg", L"_NormalOpenGL.png"
+                    });
+                    if (!path.empty() && LoadImageWic(path, size, size, img)) copyNormal(img, true);
+                }
+
+                path = resolvePbrPath(base, {
+                    L"_ao_4k.jpg", L"_ao_4k.png",
+                    L"_AO.jpg", L"_AO.png",
+                    L"_AmbientOcclusion.jpg", L"_AmbientOcclusion.png"
+                });
+                if (!path.empty() && LoadImageWic(path, size, size, img)) copyScalar(img, props, 0);
+
+                path = resolvePbrPath(base, {
+                    L"_roughness_4k.jpg", L"_roughness_4k.png",
+                    L"_Roughness.jpg", L"_Roughness.png"
+                });
+                if (!path.empty() && LoadImageWic(path, size, size, img)) copyScalar(img, props, 1);
+
+                path = resolvePbrPath(base, {
+                    L"_metallic_4k.jpg", L"_metallic_4k.png",
+                    L"_metalness_4k.jpg", L"_metalness_4k.png",
+                    L"_Metallic.jpg", L"_Metallic.png",
+                    L"_Metalness.jpg", L"_Metalness.png"
+                });
+                if (!path.empty() && LoadImageWic(path, size, size, img)) copyScalar(img, props, 2);
+            }
+        }
+
+        return CreateTexture2DSrvRGBA(size, albedo, albedoSrv) &&
+            CreateTexture2DSrvRGBA(size, normalHeight, normalSrv) &&
+            CreateTexture2DSrvRGBA(size, props, propsSrv);
+    }
+
+    bool CreateHighResCeilingTextures() {
+        return CreateHighResPbrTextures(settings_.ceilingStem, ceilingAlbedoSrv_, ceilingNormalSrv_, ceilingPropsSrv_);
+    }
+
+    bool CreateHighResDoorTextures() {
+        return CreateHighResPbrTextures(
+                L"assets\\PBRs\\downloads\\door001\\extracted\\Door001_4K-JPG",
+                doorAlbedoSrv_, doorNormalSrv_, doorPropsSrv_) &&
+            CreateHighResPbrTextures(
+                L"assets\\PBRs\\downloads\\painted_wood_009c\\extracted\\PaintedWood009C_4K-JPG",
+                doorFrameAlbedoSrv_, doorFrameNormalSrv_, doorFramePropsSrv_);
+    }
+
     bool CreateTextures() {
         StartupProfile profile(L"CreateTextures");
         const int width = kTextureSize;
@@ -184,6 +636,10 @@
             profile.Mark(L"CreateNormalSRV");
             if (!makeSrv(props, materialPropsSrv_)) return false;
             profile.Mark(L"CreateMaterialPropsSRV");
+            if (!CreateHighResCeilingTextures()) return false;
+            profile.Mark(L"CreateHighResCeilingSRVs");
+            if (!CreateHighResDoorTextures()) return false;
+            profile.Mark(L"CreateHighResDoorSRVs");
             if (!CreateLoosePageTextureArray()) return false;
             profile.Mark(L"CreateLoosePagesSRV");
             return true;
@@ -443,19 +899,24 @@
                     1.0f,
                     0.43f + skinNoise * 0.18f + scar * 0.12f);
 
+                float verticalGrain = FractalNoise(u * 34.0f + 8.0f, v * 3.6f + 19.0f, 91);
+                float fineGrain = FractalNoise(u * 96.0f + 4.0f, v * 18.0f + 2.0f, 132);
+                float plank = std::abs(std::fmod(u * 7.0f + verticalGrain * 0.08f, 1.0f) - 0.5f);
+                float plankLine = SmoothStep(0.035f, 0.0f, plank);
                 float doorPanel = std::max(
-                    SmoothStep(0.025f, 0.0f, std::abs(u - 0.12f)),
-                    SmoothStep(0.025f, 0.0f, std::abs(u - 0.88f)));
+                    SmoothStep(0.018f, 0.0f, std::abs(u - 0.115f)),
+                    SmoothStep(0.018f, 0.0f, std::abs(u - 0.885f)));
                 doorPanel = std::max(doorPanel, std::max(
-                    SmoothStep(0.025f, 0.0f, std::abs(v - 0.16f)),
-                    SmoothStep(0.025f, 0.0f, std::abs(v - 0.84f))));
-                float doorGrime = SmoothStep(0.62f, 0.96f, FractalNoise(u * 5.0f + 17.0f, v * 8.0f + 4.0f, 19));
+                    SmoothStep(0.018f, 0.0f, std::abs(v - 0.150f)),
+                    SmoothStep(0.018f, 0.0f, std::abs(v - 0.850f))));
+                float doorGrime = SmoothStep(0.68f, 0.98f, FractalNoise(u * 5.0f + 17.0f, v * 8.0f + 4.0f, 19));
+                float wornEdge = SmoothStep(0.055f, 0.0f, std::min(std::min(u, 1.0f - u), std::min(v, 1.0f - v)));
                 setPixel(6, x, y,
-                    0.23f - doorPanel * 0.04f - doorGrime * 0.05f,
-                    0.18f - doorPanel * 0.035f - doorGrime * 0.04f,
-                    0.12f - doorPanel * 0.02f,
+                    0.315f + verticalGrain * 0.070f + fineGrain * 0.020f - doorPanel * 0.045f - plankLine * 0.035f - doorGrime * 0.060f + wornEdge * 0.025f,
+                    0.242f + verticalGrain * 0.050f + fineGrain * 0.017f - doorPanel * 0.040f - plankLine * 0.026f - doorGrime * 0.048f + wornEdge * 0.018f,
+                    0.154f + verticalGrain * 0.032f + fineGrain * 0.012f - doorPanel * 0.025f - plankLine * 0.016f - doorGrime * 0.026f,
                     1.0f,
-                    0.50f - doorPanel * 0.08f);
+                    0.47f + verticalGrain * 0.15f + doorPanel * 0.08f + plankLine * 0.10f);
 
                 setPixel(7, x, y,
                     0.02f,
@@ -575,8 +1036,8 @@
                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                     DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
                 HGDIOBJ oldFont = SelectObject(dc, font);
-                const wchar_t* labels[] = {L"Start New Run", L"Resume Current Run", L"Resume Saved Run", L"Settings", L"Debug"};
-                constexpr int kMenuLabelRows = 5;
+                const wchar_t* labels[] = {L"New Game", L"Resume", L"Resume Saved Run", L"Custom Game", L"Settings", L"Debug"};
+                constexpr int kMenuLabelRows = 6;
                 for (int row = 0; row < kMenuLabelRows; ++row) {
                     int top = row * kTextureSize / kMenuLabelRows;
                     int bottom = (row + 1) * kTextureSize / kMenuLabelRows;
@@ -808,6 +1269,10 @@
         profile.Mark(L"CreateNormalSRV");
         if (!makeSrv(props, materialPropsSrv_)) return false;
         profile.Mark(L"CreateMaterialPropsSRV");
+        if (!CreateHighResCeilingTextures()) return false;
+        profile.Mark(L"CreateHighResCeilingSRVs");
+        if (!CreateHighResDoorTextures()) return false;
+        profile.Mark(L"CreateHighResDoorSRVs");
         if (!CreateLoosePageTextureArray()) return false;
         profile.Mark(L"CreateLoosePagesSRV");
         return true;

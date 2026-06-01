@@ -205,17 +205,25 @@
         XMFLOAT3 right = RotateYVec(exitDoorRight_, angle);
         XMFLOAT3 normal = RotateYVec(exitDoorNormal_, angle);
         XMFLOAT3 center = Add3(exitDoorHinge_, Add3(Scale3(right, halfW), Scale3(normal, 0.012f)));
-        AppendDynamicBoxAxes(verts, center, right, up, normal, {halfW, halfH, 0.032f}, 6.0f);
+        AppendDynamicBoxAxes(verts, center, right, up, normal, {halfW, halfH, 0.030f}, 6.0f);
 
-        XMFLOAT3 knobCenter = Add3(center, OrientedOffset(right, up, normal, halfW * 0.63f, -0.08f, 0.070f));
-        XMFLOAT3 kr = Scale3(right, 0.050f);
-        XMFLOAT3 ku = Scale3(up, 0.050f);
-        AppendDynamicQuad(verts,
-            Add3(knobCenter, Add3(Scale3(kr, -1.0f), Scale3(ku, -1.0f))),
-            Add3(knobCenter, Add3(kr, Scale3(ku, -1.0f))),
-            Add3(knobCenter, Add3(kr, ku)),
-            Add3(knobCenter, Add3(Scale3(kr, -1.0f), ku)),
-            normal, right, 10.0f);
+        auto localCenter = [&](float x, float y, float z) {
+            return Add3(center, OrientedOffset(right, up, normal, x, y, z));
+        };
+
+        auto handle = [&](float zSign) {
+            XMFLOAT3 plateCenter = localCenter(halfW * 0.63f, -0.08f, zSign * 0.044f);
+            AppendDynamicBoxAxes(verts, plateCenter, right, up, normal, {0.050f, 0.115f, 0.005f}, 10.0f);
+            XMFLOAT3 neckCenter = localCenter(halfW * 0.63f, -0.08f, zSign * 0.062f);
+            AppendDynamicBoxAxes(verts, neckCenter, right, up, normal, {0.030f, 0.026f, 0.018f}, 10.0f);
+            XMFLOAT3 leverCenter = localCenter(halfW * 0.63f - 0.090f, -0.08f, zSign * 0.076f);
+            AppendDynamicBoxAxes(verts, leverCenter, right, up, normal, {0.125f, 0.015f, 0.016f}, 10.0f);
+            XMFLOAT3 leverTip = localCenter(halfW * 0.63f - 0.216f, -0.08f, zSign * 0.076f);
+            AppendDynamicBoxAxes(verts, leverTip, right, up, normal, {0.010f, 0.020f, 0.018f}, 10.0f);
+        };
+        handle(1.0f);
+        handle(-1.0f);
+
     }
 
     void AppendMenuDoorwayLight(std::vector<Vertex>& transparentVerts) {
@@ -253,7 +261,68 @@
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
         if (menuStartTransitionActive_ || menuStartTransitionComplete_) return;
         XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+        if (menuCustomViewActive_ || menuCustomViewTarget_) {
+            MenuPlaquePlacement panel = MenuCustomPanelPlacement();
+            AppendDynamicBoxAxes(verts, Add3(panel.center, Scale3(panel.inward, -0.006f)),
+                panel.right, up, panel.inward, {panel.halfW, panel.halfH, 0.018f}, 21.0f);
+
+            auto boardPart = [&](float x, float y, float z, XMFLOAT3 half, float material) {
+                AppendDynamicBoxAxes(verts, Add3(panel.center, OrientedOffset(panel.right, up, panel.inward, x, y, z)),
+                    panel.right, up, panel.inward, half, material);
+            };
+            auto appendMiteredFrame = [&](float innerW, float innerH, float border, float frontZ, float backZ, float material) {
+                float outerW = innerW + border;
+                float outerH = innerH + border;
+                auto p = [&](float x, float y, float z) {
+                    return Add3(panel.center, OrientedOffset(panel.right, up, panel.inward, x, y, z));
+                };
+                auto q = [&](XMFLOAT3 a, XMFLOAT3 b, XMFLOAT3 c, XMFLOAT3 d, XMFLOAT3 normal, XMFLOAT3 tangent) {
+                    AppendDynamicQuad(verts, a, b, c, d, normal, tangent, material);
+                };
+
+                XMFLOAT3 frontN = panel.inward;
+                XMFLOAT3 backN = Scale3(panel.inward, -1.0f);
+                XMFLOAT3 leftN = Scale3(panel.right, -1.0f);
+                XMFLOAT3 rightN = panel.right;
+                XMFLOAT3 downN = Scale3(up, -1.0f);
+
+                q(p(-innerW, innerH, frontZ), p(innerW, innerH, frontZ), p(outerW, outerH, frontZ), p(-outerW, outerH, frontZ), frontN, panel.right);
+                q(p(innerW, -innerH, frontZ), p(outerW, -outerH, frontZ), p(outerW, outerH, frontZ), p(innerW, innerH, frontZ), frontN, panel.right);
+                q(p(-outerW, -outerH, frontZ), p(outerW, -outerH, frontZ), p(innerW, -innerH, frontZ), p(-innerW, -innerH, frontZ), frontN, panel.right);
+                q(p(-outerW, -outerH, frontZ), p(-innerW, -innerH, frontZ), p(-innerW, innerH, frontZ), p(-outerW, outerH, frontZ), frontN, panel.right);
+
+                q(p(-outerW, outerH, backZ), p(outerW, outerH, backZ), p(innerW, innerH, backZ), p(-innerW, innerH, backZ), backN, Scale3(panel.right, -1.0f));
+                q(p(innerW, innerH, backZ), p(outerW, outerH, backZ), p(outerW, -outerH, backZ), p(innerW, -innerH, backZ), backN, Scale3(panel.right, -1.0f));
+                q(p(-innerW, -innerH, backZ), p(innerW, -innerH, backZ), p(outerW, -outerH, backZ), p(-outerW, -outerH, backZ), backN, Scale3(panel.right, -1.0f));
+                q(p(-outerW, outerH, backZ), p(-innerW, innerH, backZ), p(-innerW, -innerH, backZ), p(-outerW, -outerH, backZ), backN, Scale3(panel.right, -1.0f));
+
+                q(p(-outerW, outerH, frontZ), p(outerW, outerH, frontZ), p(outerW, outerH, backZ), p(-outerW, outerH, backZ), up, panel.right);
+                q(p(outerW, -outerH, frontZ), p(-outerW, -outerH, frontZ), p(-outerW, -outerH, backZ), p(outerW, -outerH, backZ), downN, Scale3(panel.right, -1.0f));
+                q(p(outerW, outerH, frontZ), p(outerW, -outerH, frontZ), p(outerW, -outerH, backZ), p(outerW, outerH, backZ), rightN, Scale3(panel.inward, -1.0f));
+                q(p(-outerW, -outerH, frontZ), p(-outerW, outerH, frontZ), p(-outerW, outerH, backZ), p(-outerW, -outerH, backZ), leftN, panel.inward);
+
+                q(p(-innerW, innerH, frontZ), p(-innerW, innerH, backZ), p(innerW, innerH, backZ), p(innerW, innerH, frontZ), downN, panel.right);
+                q(p(innerW, -innerH, frontZ), p(innerW, -innerH, backZ), p(-innerW, -innerH, backZ), p(-innerW, -innerH, frontZ), up, Scale3(panel.right, -1.0f));
+                q(p(innerW, innerH, frontZ), p(innerW, innerH, backZ), p(innerW, -innerH, backZ), p(innerW, -innerH, frontZ), leftN, Scale3(panel.inward, -1.0f));
+                q(p(-innerW, -innerH, frontZ), p(-innerW, -innerH, backZ), p(-innerW, innerH, backZ), p(-innerW, innerH, frontZ), rightN, panel.inward);
+            };
+            appendMiteredFrame(panel.halfW, panel.halfH, 0.064f, 0.046f, -0.008f, 10.0f);
+            boardPart(-0.17f, -panel.halfH - 0.064f, 0.064f, {panel.halfW * 0.34f, 0.014f, 0.050f}, 10.0f);
+            boardPart(-0.30f, -panel.halfH - 0.042f, 0.104f, {0.155f, 0.010f, 0.010f}, 23.0f);
+            boardPart(0.04f, -panel.halfH - 0.040f, 0.102f, {0.070f, 0.018f, 0.030f}, 9.0f);
+
+            XMFLOAT3 labelCenter = Add3(panel.center, Scale3(panel.inward, 0.058f));
+            XMFLOAT3 hw = Scale3(panel.right, panel.halfW * 0.965f);
+            XMFLOAT3 hh = Scale3(up, panel.halfH * 0.965f);
+            AppendDynamicQuadUV(transparentVerts,
+                Add3(labelCenter, Add3(Scale3(hw, -1.0f), Scale3(hh, -1.0f))),
+                Add3(labelCenter, Add3(hw, Scale3(hh, -1.0f))),
+                Add3(labelCenter, Add3(hw, hh)),
+                Add3(labelCenter, Add3(Scale3(hw, -1.0f), hh)),
+                panel.inward, panel.right, {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 0.0f}, 18.92f);
+        }
         for (int i = 0; i < menuButtonCount_; ++i) {
+            if (menuCustomViewActive_ || menuCustomViewTarget_) break;
             bool hover = menuHoverButtonIndex_ == i;
             float material = hover ? 9.88f : 9.68f;
             MenuPlaquePlacement plaque = MenuButtonPlacement(i);
@@ -263,8 +332,8 @@
             XMFLOAT3 labelCenter = Add3(plaque.center, Scale3(plaque.inward, 0.036f));
             XMFLOAT3 hw = Scale3(plaque.right, std::min(plaque.halfW * 0.72f, 0.76f));
             XMFLOAT3 hh = Scale3(up, 0.096f);
-            int labelIndex = std::clamp(menuButtonLabelRows_[static_cast<size_t>(i)], 0, 4);
-            constexpr float kMenuLabelRows = 5.0f;
+            int labelIndex = std::clamp(menuButtonLabelRows_[static_cast<size_t>(i)], 0, 5);
+            constexpr float kMenuLabelRows = 6.0f;
             float v0 = (static_cast<float>(labelIndex) + 0.18f) / kMenuLabelRows;
             float v1 = (static_cast<float>(labelIndex) + 0.82f) / kMenuLabelRows;
             float labelMaterial = 18.0f + (hover ? 0.46f : 0.08f);
@@ -602,9 +671,10 @@
             bodyPoints[static_cast<size_t>(i)] = p;
             bodyCenterlinePoints[static_cast<size_t>(i)] = p;
             float torsoBulge = std::exp(-std::pow((t - 0.34f) / 0.28f, 2.0f));
+            float maskShoulderBulge = std::exp(-std::pow(t / 0.18f, 2.0f));
             float taperRadius = Lerp(0.39f, 0.21f, SmoothStep(0.0f, 1.0f, t));
             float peristalsis = 1.0f + std::sin(time_ * 3.40f - fi * 0.91f) * 0.045f;
-            bodyRadii[static_cast<size_t>(i)] = (taperRadius + torsoBulge * 0.235f) * modelXZ * peristalsis;
+            bodyRadii[static_cast<size_t>(i)] = (taperRadius + torsoBulge * 0.235f + maskShoulderBulge * 0.165f) * modelXZ * peristalsis;
             bodyUvShift[static_cast<size_t>(i)] = std::fmod(Rand01(i * 41 + static_cast<int>(runtimeSeed_ & 1023), 1709, runtimeSeed_) * 0.47f +
                 std::sin(fi * 1.73f + static_cast<float>(runtimeSeed_ & 255) * 0.013f) * 0.08f, 1.0f);
         }
@@ -869,10 +939,11 @@
             float angle = u * kPi * 2.0f;
             float radius = bodyRadii[static_cast<size_t>(idx)];
             float idxF = static_cast<float>(idx);
+            float frontVolume = 1.0f - SmoothStep(0.0f, 0.22f, idxF / std::max(1.0f, static_cast<float>(bodyCount - 1)));
             float surfaceLump = 1.0f + std::sin(angle * 3.0f + idxF * 0.61f + time_ * 1.1f) * 0.075f +
                 std::sin(angle * 5.0f + idxF * 0.37f) * 0.040f;
-            float ovalYScale = 0.72f + std::sin(time_ * 3.2f + idxF * 0.63f) * 0.040f;
-            float ovalXScale = 1.06f + std::sin(time_ * 3.7f + idxF * 0.77f) * 0.055f;
+            float ovalYScale = 0.72f + frontVolume * 0.34f + std::sin(time_ * 3.2f + idxF * 0.63f) * 0.040f;
+            float ovalXScale = 1.06f + frontVolume * 0.18f + std::sin(time_ * 3.7f + idxF * 0.77f) * 0.055f;
             float ovalY = radius * surfaceLump * ovalYScale;
             float ovalX = radius * surfaceLump * ovalXScale;
             XMFLOAT3 side = bodySides[static_cast<size_t>(idx)];
@@ -1240,8 +1311,22 @@
         if (Length3(hForward) < 0.001f) hForward = Normalize3(Cross3(hUp, monsterRight), monsterForward);
         hRight = Normalize3(Cross3(hUp, hForward), hRight);
         hUp = Normalize3(Cross3(hForward, hRight), hUp);
-        auto keepHeadOnSurface = [&]() {
-            hForward = Normalize3(Sub3(hForward, Scale3(hUp, Dot3(hForward, hUp))), monsterForward);
+        auto slerpDirection = [&](XMFLOAT3 from, XMFLOAT3 to, float t) {
+            from = Normalize3(from, to);
+            to = Normalize3(to, from);
+            t = Clamp01(t);
+            float dot = std::clamp(Dot3(from, to), -0.9995f, 0.9995f);
+            if (dot > 0.9990f) return Normalize3(Lerp3(from, to, t), to);
+            float theta = std::acos(dot) * t;
+            XMFLOAT3 rel = Normalize3(Sub3(to, Scale3(from, dot)), to);
+            return Normalize3(Add3(Scale3(from, std::cos(theta)), Scale3(rel, std::sin(theta))), to);
+        };
+        auto keepHeadOnSurface = [&](bool projectForward = true) {
+            if (projectForward) {
+                hForward = Normalize3(Sub3(hForward, Scale3(hUp, Dot3(hForward, hUp))), monsterForward);
+            } else {
+                hForward = Normalize3(hForward, monsterForward);
+            }
             hRight = Normalize3(Cross3(hUp, hForward), hRight);
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
         };
@@ -1276,11 +1361,14 @@
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
         }
         keepHeadOnSurface();
-        if (headLock > 0.001f) {
+        if (headLock > 0.001f || visualPlayerLock) {
             XMFLOAT3 cameraFocus{camera_.x, camera_.y + 0.04f, camera_.z};
             XMFLOAT3 lookForward = Normalize3(Sub3(cameraFocus, skull), hForward);
             float trackBlend = SmoothStep(0.0f, 1.0f, SmoothStep(0.0f, 1.0f, Clamp01(headLock)));
-            hForward = Normalize3(Lerp3(hForward, lookForward, trackBlend * (visualPlayerLock ? 0.22f : 0.12f)), lookForward);
+            float focusBlend = visualPlayerLock
+                ? Lerp(0.30f, 0.92f, SmoothStep(0.0f, 1.0f, std::max(headLock, monsterHeadChaseBlend_)))
+                : trackBlend * 0.12f;
+            hForward = slerpDirection(hForward, lookForward, focusBlend);
             hRight = Normalize3(Cross3(hUp, hForward), hRight);
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
         }
@@ -1289,7 +1377,7 @@
             hRight = Normalize3(Add3(Scale3(hRight, std::cos(tilt)), Scale3(hUp, std::sin(tilt))), hRight);
             hUp = Normalize3(Cross3(hForward, hRight), hUp);
         }
-        keepHeadOnSurface();
+        keepHeadOnSurface(!visualPlayerLock);
         if (canTrackPlayer && headLock > 0.55f && visualPlayerLock) {
             XMFLOAT3 cameraFocus{camera_.x, camera_.y + 0.04f, camera_.z};
             XMFLOAT3 toPlayer = Normalize3(Sub3(cameraFocus, skull), hForward);
@@ -1311,7 +1399,7 @@
                     Scale3(hUp, std::sin(time_ * 53.0f + 1.7f) * 0.005f * rage)));
             }
         }
-        keepHeadOnSurface();
+        keepHeadOnSurface(!visualPlayerLock);
         if (skullMesh_.empty() && !monsterMeshLoaded_) {
             LoadMonsterSkullMesh();
         }
@@ -1319,6 +1407,22 @@
         bool nativeMaskMesh = externalSkull && monsterSkullNativeMaskAxes_;
         XMFLOAT3 externalMaskCenter = skull;
         if (externalSkull) {
+            float frontPulse = 1.0f + std::sin(time_ * 2.18f + monster_.x * 0.11f - monster_.z * 0.07f) * 0.030f;
+            XMFLOAT3 maskFlesh = Add3(skull, OrientedOffset(hRight, hUp, hForward,
+                0.0f, -0.045f * modelY, -0.070f * modelXZ));
+            XMFLOAT3 throatFlesh = Add3(headRoot, OrientedOffset(hRight, hUp, hForward,
+                0.0f, 0.070f * modelY, 0.135f * modelXZ));
+            XMFLOAT3 jawFlesh = Add3(skull, OrientedOffset(hRight, hUp, hForward,
+                0.0f, -0.250f * modelY, -0.035f * modelXZ));
+            AppendDynamicEllipsoid(solidVerts, throatFlesh, hRight, hUp, hForward,
+                {0.445f * modelXZ * frontPulse, 0.345f * modelY * frontPulse, 0.385f * modelXZ * frontPulse},
+                debugEffectMonster ? 16 : 24, debugEffectMonster ? 8 : 12, gutMat + 0.032f);
+            AppendDynamicEllipsoid(solidVerts, maskFlesh, hRight, hUp, hForward,
+                {0.390f * modelXZ * frontPulse, 0.440f * modelY * frontPulse, 0.235f * modelXZ * frontPulse},
+                debugEffectMonster ? 16 : 24, debugEffectMonster ? 8 : 12, gutMat + 0.046f);
+            AppendDynamicEllipsoid(solidVerts, jawFlesh, hRight, hUp, hForward,
+                {0.295f * modelXZ * frontPulse, 0.175f * modelY * frontPulse, 0.185f * modelXZ * frontPulse},
+                debugEffectMonster ? 12 : 18, debugEffectMonster ? 6 : 9, gutMat + 0.058f);
             XMFLOAT3 maskCenter = Add3(skull, Scale3(hForward, 0.030f * modelXZ));
             maskCenter = Add3(maskCenter, Scale3(hUp, -0.035f * modelY));
             if (headAwareness > 0.001f) {

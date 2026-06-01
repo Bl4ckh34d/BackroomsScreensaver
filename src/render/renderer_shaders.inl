@@ -64,6 +64,16 @@ Texture2D gMonsterEyeShadow0 : register(t7);
 Texture2D gMonsterEyeShadow1 : register(t8);
 Texture2DArray gLoosePages : register(t9);
 Texture2D gFixtureShadowMap : register(t10);
+Texture2D gCeilingAlbedo : register(t11);
+Texture2D gCeilingNormalHeight : register(t12);
+Texture2D gCeilingProps : register(t13);
+Texture2D gCustomMenu : register(t14);
+Texture2D gDoorAlbedo : register(t15);
+Texture2D gDoorNormalHeight : register(t16);
+Texture2D gDoorProps : register(t17);
+Texture2D gDoorFrameAlbedo : register(t18);
+Texture2D gDoorFrameNormalHeight : register(t19);
+Texture2D gDoorFrameProps : register(t20);
 SamplerState gSampler : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 
@@ -182,6 +192,75 @@ float3 MaterialUV(float2 uv, float material)
     return float3(uv, slice);
 }
 
+bool IsCeilingMaterial(float material)
+{
+    float materialId = MaterialId(material);
+    return materialId > 1.5 && materialId < 2.5;
+}
+
+bool IsDoorMaterial(float material)
+{
+    float materialId = MaterialId(material);
+    return materialId > 5.5 && materialId < 6.5;
+}
+
+bool IsDoorFrameMaterial(float material)
+{
+    float materialId = MaterialId(material);
+    return materialId > 20.5 && materialId < 21.5 && frac(material) > 0.30;
+}
+
+float4 SampleMaterialAlbedo(float2 uv, float material, float mipBias)
+{
+    if (IsCeilingMaterial(material))
+    {
+        return gCeilingAlbedo.SampleBias(gSampler, uv, mipBias);
+    }
+    if (IsDoorMaterial(material))
+    {
+        return gDoorAlbedo.SampleBias(gSampler, uv, mipBias);
+    }
+    if (IsDoorFrameMaterial(material))
+    {
+        return gDoorFrameAlbedo.SampleBias(gSampler, uv, mipBias);
+    }
+    return gAlbedo.SampleBias(gSampler, MaterialUV(uv, material), mipBias);
+}
+
+float4 SampleMaterialProps(float2 uv, float material, float mipBias)
+{
+    if (IsCeilingMaterial(material))
+    {
+        return gCeilingProps.SampleBias(gSampler, uv, mipBias);
+    }
+    if (IsDoorMaterial(material))
+    {
+        return gDoorProps.SampleBias(gSampler, uv, mipBias);
+    }
+    if (IsDoorFrameMaterial(material))
+    {
+        return gDoorFrameProps.SampleBias(gSampler, uv, mipBias);
+    }
+    return gMaterialProps.SampleBias(gSampler, MaterialUV(uv, material), mipBias);
+}
+
+float4 SampleMaterialNormalHeight(float2 uv, float material, float mipBias)
+{
+    if (IsCeilingMaterial(material))
+    {
+        return gCeilingNormalHeight.SampleBias(gSampler, uv, mipBias);
+    }
+    if (IsDoorMaterial(material))
+    {
+        return gDoorNormalHeight.SampleBias(gSampler, uv, mipBias);
+    }
+    if (IsDoorFrameMaterial(material))
+    {
+        return gDoorFrameNormalHeight.SampleBias(gSampler, uv, mipBias);
+    }
+    return gNormalHeight.SampleBias(gSampler, MaterialUV(uv, material), mipBias);
+}
+
 float2 ReliefParallaxUv(float2 rawUv, float material, float3 viewTS, float scale, float maxLayers)
 {
     if (scale <= 0.0001)
@@ -194,7 +273,7 @@ float2 ReliefParallaxUv(float2 rawUv, float material, float3 viewTS, float scale
     float2 uv = rawUv;
     float layerDepth = 1.0 / max(layers, 1.0);
     float currentDepth = 0.0;
-    float mapDepth = 1.0 - gNormalHeight.Sample(gSampler, MaterialUV(uv, material)).a;
+    float mapDepth = 1.0 - SampleMaterialNormalHeight(uv, material, 0.0).a;
     [loop]
     for (int i = 0; i < 12; ++i)
     {
@@ -204,7 +283,7 @@ float2 ReliefParallaxUv(float2 rawUv, float material, float3 viewTS, float scale
         }
         uv -= stepUv;
         currentDepth += layerDepth;
-        mapDepth = 1.0 - gNormalHeight.Sample(gSampler, MaterialUV(uv, material)).a;
+        mapDepth = 1.0 - SampleMaterialNormalHeight(uv, material, 0.0).a;
     }
     return uv;
 }
@@ -266,9 +345,8 @@ float3 UnderlyingSurfaceColor(float3 worldPos, float3 normal, out float aoMap)
     float2 surfaceUv = float2(0.0, 0.0);
     UnderlyingSurface(worldPos, normal, materialId, surfaceUv);
     float mipBias = materialId > 0.5 && materialId < 1.5 ? 1.15 : 0.45;
-    float3 materialUv = float3(surfaceUv, materialId);
-    float4 base = gAlbedo.SampleBias(gSampler, materialUv, mipBias);
-    float4 pbr = gMaterialProps.SampleBias(gSampler, materialUv, mipBias);
+    float4 base = SampleMaterialAlbedo(surfaceUv, materialId, mipBias);
+    float4 pbr = SampleMaterialProps(surfaceUv, materialId, mipBias);
     aoMap = saturate(pbr.r);
     return BackroomsBaseColor(base.rgb, materialId);
 }
@@ -418,17 +496,22 @@ void ApplyWorldDirtOverlay(inout float3 base, inout float roughness, inout float
     float2 dirtDx = ddx(warped);
     float2 dirtDy = ddy(warped);
     float pixelFootprint = max(length(dirtDx), length(dirtDy));
-    float screenDetail = 1.0 - smoothstep(0.018, 0.105, pixelFootprint);
-    float distanceDetail = 1.0 - smoothstep(8.0, 22.0, length(worldPos - gCameraPosTime.xyz));
+    float screenDetail = 1.0 - smoothstep(0.032, 0.175, pixelFootprint);
+    float distanceDetail = 1.0 - smoothstep(12.0, 32.0, length(worldPos - gCameraPosTime.xyz));
     float detailFade = saturate(screenDetail * distanceDetail);
+    float microFade = saturate(detailFade * (1.0 - smoothstep(0.086, 0.235, pixelFootprint)));
 
-    float broad = Fbm3(float3(warped * 0.16 + surfaceVar * 3.0, materialSalt + 31.0));
-    float mid = Fbm3(float3(warped * 0.84 + 17.0, materialSalt + 47.0));
-    float fine = lerp(0.5, Noise3(float3(warped * 8.5 + surfaceVar * 13.0, materialSalt + 59.0)), detailFade);
-    float pepper = lerp(0.5, Noise3(float3(warped * 22.0 + 31.0, materialSalt + 71.0)), detailFade);
+    float broad = Fbm3(float3(warped * 0.28 + surfaceVar * 3.0, materialSalt + 31.0));
+    float mid = Fbm3(float3(warped * 1.75 + 17.0, materialSalt + 47.0));
+    float fine = lerp(0.5, Noise3(float3(warped * 34.0 + surfaceVar * 13.0, materialSalt + 59.0)), detailFade);
+    float pepper = lerp(0.5, Noise3(float3(warped * 92.0 + 31.0, materialSalt + 71.0)), detailFade);
+    float micro = lerp(0.5, Noise3(float3(warped * 205.0 + surfaceVar * 41.0, materialSalt + 127.0)), microFade);
+    float pin = lerp(0.5, Noise3(float3(warped * 390.0 + surfaceVar * 67.0, materialSalt + 173.0)), microFade);
     float stain = smoothstep(0.43, 0.78, broad + (mid - 0.5) * 0.38);
-    float grime = smoothstep(0.28, 0.68, mid + (fine - 0.5) * 0.25);
-    float speckle = smoothstep(0.70, 0.965, pepper) * (0.36 + grime * 0.64) * detailFade;
+    float grime = smoothstep(0.26, 0.66, mid + (fine - 0.5) * 0.32);
+    float speckle = (smoothstep(0.62, 0.950, pepper) * 0.76 + smoothstep(0.52, 0.92, micro) * 0.42 +
+        smoothstep(0.60, 0.97, pin) * 0.20) *
+        (0.36 + grime * 0.64) * detailFade;
 
     float3 an = abs(normal);
     float isWall = 1.0 - step(max(an.x, an.z), an.y);
@@ -438,22 +521,54 @@ void ApplyWorldDirtOverlay(inout float3 base, inout float roughness, inout float
         smoothstep(0.54, 0.84, Fbm3(float3(warped.x * 1.35 + materialSalt, worldPos.y * 0.20, materialSalt + 83.0))) *
         smoothstep(0.16, 0.82, worldPos.y) * (1.0 - smoothstep(2.40, 3.20, worldPos.y));
     float floorWear = isFloor * smoothstep(0.46, 0.82,
-        Fbm3(float3(warped * 0.52 + float2(5.0, 19.0), materialSalt + 97.0)) + (fine - 0.5) * (0.06 + 0.10 * detailFade));
+        Fbm3(float3(warped * 1.05 + float2(5.0, 19.0), materialSalt + 97.0)) +
+        (fine - 0.5) * (0.10 + 0.18 * detailFade) + (micro - 0.5) * 0.13 * microFade + (pin - 0.5) * 0.06 * microFade);
     float ceilingBloom = isCeiling * smoothstep(0.38, 0.76,
-        Fbm3(float3(warped * 0.36 + float2(29.0, 7.0), materialSalt + 109.0)) + (broad - 0.5) * 0.20);
+        Fbm3(float3(warped * 0.74 + float2(29.0, 7.0), materialSalt + 109.0)) + (broad - 0.5) * 0.20 +
+        (fine - 0.5) * 0.12 * detailFade + (micro - 0.5) * 0.06 * microFade);
 
-    float alpha = saturate(stain * 0.115 + grime * 0.078 + speckle * 0.052 + wallStreak * 0.105 + floorWear * 0.050 + ceilingBloom * 0.070);
-    alpha = min(alpha * lerp(0.96, 1.26, surfaceVar) * hotspotGain, lerp(0.14, 0.25, levelDirt));
-    float influence = saturate((stain * 0.88 + grime * 0.56 + speckle * 0.62 + wallStreak * 0.90 + floorWear * 0.52 + ceilingBloom * 0.74) *
-        (0.82 + hotspot * 0.70 + levelDirt * 0.32));
+)" R"(
+    float2 coldWarp = p * 0.42 + float2(
+        Fbm3(float3(p * 0.034 + 41.0, materialSalt + 181.0)),
+        Fbm3(float3(p.yx * 0.041 - 23.0, materialSalt + 197.0))) * 5.8;
+    coldWarp += float2(surfaceVar * 9.1, -surfaceVar * 6.7);
+    float coldBroad = Fbm3(float3(coldWarp * 0.62 + gMaze1.xy * 0.013, materialSalt + 211.0));
+    float coldVeins = Fbm3(float3(coldWarp * float2(1.7, 0.22) + float2(13.0, 5.0), materialSalt + 229.0));
+    float coldDots = lerp(0.5, Noise3(float3(coldWarp * 38.0 + 17.0, materialSalt + 241.0)), detailFade);
+    float moldPatches = smoothstep(0.57, 0.88, coldBroad + (coldVeins - 0.5) * 0.30);
+    float verticalMold = isWall * smoothstep(0.12, 0.74, worldPos.y) * (1.0 - smoothstep(1.95, 3.05, worldPos.y)) *
+        smoothstep(0.50, 0.86, coldVeins + (fine - 0.5) * 0.11);
+    float floorDust = isFloor * smoothstep(0.50, 0.86, coldBroad + (pepper - 0.5) * 0.18);
+    float ceilingMildew = isCeiling * smoothstep(0.44, 0.84, coldBroad + (coldVeins - 0.5) * 0.22);
+    float moldFreckles = smoothstep(0.68, 0.965, coldDots) * detailFade * (0.28 + moldPatches * 0.72);
+    float coldLayer = saturate((moldPatches * 0.52 + verticalMold * 0.72 + floorDust * 0.32 + ceilingMildew * 0.62 + moldFreckles * 0.36) *
+        lerp(0.30, 1.10, levelDirt) * (0.55 + hotspot * 0.65));
+
+    float stainAlpha = min(stain * lerp(0.055, 0.115, levelDirt) * hotspotGain, 0.145);
+    float grimeAlpha = min(grime * lerp(0.045, 0.098, levelDirt) * (0.82 + hotspot * 0.55), 0.125);
+    float speckleAlpha = min(speckle * lerp(0.038, 0.090, levelDirt) * (0.74 + hotspot * 0.40), 0.095);
+    float streakAlpha = min((wallStreak + floorWear * 0.72 + ceilingBloom * 0.82) * lerp(0.045, 0.105, levelDirt) *
+        (0.80 + hotspot * 0.62), 0.120);
+    float alpha = min(stainAlpha + grimeAlpha + speckleAlpha + streakAlpha, lerp(0.14, 0.25, levelDirt));
+    float influence = saturate((stain * 0.70 + grime * 0.50 + speckle * 0.46 + wallStreak * 0.74 + floorWear * 0.46 + ceilingBloom * 0.58) *
+        (0.70 + hotspot * 0.55 + levelDirt * 0.28));
     float3 wallTint = float3(0.145, 0.115, 0.045);
     float3 floorTint = float3(0.055, 0.044, 0.028);
     float3 ceilingTint = float3(0.17, 0.15, 0.075);
     float3 dirtTint = materialId < 0.5 ? wallTint : (materialId < 1.5 ? floorTint : ceilingTint);
     float3 dirtColor = base * (1.0 - (0.24 + influence * 0.48)) + dirtTint * (0.20 + influence * 0.24);
     base = lerp(base, dirtColor, alpha);
-    roughness = saturate(roughness + alpha * (0.10 + influence * 0.08));
-    aoMap = saturate(aoMap - alpha * (0.09 + influence * 0.05));
+    float3 speckleTint = materialId < 1.5 ? float3(0.038, 0.030, 0.018) : float3(0.12, 0.105, 0.052);
+    base = lerp(base, speckleTint, speckleAlpha * (0.30 + speckle * 0.46));
+    float coldAlpha = min(coldLayer * lerp(0.036, 0.120, levelDirt), lerp(0.050, 0.135, levelDirt));
+    float3 coldWallTint = float3(0.060, 0.096, 0.070);
+    float3 coldFloorTint = float3(0.044, 0.050, 0.042);
+    float3 coldCeilingTint = float3(0.074, 0.092, 0.068);
+    float3 coldTint = materialId < 0.5 ? coldWallTint : (materialId < 1.5 ? coldFloorTint : coldCeilingTint);
+    float3 coldColor = base * (0.74 - coldLayer * 0.18) + coldTint * (0.34 + coldLayer * 0.28);
+    base = lerp(base, coldColor, coldAlpha * (1.0 - alpha * 0.42));
+    roughness = saturate(roughness + alpha * (0.10 + influence * 0.08) + coldAlpha * (0.16 + coldLayer * 0.12));
+    aoMap = saturate(aoMap - alpha * (0.09 + influence * 0.05) - coldAlpha * (0.12 + coldLayer * 0.08));
 }
 
 float SmokeFbm(float3 p, float seed, float time)
@@ -804,8 +919,24 @@ float FixturePower(float3 worldPos, float time)
     float event = step(0.86, Hash21(cell + tick + 71.0));
     float flutter = 0.18 + 0.82 * saturate(sin(time * (41.0 + h * 50.0)) * 0.5 + 0.5);
     float buzz = lerp(1.0, 0.98 + 0.02 * sin(time * (55.0 + h * 80.0)), flickerFixture);
-    float basePower = isOn * lerp(1.0, flutter, flickerFixture * event) * buzz * variation;
+    float levelDirt = saturate(gTexture0.w);
+    float broadGrime = Fbm3(float3(cell * 0.23 + gMaze1.xy * 0.017, 531.0));
+    float clusterGrime = Fbm3(float3(cell * 0.071 - gMaze1.yx * 0.011, 577.0));
+    float lampDirt = saturate((0.10 + levelDirt * 0.74) * (0.30 + broadGrime * 0.74) + smoothstep(0.58, 0.88, clusterGrime) * (0.12 + levelDirt * 0.22));
+    float dirtDim = lerp(1.08, 0.56, smoothstep(0.04, 0.96, lampDirt));
+    float basePower = isOn * lerp(1.0, flutter, flickerFixture * event) * buzz * variation * dirtDim;
     return basePower * LampFailureMultiplier(LampDamageAtWorld(worldPos.xz), h, time);
+}
+
+float LampDirtAmount(float2 cell)
+{
+    float levelDirt = saturate(gTexture0.w);
+    float broadGrime = Fbm3(float3(cell * 0.23 + gMaze1.xy * 0.017, 531.0));
+    float clusterGrime = Fbm3(float3(cell * 0.071 - gMaze1.yx * 0.011, 577.0));
+    float flyChance = smoothstep(0.60, 0.95, Hash21(cell + 311.0) + levelDirt * 0.22);
+    return saturate((0.10 + levelDirt * 0.74) * (0.30 + broadGrime * 0.74) +
+        smoothstep(0.58, 0.88, clusterGrime) * (0.12 + levelDirt * 0.22) +
+        flyChance * (0.04 + levelDirt * 0.12));
 }
 
 float LampVisualPower(float material, float3 worldPos, float time)
@@ -1077,13 +1208,13 @@ float FixtureShadowVisibility(float3 worldPos, float3 normal, float3 lampPos)
     return lerp(1.0 - strength, 1.0, visible);
 }
 
-float LocalLampLight(float3 worldPos, float3 worldN, float time)
+float3 LocalLampLightColor(float3 worldPos, float3 worldN, float time)
 {
     float2 stride = gMaze0.zw;
     float spacing = gMaze1.w;
     float2 lampOrigin = gMaze0.xy + gMaze0.zw * 0.5;
     float2 baseCell = floor((worldPos.xz - lampOrigin) / stride + 0.5);
-    float light = 0.0;
+    float3 light = float3(0.0, 0.0, 0.0);
 
     [loop]
     for (int yy = -2; yy <= 2; ++yy)
@@ -1117,11 +1248,20 @@ float LocalLampLight(float3 worldPos, float3 worldN, float time)
             {
                 falloff *= lerp(1.0, FixtureShadowVisibility(worldPos, worldN, lampPos), selectedShadowLamp);
             }
-            light += power * falloff * diffuse;
+            float dirt = LampDirtAmount(cell);
+            float dirtTint = smoothstep(0.05, 0.95, dirt);
+            float dirtTransmission = lerp(1.0, 0.72, dirtTint);
+            float3 tint = lerp(float3(1.0, 0.985, 0.90), float3(1.0, 0.72, 0.34), dirtTint);
+            light += tint * (power * falloff * diffuse * dirtTransmission * 1.22);
         }
     }
 
     return light;
+}
+
+float LocalLampLight(float3 worldPos, float3 worldN, float time)
+{
+    return dot(LocalLampLightColor(worldPos, worldN, time), float3(0.299, 0.587, 0.114));
 }
 
 float CornerAO(float3 worldPos, float3 normal)
@@ -1384,7 +1524,8 @@ float DoorRoomSideLightBlock(float3 worldPos, float3 worldN, float materialId)
     float wallBlock = roomSideWall * nearWallPlane * aroundDoor * heightGate;
 
     float doorFrameMaterial = step(9.5, materialId) * (1.0 - step(10.5, materialId));
-    float frameBlock = doorFrameMaterial *
+    float whiteDoorFrameMaterial = step(20.5, materialId) * (1.0 - step(21.5, materialId));
+    float frameBlock = max(doorFrameMaterial, whiteDoorFrameMaterial) *
         smoothstep(doorHalfW * 3.10, doorHalfW * 0.10, abs(lateral)) *
         smoothstep(0.62, 0.02, abs(axial)) *
         smoothstep(-0.08, 0.18, worldPos.y) *
@@ -3019,21 +3160,58 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 offBase = float3(0.91 + lens * 0.07 - edge * 0.055,
                                 0.92 + lens * 0.07 - edge * 0.050,
                                 0.86 + lens * 0.06 - edge * 0.045);
+        float2 lampOrigin = gMaze0.xy + gMaze0.zw * 0.5;
+        float2 lampCell = floor((input.worldPos.xz - lampOrigin) / gMaze0.zw + 0.5);
+        float lampDirt = LampDirtAmount(lampCell);
+        float2 dirtUv = uv + float2(Hash21(lampCell + 19.0), Hash21(lampCell + 29.0)) * 0.19;
+        float grimePatch = smoothstep(0.38, 0.82,
+            Fbm3(float3(dirtUv * 3.5 + lampCell * 0.071, 691.0)) +
+            (Fbm3(float3(dirtUv * 11.0 - lampCell * 0.13, 709.0)) - 0.5) * 0.18);
+        float amberFilm = saturate(grimePatch * lampDirt * (0.42 + edge * 0.24));
+        float flyMask = 0.0;
+        float flyClusterRoll = Hash21(lampCell + 311.0);
+        float flyDensity = saturate((lampDirt - 0.18) * 1.35 + (flyClusterRoll - 0.52) * 1.15);
+        [unroll]
+        for (int fi = 0; fi < 9; ++fi)
+        {
+            float2 flySeed = lampCell + float2((float)fi * 17.37 + 43.0, (float)fi * 31.11 + 97.0);
+            float2 center = float2(Hash21(flySeed), Hash21(flySeed + 73.0));
+            center = lerp(float2(0.18, 0.20), float2(0.82, 0.80), center);
+            float angle = Hash21(flySeed + 151.0) * 6.2831853;
+            float2 axis = float2(cos(angle), sin(angle));
+            float2 perp = float2(-axis.y, axis.x);
+            float2 d = uv - center;
+            float radius = lerp(0.0032, 0.0095, Hash21(flySeed + 131.0)) * lerp(0.78, 1.34, lampDirt);
+            float anisotropy = lerp(1.10, 2.15, Hash21(flySeed + 167.0));
+            float elongatedDist = sqrt(pow(dot(d, axis) / anisotropy, 2.0) + pow(dot(d, perp), 2.0));
+            float body = exp(-(elongatedDist * elongatedDist) / max(0.00001, radius * radius * 2.6));
+            float blur = smoothstep(0.011, 0.0, length(d)) * 0.045;
+            float gate = smoothstep(0.20, 0.92, flyDensity + Hash21(flySeed + 211.0) * 0.36 - (float)fi * 0.055);
+            flyMask = max(flyMask, saturate(body * 0.46 + blur) * gate);
+        }
+        float dustSpecks = smoothstep(0.80, 0.985, Noise3(float3(uv * 78.0 + lampCell * 3.0, 733.0))) * lampDirt * 0.42;
+        float insectGrime = saturate(flyMask + dustSpecks * 0.45);
+        float3 grimeTint = float3(0.92, 0.66, 0.23);
+        lampBase = lerp(lampBase, lampBase * (0.70 + amberFilm * 0.08) + grimeTint * (0.30 + amberFilm * 0.18), amberFilm);
+        lampBase = lerp(lampBase, float3(0.040, 0.026, 0.012), insectGrime * 0.82);
+        offBase = lerp(offBase, offBase * float3(0.78, 0.68, 0.45) + grimeTint * 0.18, amberFilm * 0.86);
         float lampDamage = LampDamageAtWorld(input.worldPos.xz);
         float brokenVisual = materialId < 3.5 ? smoothstep(0.985, 0.995, lampDamage) : 1.0;
         float3 base = lerp(lampBase, offBase, brokenVisual);
+        float dirtGlow = lerp(1.14, 0.48, smoothstep(0.04, 0.96, lampDirt));
         float emit = materialId < 3.5
-            ? LampVisualPower(input.material, input.worldPos, time) * 2.6 * (1.0 - saturate(gTransition0.z)) * (1.0 - brokenVisual)
+            ? LampVisualPower(input.material, input.worldPos, time) * 3.15 * (1.0 - saturate(gTransition0.z)) * (1.0 - brokenVisual) *
+                dirtGlow * (1.0 - insectGrime * 0.24)
             : 0.0;
+        float3 emitTint = lerp(float3(1.0, 0.985, 0.90), float3(1.0, 0.70, 0.30), saturate(lampDirt + amberFilm * 0.65));
         float passiveOn = gLighting0.z;
         float passiveOff = gLighting0.z * 0.48 +
             FlashlightAmount(input.worldPos, N) * 0.86 +
             LocalLampLight(input.worldPos, N, time) * gLighting1.x * 0.22;
         float passiveLight = lerp(passiveOn, passiveOff, brokenVisual);
-        float3 color = base * (passiveLight + emit);
-        float fog = saturate((length(input.worldPos - cam) - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
-        fog = 1.0 - exp(-fog * fog * 3.2);
-        color = lerp(color, float3(0.0, 0.0, 0.0), fog * gFog0.z);
+        float3 color = base * passiveLight + base * emit * emitTint;
+        float dist = length(input.worldPos - cam);
+        color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, 1.34));
         return float4(ApplyPost(color), 1.0);
     }
 
@@ -3142,7 +3320,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         blob *= lerp(1.0, 0.52, holes * (1.0 - blur * 0.45));
         float smear = exp(-pow(abs(dot(q, strandPerp) + (h2 - 0.5) * 0.16), 1.18) * (30.0 + h0 * 48.0)) *
             (1.0 - smoothstep(0.28 + h1 * 0.18, 0.98, abs(dot(q, strandDir) - 0.10)));
-        float shell = saturate(max(blob, raggedEdge) + smear * 0.72 + hairClump * 0.46);
+        float particleShell = saturate(max(blob, raggedEdge) + smear * 0.72 + hairClump * 0.46);
         float shape = max(blob * 0.48, max(raggedEdge * 0.20, max(smear * 0.38, hairClump * (0.58 + h1 * 0.48))));
         float flecks = lerp(0.78, 1.10, Hash21(floor(q * (10.0 + h1 * 9.0)) + variant * 23.0));
         float asymmetricFalloff = smoothstep(1.20, 0.30, max(abs(p.x) * lerp(0.86, 1.22, h0), abs(p.y) * lerp(0.88, 1.28, h2)));
@@ -3169,10 +3347,10 @@ float4 PSMain(VSOut input) : SV_TARGET
         float alpha = shape * particleLight * depthFade * focusAlpha * (0.20 + variant * 0.12) * particleFade * (1.0 - saturate(gTransition0.z));
         if (alpha < 0.010) discard;
         float3 color = float3(0.72, 0.78, 0.72) * (0.20 + flashlight * (1.08 + centerLine * 0.82));
-        color += float3(0.98, 0.90, 0.62) * overhead * (0.50 + shell * 0.18);
+        color += float3(0.98, 0.90, 0.62) * overhead * (0.50 + particleShell * 0.18);
         color += float3(1.0, 0.03, 0.015) * monsterEyeLight * 1.35;
-        color += float3(0.91, 0.965, 1.0) * doorwayDust * (1.45 + shell * 0.55);
-        color += float3(0.42, 0.48, 0.44) * shell * (0.08 + blur * 0.08 + centerLine * 0.08) * flashlightScale;
+        color += float3(0.91, 0.965, 1.0) * doorwayDust * (1.45 + particleShell * 0.55);
+        color += float3(0.42, 0.48, 0.44) * particleShell * (0.08 + blur * 0.08 + centerLine * 0.08) * flashlightScale;
         float fog = saturate((length(input.worldPos - cam) - gFog0.x) / max(0.01, gFog0.y - gFog0.x));
         fog = 1.0 - exp(-fog * fog * 2.2);
         color = lerp(color, float3(0.0, 0.0, 0.0), fog * gFog0.z * 0.65);
@@ -3181,6 +3359,22 @@ float4 PSMain(VSOut input) : SV_TARGET
 
     if (materialId > 17.5 && materialId < 18.5)
     {
+        if (frac(input.material) > 0.80)
+        {
+            float4 panel = gCustomMenu.Sample(gSampler, saturate(uv));
+            if (panel.a < 0.025) discard;
+            float dist = length(input.worldPos - cam);
+            float3 overlayN = normalize(N);
+            float flashlight = FlashlightAmount(input.worldPos, overlayN);
+            float overhead = LocalLampLight(input.worldPos, overlayN, time) * gLighting1.x;
+            float sparkLight = SparkLight(input.worldPos, overlayN);
+            float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.55), 1.35);
+            float markerNoise = Fbm3(float3(uv * 86.0, time * 0.015));
+            float3 ink = panel.rgb * (0.76 + markerNoise * 0.18);
+            float lit = saturate(gLighting0.z * 0.22 + flashlight * 1.12 + overhead * 0.34 + sparkLight * 0.62);
+            ink *= lit;
+            return float4(saturate(ApplyPost(ink)), saturate(panel.a * fogVisibility));
+        }
         float4 label = gAlbedo.Sample(gSampler, float3(uv, 18.0));
         if (label.a < 0.025) discard;
         float hover = smoothstep(0.35, 0.60, frac(input.material));
@@ -3380,19 +3574,19 @@ float4 PSMain(VSOut input) : SV_TARGET
         float parallaxScale = floorMaterial > 0.5 ? 0.012 : 0.005;
         float parallaxLayers = floorMaterial > 0.5 ? 8.0 : 5.0;
         float2 sampledRawUv = ReliefParallaxUv(rawUv, input.material, viewTS, parallaxScale, parallaxLayers);
-        float mipBias = floorMaterial > 0.5 ? 0.30 : 0.78;
-        float3 materialUv = MaterialUV(sampledRawUv, input.material);
-        float4 base = gAlbedo.SampleBias(gSampler, materialUv, mipBias);
+        float mipBias = floorMaterial > 0.5 ? 0.30 : 0.08;
+        float4 base = SampleMaterialAlbedo(sampledRawUv, input.material, mipBias);
         base.rgb = BackroomsBaseColor(base.rgb, materialId);
-        float4 pbr = gMaterialProps.SampleBias(gSampler, materialUv, mipBias);
-        float4 nh = gNormalHeight.SampleBias(gSampler, materialUv, mipBias + (floorMaterial > 0.5 ? 0.15 : 0.72));
+        float4 pbr = SampleMaterialProps(sampledRawUv, input.material, mipBias);
+        float4 nh = SampleMaterialNormalHeight(sampledRawUv, input.material, mipBias + (floorMaterial > 0.5 ? 0.15 : 0.18));
         float3 nTex = normalize(nh.xyz * 2.0 - 1.0);
         float normalStrength = floorMaterial > 0.5 ? 0.48 : 0.22;
         nTex = normalize(float3(nTex.xy * normalStrength, nTex.z));
         float3 worldN = normalize(nTex.x * T + nTex.y * B + nTex.z * N);
         float dist = length(input.worldPos - cam);
         float flashlight = FlashlightAmount(input.worldPos, worldN);
-        float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
+        float3 overheadColor = LocalLampLightColor(input.worldPos, worldN, time) * gLighting1.x;
+        float overhead = dot(overheadColor, float3(0.299, 0.587, 0.114));
         float sparkLight = SparkLight(input.worldPos, worldN);
         float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
         float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
@@ -3406,7 +3600,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 diffuseColor = base.rgb * (1.0 - metallic);
         float3 specColor = lerp(float3(0.035, 0.035, 0.035), base.rgb, metallic);
         float ao = lerp(0.50, 1.0, aoMap);
-        float3 color = diffuseColor * (gLighting0.z + overhead + flashlight + sparkLight + lift) * ao;
+        float3 color = diffuseColor * (gLighting0.z + flashlight + sparkLight + lift) * ao;
+        color += diffuseColor * overheadColor * ao;
         color += diffuseColor * exitGreen * ao;
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);
         float specFacing = saturate(dot(reflect(-toLight, worldN), V));
@@ -3435,13 +3630,17 @@ float4 PSMain(VSOut input) : SV_TARGET
         panelInset = max(panelInset, max(1.0 - smoothstep(0.018, 0.050, abs(p.y - 0.24)),
                                          1.0 - smoothstep(0.018, 0.050, abs(p.y - 0.76))));
         panelInset *= 0.35;
-        float grain = Fbm3(float3(p * float2(3.4, 5.2), 4.7));
+        float grain = Fbm3(float3(p * float2(2.2, 10.5), 4.7));
+        float fineGrain = Fbm3(float3(p * float2(18.0, 84.0), 19.0));
+        float plank = abs(frac(p.x * 7.0 + grain * 0.045) - 0.5);
+        float plankLine = 1.0 - smoothstep(0.0, 0.030, plank);
         float grime = Fbm3(float3(input.worldPos.xz * 0.7 + p * 0.55, 21.0));
-        float3 base = float3(0.27, 0.205, 0.135);
-        base += (grain - 0.5) * float3(0.018, 0.014, 0.010);
-        base -= (outerBevel * 0.38 + panelInset) * float3(0.038, 0.030, 0.020);
-        base -= smoothstep(0.72, 0.97, grime) * float3(0.026, 0.023, 0.017);
-        float3 worldN = normalize(N + T * (grain - 0.5) * 0.012);
+        float3 base = float3(0.34, 0.255, 0.160);
+        base += (grain - 0.5) * float3(0.070, 0.050, 0.032);
+        base += (fineGrain - 0.5) * float3(0.020, 0.016, 0.010);
+        base -= (outerBevel * 0.24 + panelInset + plankLine * 0.28) * float3(0.045, 0.036, 0.024);
+        base -= smoothstep(0.72, 0.97, grime) * float3(0.032, 0.027, 0.020);
+        float3 worldN = normalize(N + T * ((grain - 0.5) * 0.020 + plankLine * 0.018));
         float dist = length(input.worldPos - cam);
         float flashlight = FlashlightAmount(input.worldPos, worldN);
         float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
@@ -3470,10 +3669,19 @@ float4 PSMain(VSOut input) : SV_TARGET
     }
     sampledRawUv = ReliefParallaxUv(sampledRawUv, input.material, viewTS, parallaxScale, materialId < 0.5 ? 10.0 : 8.0);
 
-    float3 materialUv = MaterialUV(sampledRawUv, input.material);
     float floorMipBias = (materialId > 0.5 && materialId < 1.5) ? 1.75 : 0.0;
-    float4 base = gAlbedo.SampleBias(gSampler, materialUv, floorMipBias);
+    float4 base = SampleMaterialAlbedo(sampledRawUv, input.material, floorMipBias);
     base.rgb = BackroomsBaseColor(base.rgb, materialId);
+    if (IsDoorMaterial(input.material))
+    {
+        float luma = dot(base.rgb, float3(0.299, 0.587, 0.114));
+        base.rgb = lerp(luma * float3(0.54, 0.38, 0.20), base.rgb, 0.16);
+    }
+    if (IsDoorFrameMaterial(input.material))
+    {
+        float luma = dot(base.rgb, float3(0.299, 0.587, 0.114));
+        base.rgb = lerp(float3(0.72, 0.72, 0.67), float3(0.96, 0.95, 0.88), saturate(luma));
+    }
     if ((materialId > 15.5 && materialId < 17.5) || (materialId > 21.5 && materialId < 22.5))
     {
         float hi = max(base.r, max(base.g, base.b));
@@ -3492,10 +3700,10 @@ float4 PSMain(VSOut input) : SV_TARGET
         float fabricMask = 1.0 - smoothstep(0.30, 0.72, max(base.r, max(base.g, base.b)) - min(base.r, min(base.g, base.b)));
         base.rgb = lerp(base.rgb, base.rgb * chairTint, fabricMask * 0.52);
     }
-    float4 pbr = gMaterialProps.SampleBias(gSampler, materialUv, floorMipBias);
+    float4 pbr = SampleMaterialProps(sampledRawUv, input.material, floorMipBias);
     if (materialId > 3.5 && base.a < 0.08) discard;
 
-    float4 nh = gNormalHeight.SampleBias(gSampler, materialUv, floorMipBias);
+    float4 nh = SampleMaterialNormalHeight(sampledRawUv, input.material, floorMipBias);
     float3 nTex = normalize(nh.xyz * 2.0 - 1.0);
     float normalStrength = 0.55;
     if (materialId < 0.5) normalStrength = 0.72;
@@ -3514,7 +3722,8 @@ float4 PSMain(VSOut input) : SV_TARGET
     float exitGlow = max(exitGreen.r, max(exitGreen.g, exitGreen.b));
 
     float fixture = FixturePower(input.worldPos, time);
-    float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
+    float3 overheadColor = LocalLampLightColor(input.worldPos, worldN, time) * gLighting1.x;
+    float overhead = dot(overheadColor, float3(0.299, 0.587, 0.114));
 
     float ambient = gLighting0.z;
     float aoMap = saturate(pbr.r);
@@ -3531,7 +3740,8 @@ float4 PSMain(VSOut input) : SV_TARGET
     float3 diffuseColor = base.rgb * (1.0 - metallic);
     float3 specColor = lerp(float3(0.035, 0.035, 0.035), base.rgb, metallic);
     float ao = lerp(0.58, 1.0, aoMap);
-    float3 color = diffuseColor * (ambient + overhead + flashlight + sparkLight) * ao;
+    float3 color = diffuseColor * (ambient + flashlight + sparkLight) * ao;
+    color += diffuseColor * overheadColor * ao;
     color += diffuseColor * exitGreen * ao;
     float exitDarkTrimReflect = step(9.5, materialId) * (1.0 - step(10.5, materialId));
     color += exitGreen * exitDarkTrimReflect * 0.045 * ao;

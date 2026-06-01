@@ -327,6 +327,13 @@
         bloodWorldFlickerTimer_ = std::max(0.0f, bloodWorldFlickerTimer_ - dt);
         float scareFrequency = JumpscareFrequency();
         float scareScale = ScareCooldownScale();
+        auto customScareAllowed = [&](int index) {
+            if (!playableRun_.customGame) return true;
+            index = std::clamp(index, 0, CustomGameSpec::kScareTypeCount - 1);
+            if (playableRun_.levelSeconds < playableRun_.customScareStartDelayByTypeSeconds[static_cast<size_t>(index)]) return false;
+            return RandRange(0.0f, 1.0f) <= Clamp01(static_cast<float>(
+                std::clamp(playableRun_.customSpec.scareChancePercent[static_cast<size_t>(index)], 0, 100)) / 100.0f);
+        };
         if (scareFrequency <= 0.001f) {
             fleshFlickerTimer_ = 0.0f;
             fleshFlickerCooldown_ = 1000000.0f;
@@ -360,22 +367,29 @@
             fleshFlickerCooldown_ = bloodWorldFlickerCooldown_;
             if (bloodWorldFlickerCooldown_ <= 0.0f && fleshFlickerTimer_ <= 0.0f &&
                 bloodWorldFlickerTimer_ <= 0.0f && scareCooldown_ <= 0.0f) {
-                bool triggerBloodWorld = bloodWorldEnabled && (!fleshWorldEnabled || RandRange(0.0f, 1.0f) < 0.50f);
+                bool bloodAllowed = bloodWorldEnabled && customScareAllowed(3);
+                bool fleshAllowed = fleshWorldEnabled && customScareAllowed(4);
+                bool triggerBloodWorld = bloodAllowed && (!fleshAllowed || RandRange(0.0f, 1.0f) < 0.50f);
                 if (!triggerBloodWorld) {
-                    fleshFlickerDuration_ = settings_.fleshFlickerDuration;
-                    fleshFlickerTimer_ = fleshFlickerDuration_;
-                    TriggerVisionFlashJumpscare(false);
-                    scareCooldown_ = std::max(scareCooldown_, fleshFlickerDuration_ + RandRange(8.0f, 18.0f) * scareScale);
-                    flashlightAgitation_ = std::max(flashlightAgitation_, 0.62f);
-                    AddDread(settings_.dreadFleshGain);
+                    if (!fleshAllowed) {
+                        bloodWorldFlickerCooldown_ = RandRange(1.0f, 3.0f);
+                        fleshFlickerCooldown_ = bloodWorldFlickerCooldown_;
+                    } else {
+                        fleshFlickerDuration_ = settings_.fleshFlickerDuration;
+                        fleshFlickerTimer_ = fleshFlickerDuration_;
+                        TriggerVisionFlashJumpscare(false);
+                        scareCooldown_ = std::max(scareCooldown_, fleshFlickerDuration_ + RandRange(8.0f, 18.0f) * scareScale);
+                        flashlightAgitation_ = std::max(flashlightAgitation_, 0.62f);
+                        AddDread(settings_.dreadFleshGain);
+                    }
                 } else {
-                bloodWorldFlickerDuration_ = settings_.bloodWorldFlickerDuration;
-                bloodWorldFlickerTimer_ = bloodWorldFlickerDuration_;
-                TriggerVisionFlashJumpscare(true);
-                bloodWorldActivationTime_ = time_;
-                scareCooldown_ = std::max(scareCooldown_, bloodWorldFlickerDuration_ + RandRange(9.0f, 20.0f) * scareScale);
-                flashlightAgitation_ = std::max(flashlightAgitation_, 0.72f);
-                AddDread(std::max(settings_.dreadJumpscareGain * 0.90f, 0.30f));
+                    bloodWorldFlickerDuration_ = settings_.bloodWorldFlickerDuration;
+                    bloodWorldFlickerTimer_ = bloodWorldFlickerDuration_;
+                    TriggerVisionFlashJumpscare(true);
+                    bloodWorldActivationTime_ = time_;
+                    scareCooldown_ = std::max(scareCooldown_, bloodWorldFlickerDuration_ + RandRange(9.0f, 20.0f) * scareScale);
+                    flashlightAgitation_ = std::max(flashlightAgitation_, 0.72f);
+                    AddDread(std::max(settings_.dreadJumpscareGain * 0.90f, 0.30f));
                 }
                 float worldMinSeconds = std::min(
                     fleshWorldEnabled ? settings_.fleshFlickerMinSeconds : settings_.bloodWorldFlickerMinSeconds,
@@ -395,59 +409,63 @@
             scareEventTile_ = currentTile;
         }
 
-        for (SparkEmitter& emitter : sparkEmitters_) {
-            if (emitter.triggered) continue;
-            if (!PointWithinHorizontalRange(emitter.pos, maze_.TileAverage() * 3.1f)) continue;
-            if (!ScareSourceAhead(emitter.pos,
-                maze_.TileMinimum() * 0.78f,
-                maze_.TileAverage() * 2.65f,
-                4,
-                0.10f)) continue;
-            float sensory = std::max(ScareSensoryWeight(emitter.pos, 8.5f, 0.80f, 2.35f), 0.72f);
-            if (scareCooldown_ <= 0.0f && sensory > 0.0f) {
-                emitter.triggered = true;
-                float intensity = PickBrokenLampSparkIntensity();
-                EmitPlayerAudibleSound(emitter.pos, SparkHearingRadius(intensity), 1.42f);
-                if (!BreakNearestRuntimeLampAt(emitter.pos, maze_.TileMinimum() * 0.46f)) {
-                    SpawnSparkBurst(emitter, intensity);
-                    ScheduleSparkChain(emitter.pos, intensity * settings_.effectBrokenLampChainIntensityScale, PickBrokenLampChainBursts());
-                }
-                scareCooldown_ = RandRange(9.0f, 18.0f) * scareScale;
-                flashlightAgitation_ = std::max(flashlightAgitation_, 0.42f + sensory * 0.43f);
-                AddDread(settings_.dreadJumpscareGain *
-                    Clamp01(intensity / std::max(0.1f, settings_.effectBrokenLampSparkIntensityMax)) * sensory);
-                if (sensory > 0.55f) {
-                    stumbleTimer_ = std::max(stumbleTimer_, 0.12f + sensory * 0.06f);
-                    stumbleDuration_ = std::max(stumbleDuration_, 0.16f + sensory * 0.06f);
-                    stumbleYawOffset_ = RandRange(-0.18f, 0.18f) * sensory;
+        if (settings_.brokenLampScaresEnabled) {
+            for (SparkEmitter& emitter : sparkEmitters_) {
+                if (emitter.triggered) continue;
+                if (!PointWithinHorizontalRange(emitter.pos, maze_.TileAverage() * 3.1f)) continue;
+                if (!ScareSourceAhead(emitter.pos,
+                    maze_.TileMinimum() * 0.78f,
+                    maze_.TileAverage() * 2.65f,
+                    4,
+                    0.10f)) continue;
+                float sensory = std::max(ScareSensoryWeight(emitter.pos, 8.5f, 0.80f, 2.35f), 0.72f);
+                if (scareCooldown_ <= 0.0f && sensory > 0.0f && customScareAllowed(0)) {
+                    emitter.triggered = true;
+                    float intensity = PickBrokenLampSparkIntensity();
+                    EmitPlayerAudibleSound(emitter.pos, SparkHearingRadius(intensity), 1.42f);
+                    if (!BreakNearestRuntimeLampAt(emitter.pos, maze_.TileMinimum() * 0.46f)) {
+                        SpawnSparkBurst(emitter, intensity);
+                        ScheduleSparkChain(emitter.pos, intensity * settings_.effectBrokenLampChainIntensityScale, PickBrokenLampChainBursts());
+                    }
+                    scareCooldown_ = RandRange(9.0f, 18.0f) * scareScale;
+                    flashlightAgitation_ = std::max(flashlightAgitation_, 0.42f + sensory * 0.43f);
+                    AddDread(settings_.dreadJumpscareGain *
+                        Clamp01(intensity / std::max(0.1f, settings_.effectBrokenLampSparkIntensityMax)) * sensory);
+                    if (sensory > 0.55f) {
+                        stumbleTimer_ = std::max(stumbleTimer_, 0.12f + sensory * 0.06f);
+                        stumbleDuration_ = std::max(stumbleDuration_, 0.16f + sensory * 0.06f);
+                        stumbleYawOffset_ = RandRange(-0.18f, 0.18f) * sensory;
+                    }
                 }
             }
         }
 
-        for (SteamEmitter& emitter : steamEmitters_) {
-            if (emitter.triggered) continue;
-            if (!PointWithinHorizontalRange(emitter.pos, maze_.TileAverage() * 3.25f)) continue;
-            if (!ScareSourceAhead(emitter.pos,
-                maze_.TileMinimum() * 0.82f,
-                maze_.TileAverage() * 2.80f,
-                4,
-                0.08f)) continue;
-            float sensory = std::max(ScareSensoryWeight(emitter.pos, 7.8f, 0.76f, 2.10f), 0.70f);
-            if (sensory > 0.0f && scareCooldown_ <= 0.0f) {
-                emitter.triggered = true;
-                EmitPlayerAudibleSound(emitter.pos, AirVentHearingRadius(), 1.18f);
-                SpawnSteamBurst(emitter, PickAirVentSteamIntensity());
-                if (!emitter.panelDropped &&
-                    RandRange(0.0f, 1.0f) < settings_.effectAirVentPanelDropChance &&
-                    SpawnVentDrop(emitter)) {
-                    emitter.panelDropped = true;
-                    flashlightAgitation_ = std::max(flashlightAgitation_, 0.34f + sensory * 0.41f);
-                    AddDread(settings_.dreadJumpscareGain * 0.78f * sensory);
+        if (settings_.airVentScaresEnabled) {
+            for (SteamEmitter& emitter : steamEmitters_) {
+                if (emitter.triggered) continue;
+                if (!PointWithinHorizontalRange(emitter.pos, maze_.TileAverage() * 3.25f)) continue;
+                if (!ScareSourceAhead(emitter.pos,
+                    maze_.TileMinimum() * 0.82f,
+                    maze_.TileAverage() * 2.80f,
+                    4,
+                    0.08f)) continue;
+                float sensory = std::max(ScareSensoryWeight(emitter.pos, 7.8f, 0.76f, 2.10f), 0.70f);
+                if (sensory > 0.0f && scareCooldown_ <= 0.0f && customScareAllowed(1)) {
+                    emitter.triggered = true;
+                    EmitPlayerAudibleSound(emitter.pos, AirVentHearingRadius(), 1.18f);
+                    SpawnSteamBurst(emitter, PickAirVentSteamIntensity());
+                    if (!emitter.panelDropped &&
+                        RandRange(0.0f, 1.0f) < settings_.effectAirVentPanelDropChance &&
+                        SpawnVentDrop(emitter)) {
+                        emitter.panelDropped = true;
+                        flashlightAgitation_ = std::max(flashlightAgitation_, 0.34f + sensory * 0.41f);
+                        AddDread(settings_.dreadJumpscareGain * 0.78f * sensory);
+                    }
+                    scareCooldown_ = RandRange(10.0f, 21.0f) * scareScale;
+                    AddDread(settings_.dreadJumpscareGain * 0.62f * sensory);
+                    flashlightAgitation_ = std::max(flashlightAgitation_, 0.28f + sensory * 0.36f);
+                    BeginVentReaction(emitter, sensory);
                 }
-                scareCooldown_ = RandRange(10.0f, 21.0f) * scareScale;
-                AddDread(settings_.dreadJumpscareGain * 0.62f * sensory);
-                flashlightAgitation_ = std::max(flashlightAgitation_, 0.28f + sensory * 0.36f);
-                BeginVentReaction(emitter, sensory);
             }
         }
     }

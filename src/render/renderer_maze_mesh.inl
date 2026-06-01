@@ -555,7 +555,8 @@
             addWallPatch(-openingHalf, openingHalf, doorwayTop, wallH);
 
             XMFLOAT3 outward = Scale3(exitPortal.inward, -1.0f);
-            XMFLOAT3 nearCenter = Add3(exitPortal.wallCenter, Scale3(outward, 0.05f));
+            float portalFloorBackset = runtimeMode_ == RendererRuntimeMode::MainMenu ? 0.0f : 0.05f;
+            XMFLOAT3 nearCenter = Add3(exitPortal.wallCenter, Scale3(outward, portalFloorBackset));
             XMFLOAT3 farCenter = Add3(exitPortal.wallCenter, Scale3(outward, vestibuleLength));
             auto p = [&](float along, float y, float depth) {
                 return Add3(nearCenter, Add3(Scale3(exitPortal.right, along), Add3(Scale3(up, y), Scale3(outward, depth))));
@@ -615,12 +616,14 @@
                 return;
             }
 
+            XMFLOAT3 vf0 = p(-vestibuleHalf, 0.0f, 0.0f);
+            XMFLOAT3 vf1 = p(vestibuleHalf, 0.0f, 0.0f);
+            XMFLOAT3 vf2 = p(vestibuleHalf, 0.0f, vestibuleLength);
+            XMFLOAT3 vf3 = p(-vestibuleHalf, 0.0f, vestibuleLength);
             AddQuadUV(vertices, indices,
-                p(-vestibuleHalf, 0.0f, 0.0f), p(vestibuleHalf, 0.0f, 0.0f), p(vestibuleHalf, 0.0f, vestibuleLength), p(-vestibuleHalf, 0.0f, vestibuleLength),
+                vf0, vf1, vf2, vf3,
                 {0, 1, 0}, exitPortal.right,
-                FloorUv(nearCenter.x, nearCenter.z), FloorUv(Add3(nearCenter, Scale3(exitPortal.right, vestibuleHalf * 2.0f)).x, nearCenter.z),
-                FloorUv(Add3(farCenter, Scale3(exitPortal.right, vestibuleHalf)).x, Add3(farCenter, Scale3(exitPortal.right, vestibuleHalf)).z),
-                FloorUv(Add3(farCenter, Scale3(exitPortal.right, -vestibuleHalf)).x, Add3(farCenter, Scale3(exitPortal.right, -vestibuleHalf)).z),
+                FloorUv(vf0.x, vf0.z), FloorUv(vf1.x, vf1.z), FloorUv(vf2.x, vf2.z), FloorUv(vf3.x, vf3.z),
                 1.0f);
             XMFLOAT3 vc0 = p(-vestibuleHalf, vestibuleH, vestibuleLength);
             XMFLOAT3 vc1 = p(vestibuleHalf, vestibuleH, vestibuleLength);
@@ -632,6 +635,20 @@
                 CeilingUv(vc0.x, vc0.z), CeilingUv(vc1.x, vc1.z),
                 CeilingUv(vc2.x, vc2.z), CeilingUv(vc3.x, vc3.z),
                 2.0f);
+            XMFLOAT3 exitLampCenter = p(0.0f, 0.0f, std::min(tileAvg * 0.55f, vestibuleLength * 0.22f));
+            float exitLampSeed = LampSeed(exitPortal.tile.x, exitPortal.tile.y) * 0.73f + 0.19f;
+            AddCeilingCard(vertices, indices, {exitLampCenter.x, 0.0f, exitLampCenter.z},
+                tileW * (0.94f / 3.0f), tileD * (0.94f / 3.0f), 0.0f, vestibuleH - 0.004f, 3.0f + std::fmod(exitLampSeed, 0.49f));
+            runtimeLamps_.push_back({
+                exitPortal.tile,
+                {exitLampCenter.x, vestibuleH - 0.08f, exitLampCenter.z},
+                0.0f,
+                RandRange(0.08f, 0.72f),
+                false,
+                1,
+                false,
+                0.0f
+            });
             auto addVestibuleSide = [&](float side) {
                 XMFLOAT3 normal = Scale3(exitPortal.right, -side);
                 AddQuadUV(vertices, indices,
@@ -1794,11 +1811,14 @@
             XMFLOAT3 inward = exitPortal.inward;
             XMFLOAT3 up{0.0f, 1.0f, 0.0f};
             XMFLOAT3 right = exitPortal.right;
-            constexpr float fixedDoorCenterY = 1.05f;
             constexpr float fixedDoorHalfW = 0.60f;
             constexpr float fixedDoorHalfH = 1.05f;
             constexpr float fixedFramePostHalfW = 0.055f;
             constexpr float fixedFrameTopHalfH = 0.070f;
+            constexpr float fixedFrameDepthHalf = 0.022f;
+            constexpr float fixedFrameForwardOffset = -0.012f;
+            constexpr float fixedFrameMaterial = 21.37f;
+            const float fixedDoorCenterY = runtimeMode_ == RendererRuntimeMode::MainMenu ? 1.068f : 1.05f;
             XMFLOAT3 doorCenter{bx + inward.x * 0.026f, fixedDoorCenterY, bz + inward.z * 0.026f};
             XMFLOAT3 forward = inward;
             exitDoorCenter_ = doorCenter;
@@ -1806,13 +1826,28 @@
             exitDoorRight_ = right;
             exitDoorHinge_ = Add3(doorCenter, OrientedOffset(right, up, forward, -fixedDoorHalfW, 0.0f, 0.0f));
             constexpr float framePostCenterX = fixedDoorHalfW + fixedFramePostHalfW;
-            constexpr float framePostHalfH = (fixedDoorCenterY + fixedDoorHalfH + fixedFrameTopHalfH * 2.0f) * 0.5f;
-            constexpr float framePostCenterY = framePostHalfH;
-            constexpr float frameTopCenterY = fixedDoorCenterY + fixedDoorHalfH + fixedFrameTopHalfH;
+            const float framePostHalfH = (fixedDoorCenterY + fixedDoorHalfH + fixedFrameTopHalfH * 2.0f) * 0.5f;
+            const float framePostCenterY = framePostHalfH;
+            const float frameTopCenterY = fixedDoorCenterY + fixedDoorHalfH + fixedFrameTopHalfH;
             constexpr float frameOuterHalfW = fixedDoorHalfW + fixedFramePostHalfW * 2.0f;
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, -framePostCenterX, framePostCenterY - doorCenter.y, 0.0f)), {fixedFramePostHalfW, framePostHalfH, 0.038f}, exitPortal.yaw, 10.0f);
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, framePostCenterX, framePostCenterY - doorCenter.y, 0.0f)), {fixedFramePostHalfW, framePostHalfH, 0.038f}, exitPortal.yaw, 10.0f);
-            AddOrientedBox(vertices, indices, Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, frameTopCenterY - doorCenter.y, 0.0f)), {frameOuterHalfW, fixedFrameTopHalfH, 0.038f}, exitPortal.yaw, 10.0f);
+            auto addDoorFrameBox = [&](XMFLOAT3 boxCenter, XMFLOAT3 half, bool capBottom) {
+                auto p = [&](float x, float y, float z) {
+                    return Add3(boxCenter, OrientedOffset(right, up, forward, x * half.x, y * half.y, z * half.z));
+                };
+                auto face = [&](XMFLOAT3 a, XMFLOAT3 b, XMFLOAT3 c0, XMFLOAT3 d, XMFLOAT3 n, XMFLOAT3 t) {
+                    AddQuadUV(vertices, indices, a, b, c0, d, n, t, {0, 0}, {1, 0}, {1, 1}, {0, 1}, fixedFrameMaterial);
+                };
+                face(p(-1, -1,  1), p( 1, -1,  1), p( 1,  1,  1), p(-1,  1,  1), forward, right);
+                face(p( 1, -1,  1), p( 1, -1, -1), p( 1,  1, -1), p( 1,  1,  1), right, Scale3(forward, -1.0f));
+                face(p(-1, -1, -1), p(-1, -1,  1), p(-1,  1,  1), p(-1,  1, -1), Scale3(right, -1.0f), forward);
+                face(p(-1,  1,  1), p( 1,  1,  1), p( 1,  1, -1), p(-1,  1, -1), up, right);
+                if (capBottom) {
+                    face(p(-1, -1, -1), p( 1, -1, -1), p( 1, -1,  1), p(-1, -1,  1), Scale3(up, -1.0f), right);
+                }
+            };
+            addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, -framePostCenterX, framePostCenterY - doorCenter.y, fixedFrameForwardOffset)), {fixedFramePostHalfW, framePostHalfH, fixedFrameDepthHalf}, false);
+            addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, framePostCenterX, framePostCenterY - doorCenter.y, fixedFrameForwardOffset)), {fixedFramePostHalfW, framePostHalfH, fixedFrameDepthHalf}, false);
+            addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, frameTopCenterY - doorCenter.y, fixedFrameForwardOffset)), {frameOuterHalfW, fixedFrameTopHalfH, fixedFrameDepthHalf}, true);
             constexpr float fixedSignTargetH = 0.28f;
             float signY = doorCenter.y + fixedDoorHalfH + fixedSignTargetH * 0.5f + 0.24f;
             signY = std::min(signY, wallH - fixedSignTargetH * 0.5f - 0.12f);
@@ -4322,6 +4357,10 @@
             }
         }
 
+        auto mainMenuLampAllowed = [&](Tile lampTile) {
+            return MainMenuAllowedLampTile(lampTile);
+        };
+
         for (int tileY = 0; tileY < maze_.h; ++tileY) {
             for (int tileX = 0; tileX < maze_.w; ++tileX) {
                 MazeWallFeature feature = maze_.WallFeature(tileX, tileY);
@@ -4340,16 +4379,19 @@
                 bool wetLampTile = IsWetCeilingTile(lampTile) || IsWetFootstepTile(lampTile);
                 bool jumpscareLamp = wetLampTile && lampOn && IsPlayableSimulationMode(runtimeMode_) &&
                     LampHash(static_cast<float>(cellX) + 151.3f, static_cast<float>(cellZ) - 207.9f) < settings_.sparkEmitterRatio;
+                bool forceLampOff = false;
                 if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
                     Tile menuSparkTile{std::clamp(maze_.start.x + 1, 1, maze_.w - 2), std::max(1, maze_.start.y - 5)};
-                    bool menuBrokenPanel = lampTile == menuSparkTile;
+                    bool menuAllowedLamp = mainMenuLampAllowed(lampTile);
+                    bool menuBrokenPanel = lampTile == menuSparkTile && !MainMenuAlwaysLitLampTile(lampTile);
                     brokenZone = menuBrokenPanel;
-                    lampOn = !menuBrokenPanel && seed >= 1.0f - settings_.lampOnRatio;
+                    forceLampOff = !menuAllowedLamp;
+                    lampOn = menuAllowedLamp && !menuBrokenPanel;
                     brokenPanel = menuBrokenPanel;
                     jumpscareLamp = false;
                 }
-                float panelW = tileW * (1.01f / 3.0f);
-                float panelD = tileD * (1.01f / 3.0f);
+                float panelW = tileW * (0.94f / 3.0f);
+                float panelD = tileD * (0.94f / 3.0f);
                 float material = lampOn ? 3.0f + seed * 0.49f : 5.0f;
                 AddCeilingCard(vertices, indices, {lampCenter.x, 0.0f, lampCenter.z},
                     panelW, panelD, 0.0f, wallH - 0.004f, material);
@@ -4383,8 +4425,13 @@
                     lampDamagePixels_[static_cast<size_t>(tileY * maze_.w + tileX)] = 255;
                     lampDamageDirty_ = true;
                 }
+                if (forceLampOff && !lampDamagePixels_.empty()) {
+                    lampDamagePixels_[static_cast<size_t>(tileY * maze_.w + tileX)] = 255;
+                    lampDamageDirty_ = true;
+                }
             }
         }
+        UpdateMainMenuLampOverrides();
         CreateLampDamageTexture();
 
         floorCeilingStartIndex_ = static_cast<UINT>(indices.size());

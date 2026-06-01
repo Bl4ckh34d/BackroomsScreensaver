@@ -315,11 +315,13 @@
         if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
         menuStartTransitionActive_ = true;
         menuStartTransitionComplete_ = false;
+        menuStartTransitionFromCustomView_ = menuCustomViewActive_ || menuCustomViewTarget_;
         menuStartTransitionTimer_ = 0.0f;
         menuStartTransitionFade_ = 0.0f;
         menuStartCamera_ = camera_;
         menuStartYaw_ = yaw_;
         menuStartPitch_ = lookPitch_;
+        menuCustomViewTarget_ = false;
         menuSinglePlayerHover_ = true;
         menuButtonHover_ = false;
         menuHoverButtonIndex_ = -1;
@@ -332,9 +334,22 @@
 
     bool MenuButtonScreenRect(int index, RECT& out) const {
         if (menuStartTransitionActive_ || menuStartTransitionComplete_) return false;
-        if (runtimeMode_ != RendererRuntimeMode::MainMenu || index < 0 || index >= 3) return false;
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu || index < 0 || index >= menuButtonCount_) return false;
         MenuPlaquePlacement plaque = MenuButtonPlacement(index);
         return ProjectMenuQuadToScreen(plaque.center, plaque.right, {0.0f, 1.0f, 0.0f}, plaque.halfW, plaque.halfH, out);
+    }
+
+    bool CustomGamePanelScreenRect(RECT& out) const {
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu) return false;
+        MenuPlaquePlacement panel = MenuCustomPanelPlacement();
+        return ProjectMenuQuadToScreen(panel.center, panel.right, {0.0f, 1.0f, 0.0f}, panel.halfW, panel.halfH, out);
+    }
+
+    bool CustomGameControlScreenRect(int control, RECT& out) const {
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu) return false;
+        MenuPlaquePlacement placement{};
+        if (!CustomGameControlPlacement(static_cast<CustomGameMenuControl>(control), placement)) return false;
+        return ProjectMenuQuadToScreen(placement.center, placement.right, {0.0f, 1.0f, 0.0f}, placement.halfW, placement.halfH, out);
     }
 
     bool MenuExitDoorScreenRect(RECT& out) const {
@@ -346,7 +361,9 @@
     void SetMenuHoverButtonIndex(int index) {
         menuHoverButtonIndex_ = index;
         menuButtonHover_ = index >= 0;
-        menuSinglePlayerHover_ = index == 0;
+        menuSinglePlayerHover_ = index >= 0 &&
+            index < menuButtonCount_ &&
+            menuButtonLabelRows_[static_cast<size_t>(index)] == 0;
     }
 
     void SetMenuResumeLabel(bool resume) {
@@ -364,7 +381,72 @@
         add(0);
         add(3);
         add(4);
+        add(5);
         menuResumeLabel_ = canResumeCurrent;
+    }
+
+    void SetMainMenuCustomGameView(bool open) {
+        if (runtimeMode_ != RendererRuntimeMode::MainMenu) return;
+        if (open == menuCustomViewTarget_ && open == menuCustomViewActive_) return;
+        menuCustomViewTarget_ = open;
+        if (open) {
+            menuCustomViewActive_ = true;
+            menuCustomViewTimer_ = 0.0f;
+            menuCustomStartCamera_ = camera_;
+            menuCustomStartYaw_ = yaw_;
+            menuCustomStartPitch_ = lookPitch_;
+            menuButtonHover_ = false;
+            menuExitHover_ = false;
+            menuSinglePlayerHover_ = false;
+            menuHoverButtonIndex_ = -1;
+        } else {
+            menuCustomReturnTimer_ = 0.0f;
+            menuCustomReturnCamera_ = camera_;
+            menuCustomReturnYaw_ = yaw_;
+            menuCustomReturnPitch_ = lookPitch_;
+        }
+    }
+
+    bool MainMenuCustomGameViewVisible() const {
+        return runtimeMode_ == RendererRuntimeMode::MainMenu && (menuCustomViewActive_ || menuCustomViewTarget_);
+    }
+
+    void SetCustomGameMenuState(const CustomGameSpec& spec, int hoverControl, int selectedScare = -1) {
+        int clampedHover = std::clamp(hoverControl, 0, static_cast<int>(CustomGameMenuControl::Back));
+        int clampedSelectedScare = std::clamp(selectedScare, -2, CustomGameSpec::kScareTypeCount - 1);
+        bool changed =
+            customMenuSpec_.layer != spec.layer ||
+            customMenuSpec_.mazeWidth != spec.mazeWidth ||
+            customMenuSpec_.mazeHeight != spec.mazeHeight ||
+            customMenuSpec_.roomCount != spec.roomCount ||
+            customMenuSpec_.brokenLampScares != spec.brokenLampScares ||
+            customMenuSpec_.airVentScares != spec.airVentScares ||
+            customMenuSpec_.waterScares != spec.waterScares ||
+            customMenuSpec_.bloodWorldScares != spec.bloodWorldScares ||
+            customMenuSpec_.fleshWorldScares != spec.fleshWorldScares ||
+            customMenuSpec_.omukadeBoss != spec.omukadeBoss ||
+            customMenuSpec_.eightPages != spec.eightPages ||
+            customMenuSpec_.mapDirtPercent != spec.mapDirtPercent ||
+            customMenuSpec_.paperDensityPercent != spec.paperDensityPercent ||
+            customMenuSpec_.propDensityPercent != spec.propDensityPercent ||
+            customMenuSpec_.lampOnPercent != spec.lampOnPercent ||
+            customMenuSpec_.lampFlickerPercent != spec.lampFlickerPercent ||
+            customMenuSpec_.lampSparkPercent != spec.lampSparkPercent ||
+            customMenuSpec_.fogStartMeters != spec.fogStartMeters ||
+            customMenuSpec_.fogEndMeters != spec.fogEndMeters ||
+            customMenuSpec_.fogDarknessPercent != spec.fogDarknessPercent ||
+            customMenuSpec_.jumpscareChancePercent != spec.jumpscareChancePercent ||
+            customMenuSpec_.jumpscareStartMinSeconds != spec.jumpscareStartMinSeconds ||
+            customMenuSpec_.jumpscareStartMaxSeconds != spec.jumpscareStartMaxSeconds ||
+            customMenuSpec_.scareChancePercent != spec.scareChancePercent ||
+            customMenuSpec_.scareStartMinSeconds != spec.scareStartMinSeconds ||
+            customMenuSpec_.scareStartMaxSeconds != spec.scareStartMaxSeconds ||
+            customMenuHoverControl_ != clampedHover ||
+            customMenuSelectedScare_ != clampedSelectedScare;
+        customMenuSpec_ = spec;
+        customMenuHoverControl_ = clampedHover;
+        customMenuSelectedScare_ = clampedSelectedScare;
+        customMenuTextureDirty_ = customMenuTextureDirty_ || changed;
     }
 
     void SetGameInput(const GameInputSnapshot& input) {
@@ -385,6 +467,24 @@
 
     void DeleteSavedGameRun() {
         DeleteSavedRun();
+    }
+
+    void RestartCustomGameRun(const CustomGameSpec& customSpec) {
+        gEffectDebugViewer = false;
+        gBloodDebugEveryWall = false;
+        runtimeMode_ = RendererRuntimeMode::PlayableGame;
+        EnsureFullSceneAssets();
+        settings_ = gameplaySettings_;
+        menuStartTransitionActive_ = false;
+        menuStartTransitionComplete_ = false;
+        menuStartTransitionFromCustomView_ = false;
+        menuStartTransitionTimer_ = 0.0f;
+        menuStartTransitionFade_ = 0.0f;
+        menuCustomViewTarget_ = false;
+        menuCustomViewActive_ = false;
+        flashlightEnabled_ = true;
+        previousFlashlightInput_ = false;
+        BeginCustomPlayableRun(customSpec);
     }
 
     void ShowGameNotification(const std::wstring& text, float durationSeconds = 4.2f) {
@@ -449,6 +549,7 @@
         settings_ = gameplaySettings_;
         menuStartTransitionActive_ = false;
         menuStartTransitionComplete_ = false;
+        menuStartTransitionFromCustomView_ = false;
         menuStartTransitionTimer_ = 0.0f;
         menuStartTransitionFade_ = 0.0f;
         flashlightEnabled_ = true;

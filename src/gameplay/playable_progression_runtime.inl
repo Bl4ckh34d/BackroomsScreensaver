@@ -168,6 +168,31 @@
         }
     }
 
+    static PlayableScareTier CustomScareTier(const CustomGameSpec& spec) {
+        if (spec.fleshWorldScares) return PlayableScareTier::Flesh;
+        if (spec.bloodWorldScares) return PlayableScareTier::Blood;
+        if (spec.waterScares) return PlayableScareTier::Water;
+        if (spec.brokenLampScares || spec.airVentScares) return PlayableScareTier::Harmless;
+        return PlayableScareTier::None;
+    }
+
+    void ApplyCustomGameScareToggles(const CustomGameSpec& spec) {
+        settings_.brokenLampScaresEnabled = spec.brokenLampScares;
+        settings_.airVentScaresEnabled = spec.airVentScares;
+        settings_.waterDamageEnabled = spec.waterScares;
+        settings_.roomCount = std::clamp(spec.roomCount, 0, 80);
+        if (!spec.waterScares) settings_.waterDamageDensity = 0.0f;
+        settings_.bloodWorldFlicker = spec.bloodWorldScares;
+        if (!spec.bloodWorldScares) settings_.bloodWorldCoverage = 0.0f;
+        settings_.fleshFlicker = spec.fleshWorldScares;
+        bool anyScare = spec.brokenLampScares || spec.airVentScares || spec.waterScares ||
+            spec.bloodWorldScares || spec.fleshWorldScares;
+        int maxChance = 0;
+        for (int chance : spec.scareChancePercent) maxChance = std::max(maxChance, std::clamp(chance, 0, 100));
+        settings_.jumpscareFrequency = anyScare ? Clamp01(static_cast<float>(maxChance) / 100.0f) : 0.0f;
+        if (!spec.omukadeBoss) settings_.monsterIgnorePlayer = true;
+    }
+
     std::wstring EncodeMazeBytes(const std::vector<uint8_t>& bytes) const {
         std::wstring out;
         out.reserve(bytes.size());
@@ -227,6 +252,25 @@
         out << L"Level=" << playableRun_.levelInLayer << L"\n";
         out << L"CompletedLevels=" << playableRun_.completedLevels << L"\n";
         out << L"DarkLayerOne=" << (playableRun_.darkLayerOne ? 1 : 0) << L"\n";
+        out << L"CustomGame=" << (playableRun_.customGame ? 1 : 0) << L"\n";
+        out << L"CustomBrokenLampScares=" << (playableRun_.customSpec.brokenLampScares ? 1 : 0) << L"\n";
+        out << L"CustomAirVentScares=" << (playableRun_.customSpec.airVentScares ? 1 : 0) << L"\n";
+        out << L"CustomWaterScares=" << (playableRun_.customSpec.waterScares ? 1 : 0) << L"\n";
+        out << L"CustomBloodWorldScares=" << (playableRun_.customSpec.bloodWorldScares ? 1 : 0) << L"\n";
+        out << L"CustomFleshWorldScares=" << (playableRun_.customSpec.fleshWorldScares ? 1 : 0) << L"\n";
+        out << L"CustomOmukadeBoss=" << (playableRun_.customSpec.omukadeBoss ? 1 : 0) << L"\n";
+        out << L"CustomEightPages=" << (playableRun_.customSpec.eightPages ? 1 : 0) << L"\n";
+        out << L"CustomRoomCount=" << playableRun_.customSpec.roomCount << L"\n";
+        out << L"CustomJumpscareChancePercent=" << playableRun_.customSpec.jumpscareChancePercent << L"\n";
+        out << L"CustomJumpscareStartMinSeconds=" << playableRun_.customSpec.jumpscareStartMinSeconds << L"\n";
+        out << L"CustomJumpscareStartMaxSeconds=" << playableRun_.customSpec.jumpscareStartMaxSeconds << L"\n";
+        out << L"CustomScareStartDelaySeconds=" << playableRun_.customScareStartDelaySeconds << L"\n";
+        for (size_t i = 0; i < CustomGameSpec::kScareTypeCount; ++i) {
+            out << L"CustomScare" << i << L"ChancePercent=" << playableRun_.customSpec.scareChancePercent[i] << L"\n";
+            out << L"CustomScare" << i << L"StartMinSeconds=" << playableRun_.customSpec.scareStartMinSeconds[i] << L"\n";
+            out << L"CustomScare" << i << L"StartMaxSeconds=" << playableRun_.customSpec.scareStartMaxSeconds[i] << L"\n";
+            out << L"CustomScare" << i << L"StartDelaySeconds=" << playableRun_.customScareStartDelayByTypeSeconds[i] << L"\n";
+        }
         out << L"SaveItemTarget=" << playableRun_.saveItemTarget << L"\n";
         out << L"SaveItemsSpawned=" << playableRun_.saveItemsSpawned << L"\n";
         out << L"LayerPagesCollected=" << playableRun_.layerPagesCollected << L"\n";
@@ -288,6 +332,26 @@
         playableRun_.levelInLayer = std::clamp(SaveInt(values, L"Level", 1), 1, PlayableRunState::kLevelsPerLayer);
         playableRun_.completedLevels = std::max(0, SaveInt(values, L"CompletedLevels", 0));
         playableRun_.darkLayerOne = SaveInt(values, L"DarkLayerOne", 0) != 0;
+        playableRun_.customGame = SaveInt(values, L"CustomGame", 0) != 0;
+        playableRun_.customSpec.brokenLampScares = SaveInt(values, L"CustomBrokenLampScares", 1) != 0;
+        playableRun_.customSpec.airVentScares = SaveInt(values, L"CustomAirVentScares", 1) != 0;
+        playableRun_.customSpec.waterScares = SaveInt(values, L"CustomWaterScares", 1) != 0;
+        playableRun_.customSpec.bloodWorldScares = SaveInt(values, L"CustomBloodWorldScares", 1) != 0;
+        playableRun_.customSpec.fleshWorldScares = SaveInt(values, L"CustomFleshWorldScares", 1) != 0;
+        playableRun_.customSpec.omukadeBoss = SaveInt(values, L"CustomOmukadeBoss", 1) != 0;
+        playableRun_.customSpec.eightPages = SaveInt(values, L"CustomEightPages", 1) != 0;
+        playableRun_.customSpec.roomCount = std::clamp(SaveInt(values, L"CustomRoomCount", playableRun_.customSpec.roomCount), 0, 80);
+        playableRun_.customSpec.jumpscareChancePercent = std::clamp(SaveInt(values, L"CustomJumpscareChancePercent", playableRun_.customSpec.jumpscareChancePercent), 0, 100);
+        playableRun_.customSpec.jumpscareStartMinSeconds = std::clamp(SaveInt(values, L"CustomJumpscareStartMinSeconds", playableRun_.customSpec.jumpscareStartMinSeconds), 0, 600);
+        playableRun_.customSpec.jumpscareStartMaxSeconds = std::clamp(SaveInt(values, L"CustomJumpscareStartMaxSeconds", playableRun_.customSpec.jumpscareStartMaxSeconds), playableRun_.customSpec.jumpscareStartMinSeconds, 600);
+        playableRun_.customScareStartDelaySeconds = std::clamp(SaveFloat(values, L"CustomScareStartDelaySeconds", 0.0f), 0.0f, 600.0f);
+        for (size_t i = 0; i < CustomGameSpec::kScareTypeCount; ++i) {
+            std::wstring prefix = L"CustomScare" + std::to_wstring(i);
+            playableRun_.customSpec.scareChancePercent[i] = std::clamp(SaveInt(values, (prefix + L"ChancePercent").c_str(), playableRun_.customSpec.scareChancePercent[i]), 0, 100);
+            playableRun_.customSpec.scareStartMinSeconds[i] = std::clamp(SaveInt(values, (prefix + L"StartMinSeconds").c_str(), playableRun_.customSpec.scareStartMinSeconds[i]), 0, 600);
+            playableRun_.customSpec.scareStartMaxSeconds[i] = std::clamp(SaveInt(values, (prefix + L"StartMaxSeconds").c_str(), playableRun_.customSpec.scareStartMaxSeconds[i]), playableRun_.customSpec.scareStartMinSeconds[i], 600);
+            playableRun_.customScareStartDelayByTypeSeconds[i] = std::clamp(SaveFloat(values, (prefix + L"StartDelaySeconds").c_str(), playableRun_.customScareStartDelaySeconds), 0.0f, 600.0f);
+        }
         playableRun_.saveItemTarget = std::clamp(SaveInt(values, L"SaveItemTarget", 1), 1, 3);
         int savedSaveItemsSpawned = std::clamp(SaveInt(values, L"SaveItemsSpawned", 0), 0, playableRun_.saveItemTarget);
         playableRun_.saveItemsSpawned = savedSaveItemsSpawned;
@@ -313,7 +377,13 @@
         spec.bossEncounterChance = std::clamp(SaveFloat(values, L"SpecBossChance", 0.0f), 0.0f, 1.0f);
         spec.scareTier = static_cast<PlayableScareTier>(std::clamp(SaveInt(values, L"SpecScareTier", 0), 0, 4));
         playableRun_.currentLevel = spec;
+        if (playableRun_.customGame) {
+            playableRun_.customSpec.layer = spec.layer;
+            playableRun_.customSpec.mazeWidth = spec.mazeWidth;
+            playableRun_.customSpec.mazeHeight = spec.mazeHeight;
+        }
         ApplyPlayableLevelSpec(spec);
+        if (playableRun_.customGame) ApplyCustomGameScareToggles(playableRun_.customSpec);
 
         maze_.w = std::clamp(SaveInt(values, L"MazeW", spec.mazeWidth), 3, 151);
         maze_.h = std::clamp(SaveInt(values, L"MazeH", spec.mazeHeight), 3, 151);
@@ -427,6 +497,91 @@
         BeginPlayableLevel(1);
     }
 
+    void BeginCustomPlayableRun(CustomGameSpec customSpec) {
+        customSpec.layer = std::max(1, customSpec.layer);
+        customSpec.mazeWidth = std::clamp(customSpec.mazeWidth | 1, 3, 151);
+        customSpec.mazeHeight = std::clamp(customSpec.mazeHeight | 1, 3, 151);
+        customSpec.roomCount = std::clamp(customSpec.roomCount, 0, 80);
+        customSpec.mapDirtPercent = std::clamp(customSpec.mapDirtPercent, 0, 100);
+        customSpec.paperDensityPercent = std::clamp(customSpec.paperDensityPercent, 0, 400);
+        customSpec.propDensityPercent = std::clamp(customSpec.propDensityPercent, 0, 400);
+        customSpec.lampOnPercent = std::clamp(customSpec.lampOnPercent, 0, 100);
+        customSpec.lampFlickerPercent = std::clamp(customSpec.lampFlickerPercent, 0, 100);
+        customSpec.lampSparkPercent = std::clamp(customSpec.lampSparkPercent, 0, 100);
+        customSpec.fogStartMeters = std::clamp(customSpec.fogStartMeters, 0, 200);
+        customSpec.fogEndMeters = std::clamp(customSpec.fogEndMeters, customSpec.fogStartMeters + 1, 300);
+        customSpec.fogDarknessPercent = std::clamp(customSpec.fogDarknessPercent, 0, 100);
+        customSpec.jumpscareChancePercent = std::clamp(customSpec.jumpscareChancePercent, 0, 100);
+        customSpec.jumpscareStartMinSeconds = std::clamp(customSpec.jumpscareStartMinSeconds, 0, 600);
+        customSpec.jumpscareStartMaxSeconds = std::clamp(customSpec.jumpscareStartMaxSeconds, customSpec.jumpscareStartMinSeconds, 600);
+        for (size_t i = 0; i < CustomGameSpec::kScareTypeCount; ++i) {
+            customSpec.scareChancePercent[i] = std::clamp(customSpec.scareChancePercent[i], 0, 100);
+            customSpec.scareStartMinSeconds[i] = std::clamp(customSpec.scareStartMinSeconds[i], 0, 600);
+            customSpec.scareStartMaxSeconds[i] = std::clamp(customSpec.scareStartMaxSeconds[i], customSpec.scareStartMinSeconds[i], 600);
+        }
+
+        playableRun_ = {};
+        playableRun_.active = true;
+        playableRun_.levelRunning = true;
+        playableRun_.runFinished = false;
+        playableRun_.customGame = true;
+        playableRun_.customSpec = customSpec;
+        playableRun_.layer = customSpec.layer;
+        playableRun_.levelInLayer = 1;
+        playableRun_.darkLayerOne = false;
+        playableRun_.saveItemTarget = PickLayerSaveItemTarget();
+        playableRun_.completed.reserve(1);
+        playableRun_.levelPageTargets.fill(0);
+        playableRun_.layerPageCollected.fill(customSpec.eightPages ? 0 : 1);
+        if (customSpec.eightPages) playableRun_.levelPageTargets[0] = kCollectiblePageMaterialCount;
+
+        PlayableLevelSpec level{};
+        level.layer = customSpec.layer;
+        level.levelInLayer = 1;
+        level.mazeWidth = customSpec.mazeWidth;
+        level.mazeHeight = customSpec.mazeHeight;
+        level.bossEncounter = customSpec.omukadeBoss;
+        level.bossEncounterChance = customSpec.omukadeBoss ? 1.0f : 0.0f;
+        level.scareTier = CustomScareTier(customSpec);
+        playableRun_.currentLevel = level;
+        playableRun_.levelSeconds = 0.0f;
+        playableRun_.customScareStartDelaySeconds = RandRange(
+            static_cast<float>(customSpec.jumpscareStartMinSeconds),
+            static_cast<float>(customSpec.jumpscareStartMaxSeconds));
+        for (size_t i = 0; i < CustomGameSpec::kScareTypeCount; ++i) {
+            playableRun_.customScareStartDelayByTypeSeconds[i] = RandRange(
+                static_cast<float>(customSpec.scareStartMinSeconds[i]),
+                static_cast<float>(customSpec.scareStartMaxSeconds[i]));
+        }
+        playableRun_.scoreScreenActive = false;
+        playableRun_.scoreScreenFinal = false;
+        monsterKillCount_ = 0;
+
+        ApplyPlayableLevelSpec(playableRun_.currentLevel);
+        settings_.paperDensity = gameplaySettings_.paperDensity * (static_cast<float>(customSpec.paperDensityPercent) / 100.0f);
+        settings_.hallwayPaperRunDensity = gameplaySettings_.hallwayPaperRunDensity * (static_cast<float>(customSpec.paperDensityPercent) / 100.0f);
+        settings_.chairDensity = gameplaySettings_.chairDensity * (static_cast<float>(customSpec.propDensityPercent) / 100.0f);
+        settings_.metalCabinetDensity = gameplaySettings_.metalCabinetDensity * (static_cast<float>(customSpec.propDensityPercent) / 100.0f);
+        settings_.lampOnRatio = static_cast<float>(customSpec.lampOnPercent) / 100.0f;
+        settings_.lampFlickerRatio = static_cast<float>(customSpec.lampFlickerPercent) / 100.0f;
+        settings_.sparkEmitterRatio = static_cast<float>(customSpec.lampSparkPercent) / 100.0f;
+        settings_.fogStartMeters = static_cast<float>(customSpec.fogStartMeters);
+        settings_.fogEndMeters = std::max(settings_.fogStartMeters + 0.1f, static_cast<float>(customSpec.fogEndMeters));
+        settings_.fogDarkness = static_cast<float>(customSpec.fogDarknessPercent) / 100.0f;
+        ApplyCustomGameScareToggles(customSpec);
+        maze_.w = settings_.mazeWidth;
+        maze_.h = settings_.mazeHeight;
+        maze_.tileW = settings_.tileWidthMeters;
+        maze_.tileD = settings_.tileLengthMeters;
+        maze_.exit = {maze_.w - 2, maze_.h - 2};
+        RestartMaze();
+
+        std::wostringstream notice;
+        notice << L"Custom Game  " << maze_.w << L"x" << maze_.h;
+        if (customSpec.omukadeBoss) notice << L"  Omukade active";
+        ShowGameNotification(notice.str(), 3.8f);
+    }
+
     void CompletePlayableLevel() {
         if (!playableRun_.active || !playableRun_.levelRunning) {
             exitTransitionActive_ = false;
@@ -447,8 +602,15 @@
         playableRun_.completed.push_back(result);
         playableRun_.completedLevels = static_cast<int>(playableRun_.completed.size());
         playableRun_.scoreScreenActive = true;
+        int secretsFound = 0;
+        for (uint8_t collected : playableRun_.layerPageCollected) {
+            if (collected) ++secretsFound;
+        }
+        playableRun_.layerPagesCollected = std::max(playableRun_.layerPagesCollected, secretsFound);
+        secretsFound = playableRun_.layerPagesCollected;
+        int secretTotal = (playableRun_.customGame && !playableRun_.customSpec.eightPages) ? 0 : kCollectiblePageMaterialCount;
 
-        if (playableRun_.levelInLayer >= PlayableRunState::kLevelsPerLayer) {
+        if (playableRun_.customGame || playableRun_.levelInLayer >= PlayableRunState::kLevelsPerLayer) {
             playableRun_.runFinished = true;
             playableRun_.active = false;
             playableRun_.scoreScreenFinal = true;
@@ -459,6 +621,7 @@
             std::wostringstream notice;
             notice << L"Layer complete\nTime " << FormatRunSeconds(playableRun_.runSeconds)
                    << L"   Score " << playableRun_.totalScore
+                   << L"\nSecrets found " << secretsFound << L"/" << secretTotal
                    << L"\nPress Esc for menu";
             ShowGameNotification(notice.str(), 3600.0f);
             return;
@@ -468,6 +631,7 @@
         notice << L"Level " << result.levelInLayer << L" clear\n"
                << L"Time " << FormatRunSeconds(result.levelSeconds) << L"   Score +" << result.score
                << L"   Total " << playableRun_.totalScore
+               << L"\nSecrets found " << secretsFound << L"/" << secretTotal
                << L"\nPress Interact to continue";
         ShowGameNotification(notice.str(), 3600.0f);
         exitTransitionActive_ = false;

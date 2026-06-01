@@ -48,6 +48,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                     gApp->gameWindowActive = true;
                     LayoutGameControls(hwnd);
+                    LayoutCustomGameControls(hwnd);
                     if (gApp->gameMouseCaptured) CaptureGameMouse(hwnd);
                     if (gApp->gameState == GameState::MainMenu) InvalidateRect(hwnd, nullptr, TRUE);
                 }
@@ -184,6 +185,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (gApp && gApp->gameShell) {
             if (msg == WM_LBUTTONDOWN && gApp->gameState == GameState::MainMenu && hwnd == gApp->hwnd) {
                 POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+                if (gApp->gameCustomMenuOpen) {
+                    int control = HitTestCustomGameMenu(hwnd, p);
+                    if (control != 0) ActivateCustomGameMenuCommand(hwnd, control);
+                    return 0;
+                }
                 int id = HitTestGameMenu(hwnd, p);
                 if (id != 0) ActivateGameMenuCommand(hwnd, id);
             }
@@ -206,6 +212,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             if (id == kGameDebugId) {
                 ActivateGameMenuCommand(hwnd, id);
+                return 0;
+            }
+            if (id == kGameCustomStartId) {
+                StartCustomGameFromMenu(hwnd);
+                return 0;
+            }
+            if (id == kGameCustomBackId) {
+                ExitGameCustomMenu(hwnd);
                 return 0;
             }
             if (id == kGameBackId) {

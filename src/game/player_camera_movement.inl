@@ -531,6 +531,7 @@
         menuPointerY_ = menuPointerTargetY_ = 0.5f;
         menuDoorOpen_ = 0.0f;
         menuBloodAmount_ = 0.0f;
+        menuDarkLayerOneRun_ = RandRange(0.0f, 1.0f) < 0.05f;
         menuLampBurstPending_ = false;
         menuLampBurstPlayed_ = false;
         bloodWorldActivationTime_ = time_;
@@ -542,6 +543,16 @@
         menuStartCamera_ = camera_;
         menuStartYaw_ = yaw_;
         menuStartPitch_ = lookPitch_;
+        menuCustomViewTarget_ = false;
+        menuCustomViewActive_ = false;
+        menuCustomViewTimer_ = 0.0f;
+        menuCustomReturnTimer_ = 0.0f;
+        menuCustomStartCamera_ = camera_;
+        menuCustomStartYaw_ = yaw_;
+        menuCustomStartPitch_ = lookPitch_;
+        menuCustomReturnCamera_ = camera_;
+        menuCustomReturnYaw_ = yaw_;
+        menuCustomReturnPitch_ = lookPitch_;
         exitDoorAngle_ = 0.0f;
         path_.clear();
         pathIndex_ = 0;
@@ -562,6 +573,7 @@
     }
 
     void UpdateMainMenuScene(float dt) {
+        UpdateMainMenuLampOverrides();
         if (menuStartTransitionActive_) {
             menuStartTransitionTimer_ += std::max(0.0f, dt);
             float t = menuStartTransitionTimer_;
@@ -575,20 +587,28 @@
             constexpr float kMenuWalkSpeed = 1.18f;
             float walkedMeters = walkAge * kMenuWalkSpeed;
             XMFLOAT3 walkPos = menuStartCamera_;
-            walkPos.x = Lerp(menuStartCamera_.x, hallCenter.x, align);
-            walkPos.z = menuStartCamera_.z - walkedMeters;
+            if (menuStartTransitionFromCustomView_) {
+                walkPos.x = Lerp(menuStartCamera_.x, hallCenter.x, SmoothStep(1.02f, 1.82f, t));
+                walkPos.z = menuStartCamera_.z - walkedMeters * 1.08f;
+            } else {
+                walkPos.x = Lerp(menuStartCamera_.x, hallCenter.x, align);
+                walkPos.z = menuStartCamera_.z - walkedMeters;
+            }
             float stepBob = std::sin(walkedMeters * 4.65f) * 0.028f + std::sin(walkedMeters * 9.30f) * 0.010f;
             float bobWeight = SmoothStep(1.52f, 2.08f, t);
             float turnBreath = std::sin(t * 8.6f) * 0.006f * plantedTurn;
             float turnLean = std::sin(turn * kPi) * 0.035f;
             camera_ = walkPos;
-            camera_.x += std::sin(menuStartYaw_ + kPi * 0.5f) * turnLean * (1.0f - align);
-            camera_.z += std::cos(menuStartYaw_ + kPi * 0.5f) * turnLean * (1.0f - align);
+            float leanWeight = menuStartTransitionFromCustomView_ ? (1.0f - SmoothStep(0.88f, 1.64f, t)) : (1.0f - align);
+            camera_.x += std::sin(menuStartYaw_ + kPi * 0.5f) * turnLean * leanWeight;
+            camera_.z += std::cos(menuStartYaw_ + kPi * 0.5f) * turnLean * leanWeight;
             camera_.y = kMenuEyeHeight + turnBreath + stepBob * bobWeight;
             XMFLOAT3 lookPoint{hallCenter.x, 1.34f, camera_.z - maze_.tileD * 5.0f};
             float targetYaw = YawToPoint(lookPoint);
             float targetPitch = std::clamp(PitchToPoint(lookPoint), -0.28f, 0.22f);
-            float yawEase = turn + std::sin(turn * kPi) * 0.035f;
+            float yawEase = menuStartTransitionFromCustomView_
+                ? SmoothStep(0.02f, 1.05f, t) + std::sin(turn * kPi) * 0.025f
+                : turn + std::sin(turn * kPi) * 0.035f;
             yaw_ = menuStartYaw_ + AngleWrap(targetYaw - menuStartYaw_) * Clamp01(yawEase);
             bodyYaw_ = menuStartYaw_ + AngleWrap(yaw_ - menuStartYaw_) * SmoothStep(0.0f, 1.0f, turn);
             lookPitch_ = Lerp(menuStartPitch_, targetPitch, SmoothStep(0.18f, 1.0f, turn)) + turnBreath * 0.18f;
@@ -648,6 +668,92 @@
                 }
             }
         }
+        if (menuCustomViewActive_) {
+            XMFLOAT3 customCamera{};
+            float customYaw = 0.0f;
+            float customPitch = 0.0f;
+            MainMenuCustomCameraPose(customCamera, customYaw, customPitch);
+            if (menuCustomViewTarget_) {
+                menuCustomViewTimer_ += std::max(0.0f, dt);
+                float t = menuCustomViewTimer_;
+                float turn = SmoothStep(0.02f, 1.15f, t);
+                float walk = SmoothStep(0.42f, 2.10f, t);
+                float settle = SmoothStep(2.00f, 2.72f, t);
+                float bobAge = std::max(0.0f, t - 0.32f);
+                float bob = (std::sin(bobAge * 8.9f) * 0.026f + std::sin(bobAge * 17.8f) * 0.009f) *
+                    SmoothStep(0.42f, 0.80f, t) * (1.0f - SmoothStep(2.05f, 2.70f, t));
+                float lean = std::sin(turn * kPi) * 0.030f;
+                camera_.x = Lerp(menuCustomStartCamera_.x, customCamera.x, walk);
+                camera_.y = Lerp(menuCustomStartCamera_.y, customCamera.y, walk) + bob;
+                camera_.z = Lerp(menuCustomStartCamera_.z, customCamera.z, walk) + lean;
+                yaw_ = menuCustomStartYaw_ + AngleWrap(customYaw - menuCustomStartYaw_) * Clamp01(turn + settle * 0.04f);
+                lookPitch_ = Lerp(menuCustomStartPitch_, customPitch, SmoothStep(0.25f, 1.00f, turn));
+                if (t >= 2.72f) {
+                    camera_ = customCamera;
+                    yaw_ = customYaw;
+                    lookPitch_ = customPitch;
+                }
+            } else {
+                menuCustomReturnTimer_ += std::max(0.0f, dt);
+                float t = menuCustomReturnTimer_;
+                float turn = SmoothStep(0.02f, 0.95f, t);
+                float walk = SmoothStep(0.20f, 1.46f, t);
+                float bob = (std::sin(t * 9.8f) * 0.020f + std::sin(t * 19.6f) * 0.007f) *
+                    SmoothStep(0.20f, 0.48f, t) * (1.0f - SmoothStep(1.22f, 1.62f, t));
+                camera_.x = Lerp(menuCustomReturnCamera_.x, menuCustomStartCamera_.x, walk);
+                camera_.y = Lerp(menuCustomReturnCamera_.y, menuCustomStartCamera_.y, walk) + bob;
+                camera_.z = Lerp(menuCustomReturnCamera_.z, menuCustomStartCamera_.z, walk);
+                yaw_ = menuCustomReturnYaw_ + AngleWrap(menuCustomStartYaw_ - menuCustomReturnYaw_) * turn;
+                lookPitch_ = Lerp(menuCustomReturnPitch_, menuCustomStartPitch_, SmoothStep(0.16f, 1.0f, turn));
+                if (t >= 1.68f) {
+                    menuCustomViewActive_ = false;
+                    camera_ = menuCustomStartCamera_;
+                    yaw_ = menuCustomStartYaw_;
+                    lookPitch_ = menuCustomStartPitch_;
+                }
+            }
+            float customIdle = menuCustomViewTarget_
+                ? SmoothStep(1.72f, 2.72f, menuCustomViewTimer_)
+                : (1.0f - SmoothStep(0.0f, 0.72f, menuCustomReturnTimer_));
+            if (customIdle > 0.001f) {
+                float breathe = std::sin(time_ * 1.12f + 0.4f) * 0.0075f +
+                    std::sin(time_ * 0.47f + 2.1f) * 0.0040f;
+                float shoulder = std::sin(time_ * 0.66f + 1.6f) * 0.0065f;
+                camera_.y += breathe * customIdle;
+                camera_.z += shoulder * customIdle;
+                yaw_ += (std::sin(time_ * 0.71f + 0.3f) * 0.009f +
+                    std::sin(time_ * 1.53f + 2.4f) * 0.0035f) * customIdle;
+                lookPitch_ = std::clamp(lookPitch_ + (std::cos(time_ * 0.83f + 1.1f) * 0.0065f +
+                    std::sin(time_ * 1.31f + 0.8f) * 0.0028f) * customIdle, -0.42f, 0.38f);
+            }
+            bodyYaw_ = yaw_;
+            targetYaw = yaw_;
+            targetPitch = lookPitch_;
+            if (width_ > 0 && height_ > 0) {
+                MenuPlaquePlacement panel = MenuCustomPanelPlacement();
+                XMFLOAT3 viewForward = Normalize3(DirectionFromYawPitch(yaw_, lookPitch_), {0.0f, 0.0f, 1.0f});
+                XMFLOAT3 viewRight = Normalize3(Cross3({0.0f, 1.0f, 0.0f}, viewForward), {1.0f, 0.0f, 0.0f});
+                XMFLOAT3 viewUp = Normalize3(Cross3(viewForward, viewRight), {0.0f, 1.0f, 0.0f});
+                float aspect = static_cast<float>(std::max<LONG>(1, width_)) / static_cast<float>(std::max<LONG>(1, height_));
+                float tanHalfFov = std::tan(44.0f * kPi / 180.0f);
+                float ndcX = menuPointerX_ * 2.0f - 1.0f;
+                float ndcY = 1.0f - menuPointerY_ * 2.0f;
+                XMFLOAT3 ray = Normalize3(Add3(viewForward,
+                    Add3(Scale3(viewRight, ndcX * aspect * tanHalfFov), Scale3(viewUp, ndcY * tanHalfFov))), viewForward);
+                float denom = Dot3(ray, panel.inward);
+                if (std::abs(denom) > 0.001f) {
+                    float t = Dot3(Sub3(panel.center, camera_), panel.inward) / denom;
+                    if (t > 0.05f && t < 7.0f) {
+                        XMFLOAT3 aimPoint = Add3(camera_, Scale3(ray, t));
+                        targetYaw = YawToPoint(aimPoint) + jitterYaw * 0.35f;
+                        targetPitch = PitchToPoint(aimPoint) + jitterPitch * 0.35f;
+                    }
+                }
+            }
+            previousCameraYaw_ = yaw_;
+            previousCameraPitch_ = lookPitch_;
+        }
+
         flashlightYaw_ += AngleWrap(targetYaw - flashlightYaw_) * std::min(1.0f, dt * 15.0f);
         flashlightPitch_ += (std::clamp(targetPitch, -0.86f, 0.70f) - flashlightPitch_) * std::min(1.0f, dt * 15.0f);
 

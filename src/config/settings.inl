@@ -190,7 +190,7 @@ struct Settings {
     std::wstring assetFolder = L"assets\\PBRs";
     std::wstring wallStem = L"backrooms_wall";
     std::wstring floorStem = L"downloads\\Fabric029_4K-JPG\\Fabric029_4K-JPG";
-    std::wstring ceilingStem = L"backup_backrooms_pack_20260511_182856\\backrooms_ceiling";
+    std::wstring ceilingStem = L"downloads\\OfficeCeiling001_4K-JPG\\OfficeCeiling001_4K-JPG";
     std::wstring fleshStem = L"downloads\\Others001_4k\\others_0001";
     bool useExternalNormals = true;
     int maxNormalMapMB = 512;
@@ -262,6 +262,8 @@ struct Settings {
     float waterDamageDensity = 0.0f;
     float metalCabinetDensity = 0.85f;
     float jumpscareFrequency = 0.15f;
+    bool brokenLampScaresEnabled = true;
+    bool airVentScaresEnabled = true;
     bool sparkParticles = true;
     float sparkEmitterRatio = 0.15f;
     float sparkBurstMinSeconds = 2.8f;
@@ -544,11 +546,11 @@ std::wstring DefaultConfigText() {
       << L"WallStem=backrooms_wall\r\n"
       << L"; Leave a stem empty to use the built-in procedural material.\r\n"
       << L"FloorStem=downloads\\Fabric029_4K-JPG\\Fabric029_4K-JPG\r\n"
-      << L"CeilingStem=backup_backrooms_pack_20260511_182856\\backrooms_ceiling\r\n"
+      << L"CeilingStem=downloads\\OfficeCeiling001_4K-JPG\\OfficeCeiling001_4K-JPG\r\n"
       << L"FleshStem=downloads\\Others001_4k\\others_0001\r\n"
       << L"WallScaleMeters=1.8\r\n"
       << L"FloorScaleMeters=1.8\r\n"
-      << L"; 0 auto-aligns the 6x6 ceiling sheet as a 3x3 panel grid per maze tile.\r\n"
+      << L"; 0 maps the 6x6 4K ceiling sheet as a 3x3 panel grid per maze tile.\r\n"
       << L"CeilingScaleMeters=0\r\n"
       << L"UseExternalNormals=1\r\n"
       << L"MaxNormalMapMB=512\r\n\r\n"

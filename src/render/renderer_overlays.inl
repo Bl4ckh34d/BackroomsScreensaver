@@ -266,10 +266,6 @@
 
         if (runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.scoreScreenActive) {
             pushRect(0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), {0.0f, 0.0f, 0.0f, 0.54f});
-            float panelW = std::clamp(static_cast<float>(width_) * 0.58f, 360.0f, 760.0f);
-            float panelH = std::clamp(static_cast<float>(height_) * 0.26f, 170.0f, 250.0f);
-            pushRect((static_cast<float>(width_) - panelW) * 0.5f, (static_cast<float>(height_) - panelH) * 0.5f,
-                panelW, panelH, {0.020f, 0.018f, 0.014f, 0.82f});
         }
 
         float x = 24.0f;
