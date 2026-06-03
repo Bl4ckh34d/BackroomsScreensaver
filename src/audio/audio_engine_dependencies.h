@@ -1,6 +1,9 @@
 #pragma once
 
 #include <windows.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
 #include <xaudio2.h>
 #include <x3daudio.h>
 #include <wrl/client.h>
@@ -12,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <random>

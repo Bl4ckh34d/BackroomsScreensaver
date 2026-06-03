@@ -2,6 +2,7 @@
     s.gameFullscreen = ParseConfigInt(state, L"GameWindow", L"Fullscreen", s.gameFullscreen ? 1 : 0) != 0;
     s.gameResolutionWidth = std::clamp(ParseConfigInt(state, L"GameWindow", L"ResolutionWidth", s.gameResolutionWidth), 640, 7680);
     s.gameResolutionHeight = std::clamp(ParseConfigInt(state, L"GameWindow", L"ResolutionHeight", s.gameResolutionHeight), 360, 4320);
+    s.gameFrameRateLimit = std::clamp(ParseConfigInt(state, L"GameWindow", L"FrameRateLimit", s.gameFrameRateLimit), 15, 144);
     s.mazeWidth = std::clamp(ParseConfigInt(state, L"Maze", L"Width", s.mazeWidth) | 1, 15, 151);
     s.mazeHeight = std::clamp(ParseConfigInt(state, L"Maze", L"Height", s.mazeHeight) | 1, 15, 151);
     s.roomCount = std::clamp(ParseConfigInt(state, L"Maze", L"RoomCount", s.roomCount), 0, 80);

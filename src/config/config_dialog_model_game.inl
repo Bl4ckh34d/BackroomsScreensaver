@@ -12,6 +12,7 @@ void BuildGameConfigModel(ConfigState* state) {
     AddCustomConfigField(f, 0, 0, kConfigGameFullscreenId, L"Display", L"GameWindow", L"Fullscreen", L"Fullscreen", L"1", ConfigFieldKind::Bool, 0);
     AddCustomConfigField(f, 0, 0, kConfigGameResolutionWidthId, L"Display", L"GameWindow", L"ResolutionWidth", L"Resolution width", L"1920", ConfigFieldKind::Text, 90);
     AddCustomConfigField(f, 0, 0, kConfigGameResolutionHeightId, L"Display", L"GameWindow", L"ResolutionHeight", L"Resolution height", L"1080", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 0, 0, kConfigGameFrameRateLimitId, L"Display", L"GameWindow", L"FrameRateLimit", L"Frame rate limit", L"30", ConfigFieldKind::Text, 90);
     AddConfigFieldCopy(f, L"Renderer", L"AllowWarpFallback", 0, 1, L"System");
     AddConfigFieldCopy(f, L"Randomization", L"RunVariation", 0, 0, L"Runtime");
     AddConfigFieldCopy(f, L"Maze", L"RandomSeed", 0, 1, L"Runtime");
@@ -60,6 +61,7 @@ void BuildGameConfigModel(ConfigState* state) {
 
     AddCustomConfigField(f, 4, 0, kConfigAudioMutedId, L"Master", L"Audio", L"Muted", L"Mute audio", L"0", ConfigFieldKind::Bool, 0);
     AddCustomConfigField(f, 4, 0, kConfigAudioMasterVolumeId, L"Master", L"Audio", L"MasterVolume", L"Master volume", L"1", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 4, 0, kConfigAudioMusicVolumeId, L"Mix", L"Audio", L"MusicVolume", L"Music volume", L"1", ConfigFieldKind::Text, 90);
     AddCustomConfigField(f, 4, 0, kConfigAudioEffectsVolumeId, L"Mix", L"Audio", L"EffectsVolume", L"Effects volume", L"1", ConfigFieldKind::Text, 90);
     AddCustomConfigField(f, 4, 0, kConfigAudioAmbienceVolumeId, L"Mix", L"Audio", L"AmbienceVolume", L"Ambience volume", L"1", ConfigFieldKind::Text, 90);
     AddCustomConfigField(f, 4, 0, kConfigAudioMonsterVolumeId, L"Mix", L"Audio", L"MonsterVolume", L"Monster volume", L"1", ConfigFieldKind::Text, 90);

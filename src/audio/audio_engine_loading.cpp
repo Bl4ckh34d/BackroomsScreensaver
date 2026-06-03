@@ -36,7 +36,17 @@ void AudioEngine::AddFolder(const AudioEngineAssets& assets, GameSound sound, co
     });
     for (const std::filesystem::path& path : paths) {
         AudioSample sample{};
-        if (LoadWav(path, sample)) {
+        bool loaded = false;
+        std::wstring extension = path.extension().wstring();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t c) {
+            return static_cast<wchar_t>(std::towlower(c));
+        });
+        if (extension == L".mp3") {
+            loaded = LoadMp3(path, sample);
+        } else {
+            loaded = LoadWav(path, sample);
+        }
+        if (loaded) {
             groups_[static_cast<size_t>(sound)].push_back(samples_.size());
             samples_.push_back(std::move(sample));
         }
@@ -100,4 +110,68 @@ bool AudioEngine::LoadWav(const std::filesystem::path& path, AudioSample& out) c
         in.seekg(next, std::ios::beg);
     }
     return gotFmt && gotData && out.format.nChannels > 0 && out.format.nSamplesPerSec > 0;
+}
+
+bool AudioEngine::LoadMp3(const std::filesystem::path& path, AudioSample& out) const {
+    if (!mediaFoundationStarted_) return false;
+
+    Microsoft::WRL::ComPtr<IMFSourceReader> reader;
+    HRESULT hr = MFCreateSourceReaderFromURL(path.c_str(), nullptr, &reader);
+    if (FAILED(hr) || !reader) return false;
+
+    Microsoft::WRL::ComPtr<IMFMediaType> outputType;
+    hr = MFCreateMediaType(&outputType);
+    if (FAILED(hr) || !outputType) return false;
+    outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+    outputType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+    hr = reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, nullptr, outputType.Get());
+    if (FAILED(hr)) return false;
+
+    Microsoft::WRL::ComPtr<IMFMediaType> currentType;
+    hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &currentType);
+    if (FAILED(hr) || !currentType) return false;
+
+    WAVEFORMATEX* waveFormat = nullptr;
+    UINT32 waveFormatSize = 0;
+    hr = MFCreateWaveFormatExFromMFMediaType(currentType.Get(), &waveFormat, &waveFormatSize);
+    if (FAILED(hr) || !waveFormat || waveFormatSize < sizeof(WAVEFORMATEX)) return false;
+
+    out.format = *waveFormat;
+    out.formatExtra.clear();
+    const UINT32 baseSize = static_cast<UINT32>(sizeof(WAVEFORMATEX));
+    if (waveFormatSize > baseSize) {
+        const uint8_t* extraBegin = reinterpret_cast<const uint8_t*>(waveFormat) + baseSize;
+        out.formatExtra.assign(extraBegin, extraBegin + (waveFormatSize - baseSize));
+        out.format.cbSize = static_cast<WORD>(out.formatExtra.size());
+    }
+    CoTaskMemFree(waveFormat);
+
+    while (true) {
+        DWORD streamFlags = 0;
+        LONGLONG timestamp = 0;
+        Microsoft::WRL::ComPtr<IMFSample> sample;
+        hr = reader->ReadSample(MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, nullptr, &streamFlags, &timestamp, &sample);
+        if (FAILED(hr)) return false;
+        if ((streamFlags & MF_SOURCE_READERF_ENDOFSTREAM) != 0) break;
+        if (!sample) continue;
+
+        Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+        hr = sample->ConvertToContiguousBuffer(&buffer);
+        if (FAILED(hr) || !buffer) return false;
+
+        BYTE* audioBytes = nullptr;
+        DWORD maxLength = 0;
+        DWORD currentLength = 0;
+        hr = buffer->Lock(&audioBytes, &maxLength, &currentLength);
+        if (FAILED(hr)) return false;
+        (void)maxLength;
+        if (audioBytes && currentLength > 0) {
+            size_t offset = out.data.size();
+            out.data.resize(offset + currentLength);
+            std::memcpy(out.data.data() + offset, audioBytes, currentLength);
+        }
+        buffer->Unlock();
+    }
+
+    return !out.data.empty() && out.format.nChannels > 0 && out.format.nSamplesPerSec > 0;
 }

@@ -25,7 +25,7 @@
                 notice << L"\nSecrets found " << completion.levelSecretsFound << L"/" << completion.levelSecretTotal;
             }
             notice << L"\nPress Esc for menu";
-            ShowGameNotification(notice.str(), 3600.0f);
+            ShowScoreNotification(notice.str(), 3600.0f);
             return;
         }
 
@@ -36,7 +36,6 @@
         if (completion.levelSecretTotal > 0) {
             notice << L"\nSecrets found " << completion.levelSecretsFound << L"/" << completion.levelSecretTotal;
         }
-        notice << L"\nPress Interact to continue";
-        ShowGameNotification(notice.str(), 3600.0f);
-        gameWorld_.EndExitTransition();
+        notice << L"\nPress any key to continue";
+        ShowScoreNotification(notice.str(), 3600.0f);
     }

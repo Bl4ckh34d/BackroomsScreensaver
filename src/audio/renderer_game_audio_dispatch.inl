@@ -7,7 +7,11 @@
         if (playbackEnabled && event.volume > 0.0f) {
             float occlusion = event.useOcclusion ? AudioOcclusionFor(event.pos) : 0.0f;
             occlusion = std::min(occlusion, event.occlusionLimit);
-            audioRuntime_.engine.PlayRandom(event.sound, event.bus, event.pos, event.volume, event.spatial, occlusion);
+            if (event.playbackTag >= 0) {
+                audioRuntime_.engine.PlayTagged(event.sound, event.bus, event.pos, event.volume, event.spatial, event.playbackTag, occlusion);
+            } else {
+                audioRuntime_.engine.PlayRandom(event.sound, event.bus, event.pos, event.volume, event.spatial, occlusion);
+            }
         }
         if (event.hearingRadius > 0.0f) {
             EmitPlayerAudibleSound(event.pos, event.hearingRadius, event.hearingLife);

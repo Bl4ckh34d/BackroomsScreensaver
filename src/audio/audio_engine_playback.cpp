@@ -23,6 +23,14 @@ void AudioEngine::PlayRandom(GameSound sound, AudioBus bus, XMFLOAT3 pos, float 
     StartVoice(sound, sampleIndex, bus, pos, volume, false, spatial, 1.0f, -1, initialOcclusion);
 }
 
+void AudioEngine::PlayTagged(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume, bool spatial, int tag,
+                             float initialOcclusion) {
+    if (tag >= 0 && HasTaggedVoice(tag)) return;
+    size_t sampleIndex = PickRandomSample(sound);
+    if (sampleIndex == kInvalidSample) return;
+    StartVoice(sound, sampleIndex, bus, pos, volume, false, spatial, 1.0f, tag, initialOcclusion);
+}
+
 void AudioEngine::StartLoop(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume, bool spatial,
                             float initialOcclusion) {
     size_t sampleIndex = PickRandomSample(sound);

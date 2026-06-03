@@ -5,6 +5,8 @@
         }
         audioRuntime_.engine.ApplySettings(MakeAudioEngineSettings(settingsRuntime_.live));
         audioRuntime_.engine.SetListener(gameWorld_.player.position, DirectionFromYawPitch(gameWorld_.player.yaw, gameWorld_.player.pitch));
+        if (sessionRuntime_.IsMainMenu()) EnsureTitleThemeAudio();
+        StopExpiredVisionFlashAudio();
         DrainGameAudioEvents(true);
         UpdatePlayerAudibleSoundPulses(dt);
         UpdateMenuDoorAudio();

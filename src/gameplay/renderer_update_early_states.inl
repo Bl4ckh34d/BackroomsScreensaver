@@ -25,11 +25,13 @@
         }
 
         if (sessionRuntime_.IsPlayableGame() && gameWorld_.PlayableScoreScreenActive()) {
-            if (PlayerController::ConsumeInteractPress(gameWorld_.player, sessionRuntime_.input.interact)) {
+            bool anyKeyPressed = sessionRuntime_.input.anyKey && !viewRuntime_.scoreContinuePressedLastFrame;
+            viewRuntime_.scoreContinuePressedLastFrame = sessionRuntime_.input.anyKey;
+            if (viewRuntime_.exitScoreContinueReady && anyKeyPressed) {
                 ContinueAfterScoreScreen();
             }
             UpdateFlashlightAim(dt);
             UpdateAirParticles(dt);
             UpdateAirParticleFocus(dt);
-            return;
+            if (!gameWorld_.exitTransitionActive) return;
         }

@@ -18,8 +18,13 @@
                 ++i;
                 continue;
             }
-            instance.occlusionRefresh -= dt;
-            if (instance.occlusionRefresh <= 0.0f) {
+            if (!instance.spatial || instance.bus == AudioBus::Music) {
+                instance.occlusion = 0.0f;
+                instance.occlusionRefresh = 0.0f;
+            } else {
+                instance.occlusionRefresh -= dt;
+            }
+            if (instance.spatial && instance.bus != AudioBus::Music && instance.occlusionRefresh <= 0.0f) {
                 instance.occlusion = std::clamp(occlusionForPosition(instance.pos), 0.0f, 8.0f);
                 instance.occlusionRefresh = instance.bus == AudioBus::Ambience ? 0.32f : 0.14f;
             }

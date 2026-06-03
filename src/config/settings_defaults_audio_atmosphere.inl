@@ -3,6 +3,7 @@
       << L"; Reserved for the game audio engine. Values are saved now so the settings UI is ready.\r\n"
       << L"Muted=0\r\n"
       << L"MasterVolume=1\r\n"
+      << L"MusicVolume=1\r\n"
       << L"EffectsVolume=1\r\n"
       << L"AmbienceVolume=1\r\n"
       << L"MonsterVolume=1\r\n\r\n"

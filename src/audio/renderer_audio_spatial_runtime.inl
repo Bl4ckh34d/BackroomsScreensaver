@@ -2,4 +2,5 @@
 #include "renderer_audio_wall_blocks.inl"
 #include "renderer_audio_occlusion.inl"
 #include "renderer_audio_persistent_emitters.inl"
+#include "renderer_title_theme_audio.inl"
 #include "renderer_audio_update.inl"

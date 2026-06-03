@@ -23,5 +23,15 @@ GameInputSnapshot CollectGameInput() {
     input.interact = down(GameActionKey(settings, GameInputAction::Interact));
     input.flashlight = down(GameActionKey(settings, GameInputAction::Flashlight));
     input.pause = down(GameActionKey(settings, GameInputAction::Pause));
+    for (int vk = VK_BACK; vk <= VK_OEM_CLEAR; ++vk) {
+        if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON ||
+            vk == VK_XBUTTON1 || vk == VK_XBUTTON2) {
+            continue;
+        }
+        if (down(vk)) {
+            input.anyKey = true;
+            break;
+        }
+    }
     return input;
 }

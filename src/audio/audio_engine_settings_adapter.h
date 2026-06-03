@@ -11,6 +11,7 @@ inline AudioEngineSettings MakeAudioEngineSettings(const Settings& settings) {
     AudioEngineSettings audio{};
     audio.audioMuted = settings.audioMuted;
     audio.audioMasterVolume = settings.audioMasterVolume;
+    audio.audioMusicVolume = settings.audioMusicVolume;
     audio.audioEffectsVolume = settings.audioEffectsVolume;
     audio.audioAmbienceVolume = settings.audioAmbienceVolume;
     audio.audioMonsterVolume = settings.audioMonsterVolume;

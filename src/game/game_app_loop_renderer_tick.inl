@@ -8,8 +8,8 @@
             }
             app.renderer.TickFixed(dt);
             if (app.gameState == GameState::DebugScene) RedrawDebugSliceControls();
+            limitGameFrameRate();
         } else if (app.gameState != GameState::MainMenu) {
             Sleep(10);
         }
-        Sleep(1);
     }

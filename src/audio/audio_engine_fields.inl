@@ -1,5 +1,6 @@
     bool initialized_ = false;
     bool comInitialized_ = false;
+    bool mediaFoundationStarted_ = false;
     HRESULT comHr_ = E_FAIL;
     Microsoft::WRL::ComPtr<IXAudio2> xaudio_;
     IXAudio2MasteringVoice* masterVoice_ = nullptr;
@@ -12,7 +13,7 @@
     std::mt19937 rng_{0xA7710u};
     bool muted_ = false;
     float masterVolume_ = 1.0f;
+    float musicVolume_ = 1.0f;
     float effectsVolume_ = 1.0f;
     float ambienceVolume_ = 1.0f;
     float monsterVolume_ = 1.0f;
-

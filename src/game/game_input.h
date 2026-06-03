@@ -10,4 +10,5 @@ struct GameInputSnapshot {
     bool interact = false;
     bool flashlight = false;
     bool pause = false;
+    bool anyKey = false;
 };

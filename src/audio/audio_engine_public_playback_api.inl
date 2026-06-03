@@ -1,5 +1,8 @@
     void StopAll();
+    void StopAllExceptTag(int preservedTag);
     void PlayRandom(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume = 1.0f, bool spatial = true,
+                    float initialOcclusion = 0.0f);
+    void PlayTagged(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume, bool spatial, int tag,
                     float initialOcclusion = 0.0f);
     void StartLoop(GameSound sound, AudioBus bus, XMFLOAT3 pos, float volume = 1.0f, bool spatial = true,
                    float initialOcclusion = 0.0f);

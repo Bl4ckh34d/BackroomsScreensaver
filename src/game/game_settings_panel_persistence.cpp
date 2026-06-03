@@ -62,6 +62,7 @@ void SaveGameSettingsPanel(const GameSettingsPanelState* state) {
     WriteIniIntValue(L"GameWindow", L"Fullscreen", s.gameFullscreen ? 1 : 0);
     WriteIniIntValue(L"GameWindow", L"ResolutionWidth", s.gameResolutionWidth);
     WriteIniIntValue(L"GameWindow", L"ResolutionHeight", s.gameResolutionHeight);
+    WriteIniIntValue(L"GameWindow", L"FrameRateLimit", s.gameFrameRateLimit);
     WriteIniIntValue(L"Renderer", L"AllowWarpFallback", s.allowWarpFallback ? 1 : 0);
     WriteIniFloat(L"Lighting", L"Exposure", s.exposure);
     WriteIniFloat(L"Lighting", L"BloomAmount", s.bloomAmount);
@@ -77,6 +78,7 @@ void SaveGameSettingsPanel(const GameSettingsPanelState* state) {
     }
     WriteIniIntValue(L"Audio", L"Muted", s.audioMuted ? 1 : 0);
     WriteIniFloat(L"Audio", L"MasterVolume", s.audioMasterVolume);
+    WriteIniFloat(L"Audio", L"MusicVolume", s.audioMusicVolume);
     WriteIniFloat(L"Audio", L"EffectsVolume", s.audioEffectsVolume);
     WriteIniFloat(L"Audio", L"AmbienceVolume", s.audioAmbienceVolume);
     WriteIniFloat(L"Audio", L"MonsterVolume", s.audioMonsterVolume);

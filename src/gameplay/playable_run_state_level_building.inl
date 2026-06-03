@@ -14,18 +14,18 @@
 
         switch (spec.levelInLayer) {
         case 1:
-            spec.mazeWidth = 15;
-            spec.mazeHeight = 15;
+            spec.mazeWidth = 20;
+            spec.mazeHeight = 20;
             spec.scareTier = PlayableScareTier::None;
             spec.bossEncounterChance = 0.0f;
             break;
         case 2:
             if ((rng() & 1u) == 0) {
-                spec.mazeWidth = 20;
-                spec.mazeHeight = 10;
+                spec.mazeWidth = 25;
+                spec.mazeHeight = 15;
             } else {
-                spec.mazeWidth = 10;
-                spec.mazeHeight = 20;
+                spec.mazeWidth = 15;
+                spec.mazeHeight = 25;
             }
             spec.scareTier = PlayableScareTier::Harmless;
             spec.bossEncounterChance = 0.05f;
@@ -39,9 +39,9 @@
         case 4:
             if ((rng() & 1u) == 0) {
                 spec.mazeWidth = 30;
-                spec.mazeHeight = 15;
+                spec.mazeHeight = 20;
             } else {
-                spec.mazeWidth = 15;
+                spec.mazeWidth = 20;
                 spec.mazeHeight = 30;
             }
             spec.scareTier = PlayableScareTier::Blood;
@@ -49,7 +49,7 @@
             break;
         default:
             {
-                const std::array<Tile, 5> choices = {{{35, 20}, {40, 15}, {15, 40}, {35, 20}, {27, 27}}};
+                const std::array<Tile, 5> choices = {{{25, 35}, {40, 20}, {20, 40}, {35, 25}, {30, 30}}};
                 Tile size = choices[static_cast<size_t>(rng() % choices.size())];
                 spec.mazeWidth = size.x;
                 spec.mazeHeight = size.y;

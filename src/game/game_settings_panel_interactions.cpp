@@ -23,8 +23,14 @@ void ApplyGameSettingsSlider(GameSettingsPanelState* state, int id, int x) {
     case kGameSettingsMouseSensitivity:
         s.mouseSensitivity = std::clamp(sliderValue(0.2f, 3.0f), 0.2f, 3.0f);
         break;
+    case kGameSettingsFrameRateLimit:
+        s.gameFrameRateLimit = std::clamp(static_cast<int>(std::round(sliderValue(15.0f, 144.0f))), 15, 144);
+        break;
     case kGameSettingsMasterVolume:
         s.audioMasterVolume = std::clamp(sliderValue(0.0f, 1.0f), 0.0f, 1.0f);
+        break;
+    case kGameSettingsMusicVolume:
+        s.audioMusicVolume = std::clamp(sliderValue(0.0f, 1.0f), 0.0f, 1.0f);
         break;
     case kGameSettingsEffectsVolume:
         s.audioEffectsVolume = std::clamp(sliderValue(0.0f, 1.0f), 0.0f, 1.0f);

@@ -8,6 +8,5 @@
             spatial,
             emitPlayerNoise ? LightBulbBreakHearingRadius() : 0.0f,
             1.70f,
-            spatial,
-            1.15f).WithCategory(GameAudioEventCategory::Lamp));
+            false).WithCategory(GameAudioEventCategory::Lamp));
     }

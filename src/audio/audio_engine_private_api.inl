@@ -10,6 +10,7 @@
     void AddFolder(const AudioEngineAssets& assets, GameSound sound, const std::wstring& folder,
                    const std::wstring& pattern = L"*.wav");
     bool LoadWav(const std::filesystem::path& path, AudioSample& out) const;
+    bool LoadMp3(const std::filesystem::path& path, AudioSample& out) const;
     size_t PickSample(GameSound sound);
     float BusVolume(AudioBus bus) const;
     void StartVoice(GameSound sound, size_t sampleIndex, AudioBus bus, XMFLOAT3 pos, float volume, bool loop, bool spatial,

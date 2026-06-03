@@ -36,6 +36,7 @@ void PaintGameSettingsPanel(HWND hwnd, HDC dc, GameSettingsPanelState* state) {
         DrawGameSettingsCheck(dc, state, x, y, kGameSettingsFullscreen, L"Fullscreen", s.gameFullscreen); y += 44;
         DrawGameSettingsDropdown(dc, state, x, y, kGameSettingsResolutionDropdown, L"Window resolution",
             FormatResolution(s.gameResolutionWidth, s.gameResolutionHeight)); y += state->resolutionDropdownOpen ? 282 : 50;
+        DrawGameSettingsSlider(dc, state, x, y, kGameSettingsFrameRateLimit, L"Frame rate limit", static_cast<float>(s.gameFrameRateLimit), 15.0f, 144.0f, FormatSettingValue(s.gameFrameRateLimit)); y += 42;
         DrawGameSettingsCheck(dc, state, x, y, kGameSettingsWarp, L"Allow WARP fallback", s.allowWarpFallback);
         RECT note{x, y + 52, panel.right - 34, y + 88};
         DrawTextLine(dc, L"Save applies fullscreen and window size immediately, then returns to the menu.", note, RGB(174, 166, 142), DT_LEFT | DT_WORDBREAK);
@@ -62,6 +63,7 @@ void PaintGameSettingsPanel(HWND hwnd, HDC dc, GameSettingsPanelState* state) {
     } else {
         DrawGameSettingsCheck(dc, state, x, y, kGameSettingsMuted, L"Mute audio", s.audioMuted); y += 48;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsMasterVolume, L"Master volume", s.audioMasterVolume, 0.0f, 1.0f, FormatSettingValue(s.audioMasterVolume)); y += 42;
+        DrawGameSettingsSlider(dc, state, x, y, kGameSettingsMusicVolume, L"Music volume", s.audioMusicVolume, 0.0f, 1.0f, FormatSettingValue(s.audioMusicVolume)); y += 42;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsEffectsVolume, L"Effects volume", s.audioEffectsVolume, 0.0f, 1.0f, FormatSettingValue(s.audioEffectsVolume)); y += 42;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsAmbienceVolume, L"Ambience volume", s.audioAmbienceVolume, 0.0f, 1.0f, FormatSettingValue(s.audioAmbienceVolume)); y += 42;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsMonsterVolume, L"Monster volume", s.audioMonsterVolume, 0.0f, 1.0f, FormatSettingValue(s.audioMonsterVolume));

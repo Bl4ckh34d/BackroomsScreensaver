@@ -19,12 +19,14 @@ constexpr int kConfigMouseSensitivityId = kConfigFieldBaseId + 166;
 constexpr int kConfigInvertMouseYId = kConfigFieldBaseId + 167;
 constexpr int kConfigAudioMutedId = kConfigFieldBaseId + 168;
 constexpr int kConfigAudioMasterVolumeId = kConfigFieldBaseId + 169;
-constexpr int kConfigAudioEffectsVolumeId = kConfigFieldBaseId + 170;
-constexpr int kConfigAudioAmbienceVolumeId = kConfigFieldBaseId + 171;
-constexpr int kConfigAudioMonsterVolumeId = kConfigFieldBaseId + 172;
-constexpr int kConfigGameFullscreenId = kConfigFieldBaseId + 173;
-constexpr int kConfigGameResolutionWidthId = kConfigFieldBaseId + 174;
-constexpr int kConfigGameResolutionHeightId = kConfigFieldBaseId + 175;
+constexpr int kConfigAudioMusicVolumeId = kConfigFieldBaseId + 170;
+constexpr int kConfigAudioEffectsVolumeId = kConfigFieldBaseId + 171;
+constexpr int kConfigAudioAmbienceVolumeId = kConfigFieldBaseId + 172;
+constexpr int kConfigAudioMonsterVolumeId = kConfigFieldBaseId + 173;
+constexpr int kConfigGameFullscreenId = kConfigFieldBaseId + 174;
+constexpr int kConfigGameResolutionWidthId = kConfigFieldBaseId + 175;
+constexpr int kConfigGameResolutionHeightId = kConfigFieldBaseId + 176;
+constexpr int kConfigGameFrameRateLimitId = kConfigFieldBaseId + 177;
 
 enum class ConfigFieldKind {
     Text,

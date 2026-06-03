@@ -18,7 +18,17 @@ float Lerp(float a, float b, float t) {
 void AudioEngine::Apply3D(AudioVoiceInstance& instance) {
     if (!instance.voice || instance.sampleIndex >= samples_.size()) return;
     AudioSample& sample = samples_[instance.sampleIndex];
-    float occlusion = std::clamp(instance.occlusion, 0.0f, 8.0f);
+    if (instance.bus == AudioBus::Music) {
+        instance.voice->SetVolume(instance.baseVolume * BusVolume(instance.bus));
+        XAUDIO2_FILTER_PARAMETERS filter{};
+        filter.Type = LowPassFilter;
+        filter.Frequency = 1.0f;
+        filter.OneOverQ = 1.0f;
+        instance.voice->SetFilterParameters(&filter);
+        instance.voice->SetFrequencyRatio(std::clamp(instance.frequencyRatio, XAUDIO2_MIN_FREQ_RATIO, XAUDIO2_MAX_FREQ_RATIO));
+        return;
+    }
+    float occlusion = (!instance.spatial || instance.bus == AudioBus::Music) ? 0.0f : std::clamp(instance.occlusion, 0.0f, 8.0f);
     float occlusionGain = OcclusionGain(instance.bus, occlusion);
     float distanceGain = SpatialDistanceGain(instance);
     float toneGain = instance.toneProfile == AudioToneProfile::MetallicVent ? 0.42f : 1.0f;

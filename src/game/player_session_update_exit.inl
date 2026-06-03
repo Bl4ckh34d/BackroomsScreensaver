@@ -8,6 +8,7 @@
         float stepStart = alignEnd + std::max(0.05f, settingsRuntime_.live.exitDoorOpenSeconds * 0.68f);
         float stepEnd = stepStart + settingsRuntime_.live.exitStepSeconds;
         float fadeEnd = stepEnd + settingsRuntime_.live.exitFadeSeconds;
+        float scoreReveal = doorOpenEnd + 0.65f;
         float doorOpen = SmoothStep(doorOpenStart, doorOpenEnd, world.exitTransitionTimer);
         exitDoorPresentation_.angle = doorOpen * 1.38f;
 
@@ -41,7 +42,12 @@
         float pitch = world.playerPitch + (targetPitch - world.playerPitch) * std::min(1.0f, dt * (world.exitTransitionTimer < alignEnd ? 5.2f : 2.8f));
         gameWorld_.SetPlayerCameraPose(cameraPosition, yaw, yaw, pitch);
 
-        if (world.exitTransitionTimer > fadeEnd + 0.35f) {
+        if (gameWorld_.progressionEnabled && gameWorld_.PlayableLevelRunning() && world.exitTransitionTimer >= scoreReveal) {
+            CompletePlayableLevel();
+        }
+        viewRuntime_.exitScoreContinueReady = world.exitTransitionTimer > fadeEnd + 0.35f;
+
+        if (!gameWorld_.progressionEnabled && world.exitTransitionTimer > fadeEnd + 0.35f) {
             CompletePlayableLevel();
         }
     }

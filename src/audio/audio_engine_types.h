@@ -5,6 +5,7 @@
 struct AudioEngineSettings {
     bool audioMuted = false;
     float audioMasterVolume = 1.0f;
+    float audioMusicVolume = 1.0f;
     float audioEffectsVolume = 1.0f;
     float audioAmbienceVolume = 1.0f;
     float audioMonsterVolume = 1.0f;
@@ -19,7 +20,8 @@ struct AudioEngineAssets {
 enum class AudioBus {
     Effects,
     Ambience,
-    Monster
+    Monster,
+    Music
 };
 
 enum class GameSound {
@@ -40,7 +42,8 @@ enum class GameSound {
     LightBulbBreak,
     VisionFlash,
     FlashlightStutter,
-    PaperFlutter
+    PaperFlutter,
+    TitleTheme
 };
 
 enum class AudioToneProfile {

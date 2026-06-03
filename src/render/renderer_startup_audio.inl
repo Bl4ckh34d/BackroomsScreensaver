@@ -8,5 +8,6 @@
             audioRuntime_.engine.LoadAll(MakeAudioEngineAssets(settings));
             audioRuntime_.samplesLoaded = true;
         }
+        if (audioRuntime_.ready) EnsureTitleThemeAudio();
         return audioRuntime_.ready;
     }

@@ -15,12 +15,11 @@
 
     void BreakRuntimeLamp(RuntimeLampState& lamp, bool emitPlayerNoise = true, bool playBreakSound = true) {
         if (lamp.broken) return;
-        (void)playBreakSound;
         lamp.broken = true;
         lamp.damage = 1.0f;
         lamp.sparkTimer = RandRange(0.55f, 1.85f);
         MarkLampDamagePixel(lamp.tile, lamp.damage);
-        QueueLightBulbBreakSoundAt(lamp.pos, 1.25f, emitPlayerNoise);
+        if (playBreakSound) QueueLightBulbBreakSoundAt(lamp.pos, 1.25f, emitPlayerNoise);
         if (settingsRuntime_.live.sparkParticles) {
             float intensity = std::max(2.8f, PickBrokenLampSparkIntensity() * 1.45f);
             EmitSparkBurstAt(lamp.pos, intensity);

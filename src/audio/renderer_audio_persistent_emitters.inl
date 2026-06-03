@@ -1,5 +1,9 @@
     void SetupPersistentAudioEmitters() {
-        audioRuntime_.engine.StopAll();
+        if (audioRuntime_.engine.HasTaggedVoice(kTitleThemeAudioTag)) {
+            audioRuntime_.engine.StopAllExceptTag(kTitleThemeAudioTag);
+        } else {
+            audioRuntime_.engine.StopAll();
+        }
         audioRuntime_.game.ResetForScene(
             RandRange(12.0f, 36.0f),
             RandRange(7.0f, 18.0f),

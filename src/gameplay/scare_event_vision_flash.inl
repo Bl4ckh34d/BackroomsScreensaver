@@ -7,5 +7,5 @@
             AudioBus::Effects,
             gameWorld_.player.position,
             bloodWorld ? 1.08f : 0.98f,
-            false).WithCategory(GameAudioEventCategory::Scare));
+            false).WithCategory(GameAudioEventCategory::Scare).WithPlaybackTag(kVisionFlashAudioTag));
     }

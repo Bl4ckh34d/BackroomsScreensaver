@@ -9,6 +9,12 @@ GameAudioEvent GameAudioEvent::WithCategory(GameAudioEventCategory value) const 
     return event;
 }
 
+GameAudioEvent GameAudioEvent::WithPlaybackTag(int tag) const {
+    GameAudioEvent event = *this;
+    event.playbackTag = tag;
+    return event;
+}
+
 GameAudioEvent GameAudioEvent::OneShot(GameSound sound,
                                        AudioBus bus,
                                        const XMFLOAT3& pos,

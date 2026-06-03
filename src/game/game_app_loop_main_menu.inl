@@ -11,4 +11,5 @@
                 ReleaseDC(hwnd, dc);
             }
             UpdateGameMenuTransition(hwnd);
+            limitGameFrameRate();
         }

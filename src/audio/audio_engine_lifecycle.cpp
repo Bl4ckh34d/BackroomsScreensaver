@@ -30,10 +30,20 @@ bool AudioEngine::Initialize(const AudioEngineSettings& settings) {
         OutputDebugStringW(L"Backrooms audio: XAudio2Create failed.\n");
         return false;
     }
+    hr = MFStartup(MF_VERSION);
+    if (SUCCEEDED(hr)) {
+        mediaFoundationStarted_ = true;
+    } else {
+        OutputDebugStringW(L"Backrooms audio: Media Foundation startup failed; MP3 samples will not load.\n");
+    }
     hr = xaudio_->CreateMasteringVoice(&masterVoice_);
     if (FAILED(hr)) {
         OutputDebugStringW(L"Backrooms audio: CreateMasteringVoice failed.\n");
         xaudio_.Reset();
+        if (mediaFoundationStarted_) {
+            MFShutdown();
+            mediaFoundationStarted_ = false;
+        }
         return false;
     }
     XAUDIO2_VOICE_DETAILS details{};
@@ -59,6 +69,10 @@ void AudioEngine::Shutdown() {
     }
     xaudio_.Reset();
     initialized_ = false;
+    if (mediaFoundationStarted_) {
+        MFShutdown();
+        mediaFoundationStarted_ = false;
+    }
     if (comInitialized_) {
         CoUninitialize();
         comInitialized_ = false;
@@ -69,6 +83,7 @@ void AudioEngine::Shutdown() {
 void AudioEngine::ApplySettings(const AudioEngineSettings& settings) {
     muted_ = settings.audioMuted;
     masterVolume_ = std::clamp(settings.audioMasterVolume, 0.0f, 1.0f);
+    musicVolume_ = std::clamp(settings.audioMusicVolume, 0.0f, 1.0f);
     effectsVolume_ = std::clamp(settings.audioEffectsVolume, 0.0f, 1.0f);
     ambienceVolume_ = std::clamp(settings.audioAmbienceVolume, 0.0f, 1.0f);
     monsterVolume_ = std::clamp(settings.audioMonsterVolume, 0.0f, 1.0f);
@@ -78,7 +93,7 @@ void AudioEngine::LoadAll(const AudioEngineAssets& assets) {
     if (!initialized_) return;
     samples_.clear();
     groups_.clear();
-    groups_.resize(static_cast<size_t>(GameSound::PaperFlutter) + 1);
+    groups_.resize(static_cast<size_t>(GameSound::TitleTheme) + 1);
     AddFolder(assets, GameSound::CarpetStep, L"assets\\sounds\\carpet_steps", L"carpet_step_*.wav");
     AddFolder(assets, GameSound::SoakedCarpetStep, L"assets\\sounds\\soaked_carpet_steps", L"soaked_step_*.wav");
     AddFolder(assets, GameSound::NeonHumQuiet, L"assets\\sounds\\neon_light_hum", L"*quiet*.wav");
@@ -97,6 +112,7 @@ void AudioEngine::LoadAll(const AudioEngineAssets& assets) {
     AddFolder(assets, GameSound::VisionFlash, L"assets\\sounds\\vision_flash", L"vision_flash_*.wav");
     AddFolder(assets, GameSound::FlashlightStutter, L"assets\\sounds\\flashlight_contact_click", L"flashlight_stutter.wav");
     AddFolder(assets, GameSound::PaperFlutter, L"assets\\sounds\\paper_flutter", L"paper_flutter.wav");
+    AddFolder(assets, GameSound::TitleTheme, L"assets\\music", L"title.mp3");
     if (samples_.empty()) {
         OutputDebugStringW(L"Backrooms audio: no WAV samples were loaded.\n");
     }
@@ -117,4 +133,19 @@ void AudioEngine::StopAll() {
         if (instance.voice) instance.voice->DestroyVoice();
     }
     voices_.clear();
+}
+
+void AudioEngine::StopAllExceptTag(int preservedTag) {
+    if (preservedTag < 0) {
+        StopAll();
+        return;
+    }
+    for (size_t i = 0; i < voices_.size();) {
+        if (voices_[i].tag == preservedTag) {
+            ++i;
+            continue;
+        }
+        if (voices_[i].voice) voices_[i].voice->DestroyVoice();
+        voices_.erase(voices_.begin() + static_cast<std::ptrdiff_t>(i));
+    }
 }

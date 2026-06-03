@@ -13,6 +13,7 @@ float AudioEngine::BusVolume(AudioBus bus) const {
     float busVolume = effectsVolume_;
     if (bus == AudioBus::Ambience) busVolume = ambienceVolume_;
     if (bus == AudioBus::Monster) busVolume = monsterVolume_;
+    if (bus == AudioBus::Music) busVolume = musicVolume_;
     return masterVolume_ * busVolume;
 }
 

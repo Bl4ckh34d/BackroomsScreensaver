@@ -2,6 +2,7 @@
     bool gameFullscreen = true;
     int gameResolutionWidth = 1920;
     int gameResolutionHeight = 1080;
+    int gameFrameRateLimit = 30;
 
     int mazeWidth = kMazeW;
     int mazeHeight = kMazeH;

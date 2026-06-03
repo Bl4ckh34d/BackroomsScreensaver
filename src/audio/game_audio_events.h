@@ -39,8 +39,10 @@ struct GameAudioEvent {
     float occlusionLimit = 1000000.0f;
     float hearingRadius = 0.0f;
     float hearingLife = 0.90f;
+    int playbackTag = -1;
 
     GameAudioEvent WithCategory(GameAudioEventCategory value) const;
+    GameAudioEvent WithPlaybackTag(int tag) const;
 
     static GameAudioEvent OneShot(
         GameSound sound,

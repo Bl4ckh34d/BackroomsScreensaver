@@ -3,6 +3,7 @@
             target.gameFullscreen = settings.gameFullscreen;
             target.gameResolutionWidth = settings.gameResolutionWidth;
             target.gameResolutionHeight = settings.gameResolutionHeight;
+            target.gameFrameRateLimit = settings.gameFrameRateLimit;
             target.allowWarpFallback = settings.allowWarpFallback;
             target.mapOverlay = settings.mapOverlay;
             target.debugAiMapOverlay = settings.debugAiMapOverlay;
@@ -18,6 +19,7 @@
             target.gameKeyBindings = settings.gameKeyBindings;
             target.audioMuted = settings.audioMuted;
             target.audioMasterVolume = settings.audioMasterVolume;
+            target.audioMusicVolume = settings.audioMusicVolume;
             target.audioEffectsVolume = settings.audioEffectsVolume;
             target.audioAmbienceVolume = settings.audioAmbienceVolume;
             target.audioMonsterVolume = settings.audioMonsterVolume;

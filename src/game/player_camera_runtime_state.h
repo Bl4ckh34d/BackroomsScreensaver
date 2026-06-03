@@ -105,4 +105,6 @@ struct PlayerViewRuntimeState {
     float fadeInTimer = 1.2f;
     XMFLOAT3 exitStartCamera{};
     float exitStartYaw = 0.0f;
+    bool exitScoreContinueReady = false;
+    bool scoreContinuePressedLastFrame = false;
 };
