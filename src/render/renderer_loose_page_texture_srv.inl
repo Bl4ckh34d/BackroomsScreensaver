@@ -1,0 +1,10 @@
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = td.Format;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+        sd.Texture2DArray.MostDetailedMip = 0;
+        sd.Texture2DArray.MipLevels = mipLevels;
+        sd.Texture2DArray.FirstArraySlice = 0;
+        sd.Texture2DArray.ArraySize = pageCount;
+        if (FAILED(d3dRuntime_.device->CreateShaderResourceView(tex.Get(), &sd, &runtimeTextures_.loosePagesSrv))) return false;
+        d3dRuntime_.context->GenerateMips(runtimeTextures_.loosePagesSrv.Get());
+        return true;

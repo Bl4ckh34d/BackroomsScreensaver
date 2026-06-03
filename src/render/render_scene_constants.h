@@ -1,0 +1,43 @@
+#pragma once
+
+struct SceneConstants {
+    XMFLOAT4X4 viewProj;
+    XMFLOAT4X4 lightViewProj;
+    XMFLOAT4X4 fixtureLightViewProj;
+    XMFLOAT4 cameraPosTime;
+    XMFLOAT4 cameraDirAspect;
+    XMFLOAT4 lighting0;
+    XMFLOAT4 lighting1;
+    XMFLOAT4 fog0;
+    XMFLOAT4 ao0;
+    XMFLOAT4 post0;
+    XMFLOAT4 post1;
+    XMFLOAT4 post2;
+    XMFLOAT4 shadow0;
+    XMFLOAT4 shadow1;
+    XMFLOAT4 shadow2;
+    XMFLOAT4 fixtureShadow0;
+    XMFLOAT4 fixtureShadow1;
+    XMFLOAT4 maze0;
+    XMFLOAT4 maze1;
+    XMFLOAT4 texture0;
+    XMFLOAT4 transition0;
+    XMFLOAT4 horror0;
+    XMFLOAT4 sparkLight0;
+    XMFLOAT4 sparkLight1;
+    XMFLOAT4 blood0;
+    XMFLOAT4 blood1;
+    XMFLOAT4 blood2;
+    XMFLOAT4 blood3;
+    XMFLOAT4 blood4;
+    XMFLOAT4 blood5;
+    XMFLOAT4 blood6;
+    XMFLOAT4 blood7;
+    XMFLOAT4 blood8;
+    XMFLOAT4 air0;
+    XMFLOAT4 exitLight0;
+    XMFLOAT4 exitLight1;
+    XMFLOAT4 exitLight2;
+    XMFLOAT4 exitLight3;
+    XMFLOAT4 monsterFog0;
+};

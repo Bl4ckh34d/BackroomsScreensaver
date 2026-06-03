@@ -1,0 +1,10 @@
+    s.dreadEnabled = ParseConfigInt(state, L"Dread", L"Enabled", s.dreadEnabled ? 1 : 0) != 0;
+    s.dreadDebugMeter = ParseConfigInt(state, L"Dread", L"DebugMeter", s.dreadDebugMeter ? 1 : 0) != 0;
+    s.dreadDecayPerSecond = std::clamp(ParseConfigFloat(state, L"Dread", L"DecayPerSecond", s.dreadDecayPerSecond), 0.0f, 1.0f);
+    s.dreadMonsterDistance = std::clamp(ParseConfigFloat(state, L"Dread", L"MonsterDistance", s.dreadMonsterDistance), 1.0f, 60.0f);
+    s.dreadMonsterGainPerSecond = std::clamp(ParseConfigFloat(state, L"Dread", L"MonsterGainPerSecond", s.dreadMonsterGainPerSecond), 0.0f, 3.0f);
+    s.dreadJumpscareGain = std::clamp(ParseConfigFloat(state, L"Dread", L"JumpscareGain", s.dreadJumpscareGain), 0.0f, 1.0f);
+    s.dreadFleshGain = std::clamp(ParseConfigFloat(state, L"Dread", L"FleshGain", s.dreadFleshGain), 0.0f, 1.0f);
+    s.dreadWalkSpeedBoost = std::clamp(ParseConfigFloat(state, L"Dread", L"WalkSpeedBoost", s.dreadWalkSpeedBoost), 0.0f, 2.0f);
+    s.dreadRunSpeedBoost = std::clamp(ParseConfigFloat(state, L"Dread", L"RunSpeedBoost", s.dreadRunSpeedBoost), 0.0f, 2.0f);
+    s.dreadFlashlightFlicker = std::clamp(ParseConfigFloat(state, L"Dread", L"FlashlightFlicker", s.dreadFlashlightFlicker), 0.0f, 3.0f);

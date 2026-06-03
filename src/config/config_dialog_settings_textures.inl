@@ -1,0 +1,10 @@
+    s.assetFolder = ParseConfigString(state, L"Textures", L"AssetFolder", s.assetFolder.c_str());
+    s.wallStem = ParseConfigString(state, L"Textures", L"WallStem", s.wallStem.c_str());
+    s.floorStem = ParseConfigString(state, L"Textures", L"FloorStem", s.floorStem.c_str());
+    s.ceilingStem = ParseConfigString(state, L"Textures", L"CeilingStem", s.ceilingStem.c_str());
+    s.fleshStem = ParseConfigString(state, L"Textures", L"FleshStem", s.fleshStem.c_str());
+    s.wallTextureMeters = std::max(0.2f, ParseConfigFloat(state, L"Textures", L"WallScaleMeters", s.wallTextureMeters));
+    s.floorTextureMeters = std::max(0.2f, ParseConfigFloat(state, L"Textures", L"FloorScaleMeters", s.floorTextureMeters));
+    s.ceilingTextureMeters = std::max(0.0f, ParseConfigFloat(state, L"Textures", L"CeilingScaleMeters", s.ceilingTextureMeters));
+    s.useExternalNormals = ParseConfigInt(state, L"Textures", L"UseExternalNormals", s.useExternalNormals ? 1 : 0) != 0;
+    s.maxNormalMapMB = std::clamp(ParseConfigInt(state, L"Textures", L"MaxNormalMapMB", s.maxNormalMapMB), 0, 1024);

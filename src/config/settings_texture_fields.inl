@@ -1,0 +1,10 @@
+    float floorTextureMeters = kFloorTextureMeters;
+    float wallTextureMeters = kWallTextureMeters;
+    float ceilingTextureMeters = kCeilingTextureMeters;
+    std::wstring assetFolder = L"assets\\PBRs";
+    std::wstring wallStem = L"backrooms_wall";
+    std::wstring floorStem = L"downloads\\Fabric029_4K-JPG\\Fabric029_4K-JPG";
+    std::wstring ceilingStem = L"downloads\\OfficeCeiling001_4K-JPG\\OfficeCeiling001_4K-JPG";
+    std::wstring fleshStem = L"downloads\\Others001_4k\\others_0001";
+    bool useExternalNormals = true;
+    int maxNormalMapMB = 512;

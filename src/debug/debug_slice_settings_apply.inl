@@ -1,0 +1,5 @@
+#include "debug_slice_settings_apply_header.inl"
+#include "debug_slice_settings_apply_props.inl"
+#include "debug_slice_settings_apply_maze_camera.inl"
+#include "debug_slice_settings_apply_liquids.inl"
+#include "debug_slice_settings_apply_lamps.inl"

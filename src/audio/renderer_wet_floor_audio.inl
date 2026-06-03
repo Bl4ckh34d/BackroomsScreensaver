@@ -1,0 +1,6 @@
+#include "renderer_wet_floor_audio_mark_tile.inl"
+#include "renderer_wet_floor_audio_mark_area.inl"
+#include "renderer_wet_floor_audio_tile_query.inl"
+#include "renderer_wet_floor_audio_near_query.inl"
+#include "renderer_wet_floor_audio_reveal_query.inl"
+#include "renderer_wet_floor_audio_point_query.inl"

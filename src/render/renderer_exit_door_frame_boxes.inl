@@ -1,0 +1,3 @@
+        addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, -framePostCenterX, framePostCenterY - doorCenter.y, fixedFrameForwardOffset)), {fixedFramePostHalfW, framePostHalfH, fixedFrameDepthHalf}, false);
+        addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, framePostCenterX, framePostCenterY - doorCenter.y, fixedFrameForwardOffset)), {fixedFramePostHalfW, framePostHalfH, fixedFrameDepthHalf}, false);
+        addDoorFrameBox(Add3(doorCenter, OrientedOffset(right, up, forward, 0.0f, frameTopCenterY - doorCenter.y, fixedFrameForwardOffset)), {frameOuterHalfW, fixedFrameTopHalfH, fixedFrameDepthHalf}, true);

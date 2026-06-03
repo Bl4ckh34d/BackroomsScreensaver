@@ -1,0 +1,9 @@
+        cb.blood0 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.blood1 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.blood2 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.blood3 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.blood4 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.blood5 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.blood6 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.blood7 = {0.0f, 0.0f, 0.0f, 0.0f};
+        cb.blood8 = {0.0f, 0.0f, 0.0f, 0.0f};

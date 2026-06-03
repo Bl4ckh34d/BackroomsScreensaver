@@ -1,0 +1,17 @@
+        float wetOverlapZ = tileD * (ceiling ? 0.010f : 0.030f);
+        float wetOverlapX = tileW * (ceiling ? 0.010f : 0.030f);
+        float floorSeepZ = ceiling ? 0.0f : tileD * 0.085f;
+        float floorSeepX = ceiling ? 0.0f : tileW * 0.085f;
+        if (neighborMask & 1) z0 -= wetOverlapZ;
+        else if (!ceiling && neighborOpen(t.x, t.y - 1)) z0 = std::max(z0 - floorSeepZ, cz - halfD);
+        else z0 = std::max(z0 + tileD * 0.055f, cz - halfD);
+        if (neighborMask & 2) z1 += wetOverlapZ;
+        else if (!ceiling && neighborOpen(t.x, t.y + 1)) z1 = std::min(z1 + floorSeepZ, cz + halfD);
+        else z1 = std::min(z1 - tileD * 0.055f, cz + halfD);
+        if (neighborMask & 4) l -= wetOverlapX;
+        else if (!ceiling && neighborOpen(t.x - 1, t.y)) l = std::max(l - floorSeepX, cx - halfW);
+        else l = std::max(l + tileW * 0.055f, cx - halfW);
+        if (neighborMask & 8) r += wetOverlapX;
+        else if (!ceiling && neighborOpen(t.x + 1, t.y)) r = std::min(r + floorSeepX, cx + halfW);
+        else r = std::min(r - tileW * 0.055f, cx + halfW);
+        if (r - l < tileW * 0.12f || z1 - z0 < tileD * 0.12f) return;

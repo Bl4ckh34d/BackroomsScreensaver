@@ -1,0 +1,8 @@
+    {5, 0, kConfigFieldBaseId + 51, L"Flashlight Motion", L"CameraFX", L"FlashlightSwayAmount", L"Independent sway", L"3", ConfigFieldKind::Text, 90},
+    {5, 0, kConfigFieldBaseId + 52, L"Flashlight Motion", L"CameraFX", L"FlashlightFollowSpeed", L"Follow speed", L"2", ConfigFieldKind::Text, 90},
+    {5, 0, kConfigFieldBaseId + 53, L"Flashlight Motion", L"CameraFX", L"FlashlightPanicDartAmount", L"Panic dart amount", L"3", ConfigFieldKind::Text, 90},
+    {5, 1, kConfigFieldBaseId + 56, L"Exit Door Transition", L"CameraFX", L"ExitDoorOpenSeconds", L"Door open seconds", L"1.75", ConfigFieldKind::Text, 90},
+    {5, 1, kConfigFieldBaseId + 57, L"Exit Door Transition", L"CameraFX", L"ExitStepSeconds", L"Step-through seconds", L"1.85", ConfigFieldKind::Text, 90},
+    {5, 1, kConfigFieldBaseId + 58, L"Exit Door Transition", L"CameraFX", L"ExitFadeSeconds", L"Fade-out seconds", L"1.1", ConfigFieldKind::Text, 90},
+    {5, 1, kConfigFieldBaseId + 59, L"Exit Door Transition", L"CameraFX", L"ExitStepDistance", L"Step distance", L"2.35", ConfigFieldKind::Text, 90},
+    {5, 1, kConfigFieldBaseId + 60, L"Exit Door Transition", L"CameraFX", L"FadeInSeconds", L"New maze fade-in", L"1.25", ConfigFieldKind::Text, 90},

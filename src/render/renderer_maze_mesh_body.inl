@@ -1,0 +1,6 @@
+#include "renderer_maze_mesh_snapshot_buffers.inl"
+#include "renderer_maze_mesh_surface_context.inl"
+#include "renderer_maze_mesh_prop_context.inl"
+#include "renderer_maze_mesh_ambient_scatter.inl"
+#include "renderer_maze_mesh_open_tile_liquids.inl"
+#include "renderer_maze_mesh_finalize_buffers.inl"

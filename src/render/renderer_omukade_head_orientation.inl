@@ -1,0 +1,7 @@
+#include "renderer_omukade_head_lock_basis.inl"
+#include "renderer_omukade_head_surface_helpers.inl"
+#include "renderer_omukade_head_position.inl"
+#include "renderer_omukade_head_awareness_lift.inl"
+#include "renderer_omukade_head_wall_dodge_pitch.inl"
+#include "renderer_omukade_head_player_tracking.inl"
+#include "renderer_omukade_head_rage_jitter.inl"

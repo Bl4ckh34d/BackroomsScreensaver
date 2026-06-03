@@ -10,7 +10,7 @@
 
 #include "config/settings.h"
 
-#include "debug/effect_debug.inl"
+#include "debug/effect_debug.h"
 
 #include "debug/debug_control_ids.h"
 

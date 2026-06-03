@@ -1,0 +1,15 @@
+        XMFLOAT3 flashlightForward = FlashlightForward();
+        XMVECTOR lightDir = XMVector3Normalize(XMVectorSet(flashlightForward.x, flashlightForward.y, flashlightForward.z, 0.0f));
+        XMVECTOR lightPos = eye + viewRight * 0.16f - up * 0.18f + viewDir * 0.08f;
+        float shadowDistance = settingsRuntime_.live.flashlightShadowDistanceMeters;
+        float coneHalfRadians = std::clamp(settingsRuntime_.live.flashlightConeDegrees, 20.0f, 140.0f) * 0.5f * kPi / 180.0f;
+        float coneOuter = std::cos(coneHalfRadians);
+        float coneInner = std::cos(std::max(3.0f * kPi / 180.0f, coneHalfRadians * 0.36f));
+        float shadowFov = std::clamp(settingsRuntime_.live.flashlightConeDegrees + 8.0f, 36.0f, 150.0f) * kPi / 180.0f;
+        XMMATRIX lightView = XMMatrixLookAtLH(lightPos, lightPos + lightDir, up);
+        XMMATRIX lightProj = XMMatrixPerspectiveFovLH(shadowFov, 1.0f, 0.06f, shadowDistance);
+        XMMATRIX lightViewProj = lightView * lightProj;
+        XMFLOAT3 lightPosFloat{};
+        XMFLOAT3 lightDirFloat{};
+        XMStoreFloat3(&lightPosFloat, lightPos);
+        XMStoreFloat3(&lightDirFloat, lightDir);

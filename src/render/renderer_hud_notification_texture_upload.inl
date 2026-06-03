@@ -1,0 +1,16 @@
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = texW;
+        td.Height = texH;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA init{pixels.data(), static_cast<UINT>(texW * 4), 0};
+        if (FAILED(d3dRuntime_.device->CreateTexture2D(&td, &init, &hudNotification_.texture))) return false;
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = td.Format;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        sd.Texture2D.MipLevels = 1;
+        return SUCCEEDED(d3dRuntime_.device->CreateShaderResourceView(hudNotification_.texture.Get(), &sd, &hudNotification_.srv));

@@ -1,0 +1,16 @@
+        GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
+        if (!world.maze) return;
+        const Maze& maze = *world.maze;
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+        std::vector<uint32_t> waterIndices;
+        std::vector<uint32_t> liquidIndices;
+        std::vector<uint32_t> transparentIndices;
+        std::vector<uint32_t> propShadowIndices;
+        vertices.reserve(maze.w * maze.h * 64);
+        indices.reserve(maze.w * maze.h * 96);
+        waterIndices.reserve(maze.w * maze.h * 6);
+        liquidIndices.reserve(maze.w * maze.h * 18);
+        transparentIndices.reserve(maze.w * maze.h * 12);
+        propShadowIndices.reserve(maze.w * maze.h * 24);
+        ResetMazeMeshBuildRuntime();

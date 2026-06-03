@@ -1,0 +1,14 @@
+    float walkSpeed = 1.692f;
+    float roomSpeed = 1.45f;
+    float runSpeed = 3.05f;
+    float turnLookAheadTiles = 2.1f;
+    float roomLookAheadTiles = 2.4f;
+    float roomPauseChance = 0.62f;
+    float junctionScanChance = 0.88f;
+    float scanAngleDegrees = 55.0f;
+    float lookBackMinSeconds = 5.0f;
+    float lookBackMaxSeconds = 90.0f;
+    float headBobAmount = 0.0825f;
+    float sideSwayAmount = 0.025f;
+    float junctionScanBaseSeconds = 0.85f;
+    float junctionScanBranchSeconds = 1.08f;

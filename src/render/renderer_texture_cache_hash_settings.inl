@@ -1,0 +1,12 @@
+        uint64_t hash = 1469598103934665603ull;
+        const char* version = "BackroomsMazeTextureCacheV21";
+        hash = Fnv1aAppend(hash, version, std::strlen(version));
+        hash = Fnv1aAppend(hash, &kTextureSize, sizeof(kTextureSize));
+        hash = Fnv1aAppend(hash, &kMaterialCount, sizeof(kMaterialCount));
+        hash = HashWide(hash, settingsRuntime_.live.assetFolder);
+        hash = HashWide(hash, settingsRuntime_.live.wallStem);
+        hash = HashWide(hash, settingsRuntime_.live.floorStem);
+        hash = HashWide(hash, settingsRuntime_.live.ceilingStem);
+        hash = HashWide(hash, settingsRuntime_.live.fleshStem);
+        hash = Fnv1aAppend(hash, &settingsRuntime_.live.useExternalNormals, sizeof(settingsRuntime_.live.useExternalNormals));
+        hash = Fnv1aAppend(hash, &settingsRuntime_.live.maxNormalMapMB, sizeof(settingsRuntime_.live.maxNormalMapMB));

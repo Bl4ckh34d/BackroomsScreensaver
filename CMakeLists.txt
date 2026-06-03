@@ -11,20 +11,77 @@ endif()
 set(BACKROOMS_SOURCES
     src/main.cpp
     src/audio/audio_engine.cpp
+    src/audio/audio_engine_lifecycle.cpp
+    src/audio/audio_engine_loading.cpp
+    src/audio/audio_engine_playback.cpp
+    src/audio/audio_engine_voice.cpp
+    src/audio/audio_engine_voice_apply3d.cpp
+    src/audio/audio_engine_voice_selection.cpp
+    src/audio/audio_engine_voice_spatial.cpp
+    src/audio/audio_engine_voice_start.cpp
     src/audio/game_audio_events.cpp
     src/audio/game_audio_system.cpp
-    src/config/settings.cpp
+    src/config/settings_assets.cpp
+    src/config/settings_defaults.cpp
+    src/config/settings_input_runtime.cpp
+    src/config/settings_io.cpp
+    src/config/settings_paths.cpp
+    src/config/settings_profile.cpp
+    src/config/settings_runtime_variation.cpp
+    src/debug/effect_debug.cpp
     src/game/game_session.cpp
     src/game/game_settings_panel.cpp
+    src/game/game_settings_panel_api.cpp
+    src/game/game_settings_panel_draw.cpp
+    src/game/game_settings_panel_interactions.cpp
+    src/game/game_settings_panel_paint.cpp
+    src/game/game_settings_panel_persistence.cpp
+    src/game/game_settings_panel_window.cpp
     src/game/game_window_settings.cpp
     src/game/game_world.cpp
+    src/game/game_world_collectible_aim.cpp
+    src/game/game_world_audio_events.cpp
+    src/game/game_world_collectible_generation.cpp
+    src/game/game_world_collectibles.cpp
+    src/game/game_world_lifecycle.cpp
+    src/game/game_world_maze_persistence.cpp
+    src/game/game_world_monster.cpp
+    src/game/game_world_playable.cpp
+    src/game/game_world_player.cpp
+    src/game/game_world_player_navigation.cpp
+    src/game/game_world_save_points.cpp
+    src/game/game_world_session.cpp
     src/game/player_controller.cpp
+    src/game/player_controller_input.cpp
+    src/game/player_controller_look.cpp
+    src/game/player_controller_manual.cpp
+    src/game/player_controller_motion.cpp
+    src/game/player_controller_move.cpp
+    src/game/player_controller_posture.cpp
+    src/game/player_controller_stamina.cpp
     src/game/player_state.cpp
     src/maze/maze.cpp
+    src/maze/maze_generation.cpp
+    src/maze/maze_generation_helpers.cpp
+    src/maze/maze_layouts.cpp
+    src/maze/maze_navigation.cpp
+    src/maze/maze_queries.cpp
     src/monster/monster_state.cpp
     src/platform/command_line_mode.cpp
     src/platform/gui_controls.cpp
     src/platform/loading_overlay.cpp
+    src/platform/loading_overlay_api.cpp
+    src/platform/loading_overlay_assets.cpp
+    src/platform/loading_overlay_brand_detail.cpp
+    src/platform/loading_overlay_brand_draw.cpp
+    src/platform/loading_overlay_brand_mark.cpp
+    src/platform/loading_overlay_brand_progress.cpp
+    src/platform/loading_overlay_brand_title.cpp
+    src/platform/loading_overlay_draw.cpp
+    src/platform/loading_overlay_spinner_draw.cpp
+    src/platform/loading_overlay_state.cpp
+    src/platform/loading_overlay_thread.cpp
+    src/platform/loading_overlay_window.cpp
     src/screensaver/screensaver_monitor_layout.cpp
     src/app.rc
 )

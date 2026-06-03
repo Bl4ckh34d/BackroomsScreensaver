@@ -1,0 +1,21 @@
+        constexpr int size = kCustomMenuTextureSize;
+        constexpr int logicalSize = 512;
+        std::vector<uint8_t> dib(static_cast<size_t>(size) * size * 4, 0);
+        BITMAPINFO bmi{};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = size;
+        bmi.bmiHeader.biHeight = -size;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        HDC screen = GetDC(nullptr);
+        HDC dc = CreateCompatibleDC(screen);
+        HBITMAP bitmap = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (bitmap && bits) {
+            HGDIOBJ oldBitmap = SelectObject(dc, bitmap);
+            std::memset(bits, 0xFF, dib.size());
+            SetMapMode(dc, MM_ANISOTROPIC);
+            SetWindowExtEx(dc, logicalSize, logicalSize, nullptr);
+            SetViewportExtEx(dc, size, size, nullptr);
+            SetBkMode(dc, TRANSPARENT);

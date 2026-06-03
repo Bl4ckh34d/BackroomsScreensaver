@@ -1,0 +1,14 @@
+        if (gEffectDebugViewer && gDebugHideMonster) return;
+        if (!MonsterActiveForCurrentMode()) return;
+        float modelY = std::clamp(settingsRuntime_.live.monsterScale, 0.35f, 1.25f);
+        float modelXZ = std::clamp(settingsRuntime_.live.monsterScale, 0.35f, 1.35f);
+        float dist = MonsterDistance();
+        bool debugEffectMonster = sessionRuntime_.mode == RendererRuntimeMode::DebugViewer && gDebugSliceEffect != DebugSliceEffect::Props;
+        GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
+        if (!world.maze) return;
+        const Maze& maze = *world.maze;
+        const XMFLOAT3 playerPosition = world.playerPosition;
+        const XMFLOAT3 monsterPosition = world.monsterPosition;
+        const float monsterYaw = world.monsterYaw;
+        float tileScale = std::max(maze.TileAverage(), 0.1f);
+        float bodyLengthMeters = std::min(11.5f, 5.9f + static_cast<float>(std::max(0, world.monsterKillCount)) * 0.72f);

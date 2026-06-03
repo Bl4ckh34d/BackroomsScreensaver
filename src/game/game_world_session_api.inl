@@ -1,0 +1,12 @@
+    void ResetSessionState();
+    GameWorldRenderSnapshot BuildRenderSnapshot() const;
+    GameWorldSnapshotState CaptureSnapshotState() const;
+    void RestoreSnapshotGenerationState(const GameWorldSnapshotState& snapshot);
+    void RestoreSnapshotRuntimeState(GameWorldSnapshotState snapshot);
+    void ResetMonsterKillCount();
+    void ResetPlayableRun();
+    void ApplyMazeLayout(const MazeLayoutSpec& spec, bool updateExit = true);
+    void GenerateMaze(const GameWorldMazeGenerationRequest& request);
+    const Maze& MazeView() const;
+    static std::wstring EncodeSavedMazeBytes(const std::vector<uint8_t>& bytes);
+    static void DecodeSavedMazeBytes(const std::wstring& text, std::vector<uint8_t>& out, size_t expectedSize);

@@ -1,0 +1,17 @@
+        PendingStaticInstance pending{};
+        pending.meshId = static_cast<UINT>(meshId);
+        pending.data.axisXOriginX = {axisX.x, axisX.y, axisX.z, origin.x};
+        pending.data.axisYOriginY = {axisY.x, axisY.y, axisY.z, origin.y};
+        pending.data.axisZOriginZ = {axisZ.x, axisZ.y, axisZ.z, origin.z};
+        pending.data.materialOverrideVariant = {materialOverride, materialVariant, 0.0f, 0.0f};
+        pending.min = minP;
+        pending.max = maxP;
+        pending.center = {(minP.x + maxP.x) * 0.5f, (minP.y + maxP.y) * 0.5f, (minP.z + maxP.z) * 0.5f};
+        float dx = maxP.x - pending.center.x;
+        float dy = maxP.y - pending.center.y;
+        float dz = maxP.z - pending.center.z;
+        pending.radius = std::sqrt(dx * dx + dy * dy + dz * dz);
+        TileBoundsForWorldBounds(minP, maxP, pending.minTileX, pending.minTileY, pending.maxTileX, pending.maxTileY);
+        pending.castsShadow = castsShadow;
+        pendingStaticInstances.push_back(pending);
+        return true;

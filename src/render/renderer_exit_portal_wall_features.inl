@@ -1,0 +1,1 @@
+        AddWallFeatureInteriorSurfaces(vertices, indices, ctx);

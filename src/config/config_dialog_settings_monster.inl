@@ -1,0 +1,16 @@
+    s.monsterScale = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterScale", s.monsterScale), 0.25f, 4.0f);
+    s.monsterSpeed = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterSpeed", s.monsterSpeed), 0.1f, 4.0f);
+    s.monsterSprintSpeed = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterSprintSpeed", s.monsterSprintSpeed), 0.1f, 4.0f);
+    s.monsterIgnorePlayer = ParseConfigInt(state, L"Monster", L"MonsterIgnorePlayer", s.monsterIgnorePlayer ? 1 : 0) != 0;
+    s.monsterKillDistance = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterKillDistance", s.monsterKillDistance), 0.2f, 4.0f);
+    s.monsterVisibleDistance = std::clamp(ParseConfigFloat(state, L"Monster", L"MonsterVisibleDistance", s.monsterVisibleDistance), 1.0f, 60.0f);
+    s.monsterSkullMesh = ParseConfigString(state, L"Monster", L"SkullMesh", s.monsterSkullMesh.c_str());
+    s.monsterAltSkullMesh = ParseConfigString(state, L"Monster", L"AlternateSkullMesh", s.monsterAltSkullMesh.c_str());
+    s.monsterAltSkullChance = std::clamp(ParseConfigFloat(state, L"Monster", L"AlternateSkullChance", s.monsterAltSkullChance), 0.0f, 1.0f);
+    s.monsterSkullMaxTriangles = std::clamp(ParseConfigInt(state, L"Monster", L"SkullMaxTriangles", s.monsterSkullMaxTriangles), 0, 90000);
+    s.monsterSkullYawDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"SkullYawDegrees", s.monsterSkullYawDegrees), -180.0f, 180.0f);
+    s.monsterSkullPitchDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"SkullPitchDegrees", s.monsterSkullPitchDegrees), -180.0f, 180.0f);
+    s.monsterSkullRollDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"SkullRollDegrees", s.monsterSkullRollDegrees), -180.0f, 180.0f);
+    s.monsterAltSkullYawDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"AlternateSkullYawDegrees", s.monsterAltSkullYawDegrees), -180.0f, 180.0f);
+    s.monsterAltSkullPitchDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"AlternateSkullPitchDegrees", s.monsterAltSkullPitchDegrees), -180.0f, 180.0f);
+    s.monsterAltSkullRollDegrees = std::clamp(ParseConfigFloat(state, L"Monster", L"AlternateSkullRollDegrees", s.monsterAltSkullRollDegrees), -180.0f, 180.0f);

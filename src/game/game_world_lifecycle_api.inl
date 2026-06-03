@@ -1,0 +1,11 @@
+    GameWorldSavePointSpawnPlan BuildSavePointSpawnPlan() const;
+    GameWorldSavePointCandidateResult PickSavePointCandidate(std::mt19937& rng) const;
+    bool TryGenerateSavePoint(bool enabled, float spawnChance, std::mt19937& rng);
+    void ActivateSavePoint(const XMFLOAT3& pos, float yaw);
+    bool CanInteractWithSavePoint() const;
+    bool BeginExitTransition();
+    void AdvanceExitTransition(float dt);
+    void EndExitTransition();
+    bool BeginDeath();
+    bool BeginPlayerDeath();
+    void AdvanceDeath(float dt);

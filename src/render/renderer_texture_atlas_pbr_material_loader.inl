@@ -1,0 +1,3 @@
+#include "renderer_texture_atlas_pbr_material_albedo_height.inl"
+#include "renderer_texture_atlas_pbr_material_normals.inl"
+#include "renderer_texture_atlas_pbr_material_scalars.inl"

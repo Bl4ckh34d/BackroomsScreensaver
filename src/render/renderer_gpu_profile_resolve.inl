@@ -1,0 +1,6 @@
+#include "renderer_gpu_profile_resolve_disjoint.inl"
+#include "renderer_gpu_profile_resolve_finish.inl"
+#include "renderer_gpu_profile_resolve_timestamps.inl"
+#include "renderer_gpu_profile_elapsed_lambda.inl"
+#include "renderer_gpu_profile_log_line.inl"
+#include "renderer_gpu_profile_runtime_csv.inl"

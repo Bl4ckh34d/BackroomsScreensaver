@@ -1,0 +1,27 @@
+    bool dreadEnabled = true;
+    bool dreadDebugMeter = false;
+    float dreadDecayPerSecond = 0.030f;
+    float dreadMonsterDistance = 13.0f;
+    float dreadMonsterGainPerSecond = 0.42f;
+    float dreadJumpscareGain = 0.1f;
+    float dreadFleshGain = 0.2f;
+    float dreadWalkSpeedBoost = 0.05f;
+    float dreadRunSpeedBoost = 0.075f;
+    float dreadFlashlightFlicker = 1.0f;
+
+    float monsterScale = 1.0f;
+    float monsterSpeed = 0.68f;
+    float monsterSprintSpeed = 0.88f;
+    bool monsterIgnorePlayer = false;
+    float monsterKillDistance = 1.18f;
+    float monsterVisibleDistance = 12.0f;
+    std::wstring monsterSkullMesh = L"assets\\models\\monster_face_mask\\horror_mask.obj";
+    std::wstring monsterAltSkullMesh = L"";
+    float monsterAltSkullChance = 0.0f;
+    int monsterSkullMaxTriangles = 16000;
+    float monsterSkullYawDegrees = 0.0f;
+    float monsterSkullPitchDegrees = 0.0f;
+    float monsterSkullRollDegrees = 0.0f;
+    float monsterAltSkullYawDegrees = -90.0f;
+    float monsterAltSkullPitchDegrees = 0.0f;
+    float monsterAltSkullRollDegrees = 90.0f;

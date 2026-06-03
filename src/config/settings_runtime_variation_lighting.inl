@@ -1,0 +1,16 @@
+    s.flashlightIntensity = JitterScaled(seed, 201, s.flashlightIntensity, v, 0.18f, 0.0f, 10.0f);
+    s.flashlightAttenuation = JitterScaled(seed, 202, s.flashlightAttenuation, v, 0.22f, 0.001f, 2.0f);
+    s.flashlightConeDegrees = JitterScaled(seed, 203, s.flashlightConeDegrees, v, 0.10f, 20.0f, 140.0f);
+    s.ambientLight = JitterScaled(seed, 204, s.ambientLight, v, 0.45f, 0.0f, 1.0f);
+    s.lampIntensity = JitterScaled(seed, 205, s.lampIntensity, v, 0.38f, 0.0f, 10.0f);
+    s.lampOnRatio = JitterScaled(seed, 207, s.lampOnRatio, v, 0.65f, 0.0f, 1.0f);
+    s.lampFlickerRatio = JitterScaled(seed, 208, s.lampFlickerRatio, v, 0.55f, 0.0f, 1.0f);
+    s.brokenZoneRatio = JitterScaled(seed, 209, s.brokenZoneRatio, v, 0.55f, 0.0f, 1.0f);
+    s.fogStartMeters = JitterScaled(seed, 211, s.fogStartMeters, v, 0.22f, 0.0f, 200.0f);
+    s.fogEndMeters = std::max(s.fogStartMeters + 0.1f, JitterScaled(seed, 212, s.fogEndMeters, v, 0.22f, 0.1f, 300.0f));
+    s.fogDarkness = JitterScaled(seed, 213, s.fogDarkness, v, 0.28f, 0.0f, 1.0f);
+    s.cornerAOIntensity = JitterScaled(seed, 214, s.cornerAOIntensity, v, 0.24f, 0.0f, 1.0f);
+    s.exposure = JitterScaled(seed, 215, s.exposure, v, 0.12f, 0.1f, 8.0f);
+    s.motionBlurAmount = JitterScaled(seed, 216, s.motionBlurAmount, v, 0.10f, 0.0f, 2.0f);
+    s.bloomAmount = JitterScaled(seed, 217, s.bloomAmount, v, 0.10f, 0.0f, 2.0f);
+    s.lensDirtAmount = JitterScaled(seed, 218, s.lensDirtAmount, v, 0.10f, 0.0f, 2.0f);
