@@ -5,17 +5,24 @@
         XMFLOAT3 abdomen = Add3(bodyPoints[static_cast<size_t>(abdomenIndex)],
             Scale3(bodyTangents[static_cast<size_t>(abdomenIndex)], -0.045f * modelXZ));
         if (renderBodyMass) {
+            auto detailSlices = [&](int high, int medium, int low) {
+                return debugEffectMonster ? std::max(low, medium) : (monsterDetail >= 2 ? high : (monsterDetail == 1 ? medium : low));
+            };
             AppendDynamicEllipsoid(solidVerts, thorax,
                 bodySides[static_cast<size_t>(thoraxIndex)], bodyUps[static_cast<size_t>(thoraxIndex)], bodyTangents[static_cast<size_t>(thoraxIndex)],
-                {0.50f * modelXZ, 0.32f * modelY, 0.54f * modelXZ}, debugEffectMonster ? 18 : 26, debugEffectMonster ? 8 : 12, gutMat + 0.020f);
+                {0.50f * modelXZ, 0.32f * modelY, 0.54f * modelXZ},
+                detailSlices(26, 20, 14), detailSlices(12, 9, 7), gutMat + 0.020f);
             AppendDynamicEllipsoid(solidVerts, abdomen,
                 bodySides[static_cast<size_t>(abdomenIndex)], bodyUps[static_cast<size_t>(abdomenIndex)], bodyTangents[static_cast<size_t>(abdomenIndex)],
-                {0.70f * modelXZ, 0.43f * modelY, 0.92f * modelXZ}, debugEffectMonster ? 20 : 30, debugEffectMonster ? 9 : 14, gutMat + 0.055f);
+                {0.70f * modelXZ, 0.43f * modelY, 0.92f * modelXZ},
+                detailSlices(30, 22, 16), detailSlices(14, 10, 8), gutMat + 0.055f);
             AppendDynamicEllipsoid(solidVerts, Add3(abdomen, Scale3(bodyTangents[static_cast<size_t>(abdomenIndex)], -0.34f * modelXZ)),
                 bodySides[static_cast<size_t>(abdomenIndex)], bodyUps[static_cast<size_t>(abdomenIndex)], bodyTangents[static_cast<size_t>(abdomenIndex)],
-                {0.43f * modelXZ, 0.30f * modelY, 0.38f * modelXZ}, debugEffectMonster ? 16 : 22, debugEffectMonster ? 7 : 10, gutMat + 0.075f);
+                {0.43f * modelXZ, 0.30f * modelY, 0.38f * modelXZ},
+                detailSlices(22, 16, 12), detailSlices(10, 8, 6), gutMat + 0.075f);
             for (int i = bodyCount - 1; i >= 0; --i) {
-                if (i != 0 && (i % 3) != 1) continue;
+                int blobStride = monsterDetail >= 2 ? 3 : (monsterDetail == 1 ? 4 : 5);
+                if (i != 0 && (i % blobStride) != 1) continue;
                 float fi = static_cast<float>(i);
                 float centerWeight = i == 0 ? 1.0f : Clamp01(1.0f - Length3(Sub3(bodyPoints[static_cast<size_t>(i)], bodyPoints[0])) / std::max(0.1f, maze.TileMinimum() * 1.18f));
                 XMFLOAT3 p = bodyPoints[static_cast<size_t>(i)];
@@ -28,6 +35,6 @@
                 };
                 AppendDynamicEllipsoid(solidVerts, p,
                     bodySides[static_cast<size_t>(i)], bodyUps[static_cast<size_t>(i)], bodyTangents[static_cast<size_t>(i)],
-                    blobRadii, debugEffectMonster ? 14 : 22, debugEffectMonster ? 7 : 11, gutMat + std::fmod(fi * 0.011f, 0.10f));
+                    blobRadii, detailSlices(22, 14, 10), detailSlices(11, 7, 5), gutMat + std::fmod(fi * 0.011f, 0.10f));
             }
         }

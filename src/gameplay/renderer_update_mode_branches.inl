@@ -42,6 +42,9 @@
             UpdateSteamAndDrops(dt);
             UpdateBrokenRuntimeLampSparks(dt, 3.0f, 9.5f, 0.16f);
             if (MonsterActiveForCurrentMode()) {
+                MonsterUpdateInput monsterInput = BuildMonsterUpdateInput(dt);
+                UpdateMonster(monsterInput);
+                UpdateMonsterLampDamage(dt);
                 UpdateMonsterHeadAnimation(dt, false);
             }
             viewRuntime_.dangerLevel = 0.40f + std::sin(timeRuntime_.time * 0.73f) * 0.12f;

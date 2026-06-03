@@ -41,6 +41,11 @@ R"(
 
 float3 LocalLampLightColor(float3 worldPos, float3 worldN, float time)
 {
+    if (gLighting1.x <= 0.001 || gLighting1.y <= 0.001)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
     float2 stride = gMaze0.zw;
     float spacing = gMaze1.w;
     float2 lampOrigin = gMaze0.xy + gMaze0.zw * 0.5;
@@ -55,25 +60,40 @@ float3 LocalLampLightColor(float3 worldPos, float3 worldN, float time)
         {
             float2 cell = baseCell + float2(xx, yy);
             float2 lampXZ = lampOrigin + cell * stride;
-            if (MazeOpenAt((int2)MazeTile(lampXZ)) < 0.75)
-            {
-                continue;
-            }
             float3 lampPos = float3(lampXZ.x, gMaze1.z - 0.09, lampXZ.y);
             float3 L = lampPos - worldPos;
             float d2 = dot(L, L);
-            float distXZ = length(lampPos.xz - worldPos.xz);
             float reach = spacing * 1.18 + gMaze1.w * 0.75;
+            float2 lampDeltaXZ = lampPos.xz - worldPos.xz;
+            float distXZSqr = dot(lampDeltaXZ, lampDeltaXZ);
+            if (distXZSqr > reach * reach)
+            {
+                continue;
+            }
+            if (MazeOpenAt((int2)cell) < 0.75)
+            {
+                continue;
+            }
+            float distXZ = sqrt(max(distXZSqr, 0.0));
             float roomFootprint = 1.0 - smoothstep(reach * 0.48, reach, distXZ);
+            if (roomFootprint <= 0.002)
+            {
+                continue;
+            }
             float power = FixturePower(lampPos, time);
-            if (roomFootprint <= 0.002 || power <= 0.002)
+            if (power <= 0.002)
+            {
+                continue;
+            }
+            float baseFalloff = roomFootprint / (1.0 + d2 * 0.035);
+            if (power * baseFalloff <= 0.00045)
             {
                 continue;
             }
             float visibility = LampVisibility(worldPos.xz, worldN, lampPos.xz);
             float3 Ln = normalize(L);
             float diffuse = saturate(dot(worldN, Ln) * 0.65 + 0.35);
-            float falloff = visibility * roomFootprint / (1.0 + d2 * 0.035);
+            float falloff = visibility * baseFalloff;
             float selectedShadowLamp = 1.0 - smoothstep(0.05, 0.42, length(lampPos.xz - gFixtureShadow0.xz));
             if (selectedShadowLamp > 0.001)
             {

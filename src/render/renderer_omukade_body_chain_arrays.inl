@@ -12,8 +12,8 @@
         int bodyCount = debugEffectMonster
             ? 22
             : std::clamp(static_cast<int>(std::ceil(bodyLengthMeters / std::max(0.12f, bodySpacing))) + 1,
-                monsterDetail >= 2 ? 18 : (monsterDetail == 1 ? 14 : 10),
-                monsterDetail >= 2 ? 36 : (monsterDetail == 1 ? 26 : 18));
+                monsterDetail >= 2 ? 18 : (monsterDetail == 1 ? 13 : 8),
+                monsterDetail >= 2 ? 34 : (monsterDetail == 1 ? 22 : 14));
         float curiosityPose = MonsterCuriosityAmount();
         XMFLOAT3 monsterForward{std::sin(monsterYaw), 0.0f, std::cos(monsterYaw)};
         XMFLOAT3 monsterRight{std::cos(monsterYaw), 0.0f, -std::sin(monsterYaw)};

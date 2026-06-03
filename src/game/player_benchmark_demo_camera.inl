@@ -1,46 +1,55 @@
     void ApplyBenchmarkDemoCamera(float seconds) {
         const Maze& maze = RenderMazeView();
-        constexpr float kTwoPi = kPi * 2.0f;
-        const float cycle = std::fmod(std::max(0.0f, seconds), 48.0f);
-        XMFLOAT3 eye{};
-        XMFLOAT3 target{};
-
-        auto world = [&](float tx, float ty, float y) {
-            return maze.WorldCenter({std::clamp(static_cast<int>(std::round(tx)), 1, maze.w - 2),
-                                      std::clamp(static_cast<int>(std::round(ty)), 1, maze.h - 2)}, y);
+        struct BenchmarkCameraNode {
+            float x;
+            float y;
+            float height;
         };
-        auto lerpWorld = [&](float ax, float ay, float bx, float by, float t, float y) {
-            XMFLOAT3 a = world(ax, ay, y);
-            XMFLOAT3 b = world(bx, by, y);
-            return Lerp3(a, b, SmoothStep(0.0f, 1.0f, Clamp01(t)));
+        static constexpr BenchmarkCameraNode kNodes[] = {
+            {13.0f, 55.0f, 1.48f},
+            {13.0f, 42.0f, 1.50f},
+            {24.0f, 38.0f, 1.46f},
+            {35.0f, 31.0f, 1.52f},
+            {43.0f, 38.0f, 1.48f},
+            {57.0f, 38.0f, 1.50f},
+            {57.0f, 56.0f, 1.47f},
+            {65.0f, 58.0f, 1.45f},
+            {54.0f, 54.0f, 1.50f},
+            {54.0f, 36.0f, 1.48f},
+            {56.0f, 23.0f, 1.52f},
+            {43.0f, 17.0f, 1.46f},
+            {19.0f, 17.0f, 1.50f},
+            {16.0f, 30.0f, 1.47f}
+        };
+        constexpr float kSegmentSeconds = 4.25f;
+        constexpr int kNodeCount = static_cast<int>(std::size(kNodes));
+        const float cycleSeconds = kSegmentSeconds * static_cast<float>(kNodeCount);
+
+        auto worldAt = [&](const BenchmarkCameraNode& node, float heightOffset) {
+            XMFLOAT3 p = maze.WorldCenter({std::clamp(static_cast<int>(std::round(node.x)), 1, maze.w - 2),
+                                           std::clamp(static_cast<int>(std::round(node.y)), 1, maze.h - 2)}, node.height + heightOffset);
+            return p;
+        };
+        auto samplePath = [&](float tSeconds, float heightOffset) {
+            float wrapped = std::fmod(std::max(0.0f, tSeconds), cycleSeconds);
+            int index = static_cast<int>(wrapped / kSegmentSeconds);
+            int next = (index + 1) % kNodeCount;
+            float localT = SmoothStep(0.0f, 1.0f, (wrapped - static_cast<float>(index) * kSegmentSeconds) / kSegmentSeconds);
+            return Lerp3(worldAt(kNodes[index], heightOffset), worldAt(kNodes[next], heightOffset), localT);
         };
 
-        if (cycle < 12.0f) {
-            float t = cycle / 12.0f;
-            eye = lerpWorld(16.0f, 55.0f, 55.0f, 55.0f, t, 1.46f);
-            target = world(42.0f + std::sin(t * kTwoPi) * 8.0f, 34.0f, 1.34f);
-        } else if (cycle < 24.0f) {
-            float t = (cycle - 12.0f) / 12.0f;
-            eye = lerpWorld(56.0f, 55.0f, 58.0f, 22.0f, t, 1.52f);
-            target = world(38.0f, 36.0f + std::cos(t * kTwoPi) * 9.0f, 1.24f);
-        } else if (cycle < 36.0f) {
-            float t = (cycle - 24.0f) / 12.0f;
-            eye = lerpWorld(58.0f, 22.0f, 19.0f, 21.0f, t, 1.36f);
-            target = world(36.0f, 38.0f, 1.95f);
-        } else {
-            float t = (cycle - 36.0f) / 12.0f;
-            float orbit = t * kTwoPi;
-            XMFLOAT3 center = world(37.0f, 37.0f, 1.38f);
-            eye = {
-                center.x + std::sin(orbit) * maze.TileAverage() * 8.5f,
-                1.58f + std::sin(orbit * 2.0f) * 0.12f,
-                center.z + std::cos(orbit) * maze.TileAverage() * 7.0f
-            };
-            target = {center.x, 1.18f, center.z};
-        }
+        XMFLOAT3 eye = samplePath(seconds, 0.0f);
+        XMFLOAT3 target = samplePath(seconds + 2.6f, -0.12f);
+        float dx = target.x - eye.x;
+        float dz = target.z - eye.z;
+        float invLen = 1.0f / std::max(0.001f, std::sqrt(dx * dx + dz * dz));
+        float sideLook = std::sin(seconds * 0.42f) * maze.TileAverage() * 0.34f;
+        target.x += -dz * invLen * sideLook;
+        target.z += dx * invLen * sideLook;
+        target.y += std::sin(seconds * 0.31f) * 0.045f;
 
         ApplyDebugCameraLookAt(eye, target, -0.48f, 0.42f);
         viewRuntime_.cameraMotionBlur = {};
-        gameWorld_.SetPlayerSmoothedMoveSpeed(1.4f);
+        gameWorld_.SetPlayerSmoothedMoveSpeed(1.25f);
         gameWorld_.RestorePlayerFullVitals();
     }

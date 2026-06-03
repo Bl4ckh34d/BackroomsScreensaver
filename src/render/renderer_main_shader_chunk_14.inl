@@ -13,6 +13,11 @@ float CornerAO(float3 worldPos, float3 normal)
 
 float FlashlightAmount(float3 worldPos, float3 worldN)
 {
+    if (gLighting0.x <= 0.001)
+    {
+        return 0.0;
+    }
+
     float3 lightPos = gShadow0.xyz;
     float3 lightDir = normalize(gShadow1.xyz);
     float3 fromLight = worldPos - lightPos;
@@ -26,6 +31,12 @@ float FlashlightAmount(float3 worldPos, float3 worldN)
     float3 toLight = -ray;
     float cone = smoothstep(gShadow2.z, gShadow2.w, dot(ray, lightDir));
     float attenuation = 1.0 / (1.0 + gLighting0.y * dist * dist);
+    float coneAttenuation = cone * attenuation * gLighting0.x;
+    if (coneAttenuation <= 0.001)
+    {
+        return 0.0;
+    }
+
     float diffuse = saturate(dot(worldN, toLight));
     float shadow = ShadowVisibility(worldPos, worldN);
     float4 lightClip = mul(float4(worldPos, 1.0), gLightViewProj);
@@ -34,7 +45,7 @@ float FlashlightAmount(float3 worldPos, float3 worldN)
     float2 centered = lightUv * 2.0 - 1.0;
     float lensFalloff = smoothstep(1.18, 0.18, dot(centered, centered));
     float pattern = lerp(0.52, 1.22, glass) * (0.72 + lensFalloff * 0.28);
-    return cone * attenuation * gLighting0.x * (0.16 + diffuse * 1.12) * shadow * pattern;
+    return coneAttenuation * (0.16 + diffuse * 1.12) * shadow * pattern;
 }
 
 float SparkLightOne(float3 worldPos, float3 worldN, float4 lightData)

@@ -31,7 +31,7 @@ float LampAreaRayVisibility(float2 startXZ, float2 lampXZ, float2 dir, float2 pe
     float weightSum = 0.0;
 
     [loop]
-    for (int i = 0; i < 9; ++i)
+    for (int i = 0; i < 5; ++i)
     {
         float2 s = LampAreaSample(i);
         float diagonal = step(0.82, abs(s.x) + abs(s.y));
@@ -61,6 +61,10 @@ float LampVisibility(float2 worldXZ, float3 worldN, float2 lampXZ)
                          exp2(-deltaCells.y * deltaCells.y * 1.95));
     float localFill = exp2(-dot(deltaCells, deltaCells) * 0.36);
     float areaFill = saturate(max(hallFill * 0.95, localFill * 0.58));
+    if (areaFill <= 0.002)
+    {
+        return 0.0;
+    }
 
     float2 startCell = (startXZ - gMaze0.xy) / gMaze0.zw;
     float clearance = NearestClosedCellDistance(startCell);
