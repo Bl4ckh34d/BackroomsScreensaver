@@ -1,0 +1,10 @@
+    s.dreadEnabled = IniInt(L"Dread", L"Enabled", s.dreadEnabled ? 1 : 0) != 0;
+    s.dreadDebugMeter = IniInt(L"Dread", L"DebugMeter", s.dreadDebugMeter ? 1 : 0) != 0;
+    s.dreadDecayPerSecond = std::clamp(IniFloat(L"Dread", L"DecayPerSecond", s.dreadDecayPerSecond), 0.0f, 1.0f);
+    s.dreadMonsterDistance = std::clamp(IniFloat(L"Dread", L"MonsterDistance", s.dreadMonsterDistance), 1.0f, 60.0f);
+    s.dreadMonsterGainPerSecond = std::clamp(IniFloat(L"Dread", L"MonsterGainPerSecond", s.dreadMonsterGainPerSecond), 0.0f, 3.0f);
+    s.dreadJumpscareGain = std::clamp(IniFloat(L"Dread", L"JumpscareGain", s.dreadJumpscareGain), 0.0f, 1.0f);
+    s.dreadFleshGain = std::clamp(IniFloat(L"Dread", L"FleshGain", s.dreadFleshGain), 0.0f, 1.0f);
+    s.dreadWalkSpeedBoost = std::clamp(IniFloat(L"Dread", L"WalkSpeedBoost", s.dreadWalkSpeedBoost), 0.0f, 2.0f);
+    s.dreadRunSpeedBoost = std::clamp(IniFloat(L"Dread", L"RunSpeedBoost", s.dreadRunSpeedBoost), 0.0f, 2.0f);
+    s.dreadFlashlightFlicker = std::clamp(IniFloat(L"Dread", L"FlashlightFlicker", s.dreadFlashlightFlicker), 0.0f, 3.0f);

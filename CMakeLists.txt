@@ -10,6 +10,22 @@ endif()
 
 set(BACKROOMS_SOURCES
     src/main.cpp
+    src/audio/audio_engine.cpp
+    src/audio/game_audio_events.cpp
+    src/audio/game_audio_system.cpp
+    src/config/settings.cpp
+    src/game/game_session.cpp
+    src/game/game_settings_panel.cpp
+    src/game/game_window_settings.cpp
+    src/game/game_world.cpp
+    src/game/player_controller.cpp
+    src/game/player_state.cpp
+    src/maze/maze.cpp
+    src/monster/monster_state.cpp
+    src/platform/command_line_mode.cpp
+    src/platform/gui_controls.cpp
+    src/platform/loading_overlay.cpp
+    src/screensaver/screensaver_monitor_layout.cpp
     src/app.rc
 )
 

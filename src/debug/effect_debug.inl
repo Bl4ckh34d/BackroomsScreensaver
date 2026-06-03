@@ -1,17 +1,9 @@
 // Effect debug viewer state, prop labels, and effect-tuning constants.
 // Included from main.cpp before settings and renderer code.
 
-enum class DebugSliceEffect {
-    Blood = 0,
-    FloorWater,
-    CeilingWater,
-    WallWater,
-    CeilingLamps,
-    BrokenLamps,
-    AirVents,
-    Props,
-    Count
-};
+#include "effect_debug_constants.h"
+#include "debug_slice_effect.h"
+#include "startup_progress.h"
 
 bool gEffectDebugViewer = false;
 DebugSliceEffect gDebugSliceEffect = DebugSliceEffect::Blood;
@@ -20,30 +12,6 @@ int gDebugSliceTiles = 3;
 int gDebugPropIndex = 0;
 bool gBloodDebugEveryWall = false;
 bool gDebugHideMonster = false;
-
-struct StartupProgressUpdate {
-    const wchar_t* phase = L"";
-    const wchar_t* detail = L"";
-    int current = 0;
-    int total = 1;
-    int fineCurrent = 0;
-    int fineTotal = 0;
-    int shaderDone = 0;
-    int shaderTotal = 0;
-    int shaderCompiled = 0;
-    int shaderCached = 0;
-};
-
-using StartupProgressCallback = void (*)(void*, const StartupProgressUpdate&);
-
-struct StartupProgressSink {
-    StartupProgressCallback callback = nullptr;
-    void* context = nullptr;
-
-    void Report(const StartupProgressUpdate& update) const {
-        if (callback) callback(context, update);
-    }
-};
 
 const wchar_t* DebugSliceEffectName(DebugSliceEffect effect) {
     switch (effect) {
@@ -129,36 +97,3 @@ float DebugPropCameraTargetY(int index) {
     }
 }
 
-struct EffectFloatRange {
-    float min = 0.0f;
-    float max = 0.0f;
-};
-
-struct EffectIntRange {
-    int min = 0;
-    int max = 0;
-};
-
-constexpr float kEffectBloodLoopSeconds = 56.0f;
-constexpr float kEffectBloodFullSpreadAge = 48.0f;
-constexpr float kEffectWaterLoopSeconds = 7.5f;
-constexpr float kEffectAirVentLoopSeconds = 6.2f;
-constexpr float kEffectBrokenLampLoopSeconds = 5.2f;
-constexpr float kEffectStaticLoopSeconds = 8.0f;
-constexpr EffectFloatRange kEffectBrokenLampSparkIntensity{2.2f, 4.1f};
-constexpr float kEffectBrokenLampChainIntensityScale = 0.70f;
-constexpr EffectIntRange kEffectBrokenLampChainBursts{1, 3};
-constexpr EffectFloatRange kEffectAirVentSteamIntensity{1.9f, 3.2f};
-constexpr int kEffectAirVentPanelDropEvery = 3;
-constexpr float kEffectAirVentPanelDropChance = 1.0f / static_cast<float>(kEffectAirVentPanelDropEvery);
-constexpr float kVentDropFloorY = 0.026f;
-constexpr size_t kMaxVentDrops = 64;
-constexpr float kEffectDebugAmbientLight = 0.32f;
-constexpr float kEffectDebugExposureMax = 1.0f;
-constexpr float kEffectDebugBloomMax = 0.30f;
-constexpr float kEffectDebugFlashlightIntensity = 0.82f;
-constexpr float kEffectDebugLampIntensity = 1.35f;
-constexpr float kEffectBloodStreamCount = 30.0f;
-constexpr float kEffectBloodStreamThickness = 0.88f;
-constexpr float kEffectBloodShaderQuality = 1.0f;
-constexpr float kEffectBloodRevealRadius = 100000.0f;

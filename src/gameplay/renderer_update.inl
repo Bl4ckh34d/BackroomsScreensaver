@@ -1,7 +1,7 @@
     void UpdateSimulation(float dt) {
-        visionFlashTimer_ = std::max(0.0f, visionFlashTimer_ - std::max(0.0f, dt));
+        scareRuntime_.visionFlashTimer = std::max(0.0f, scareRuntime_.visionFlashTimer - std::max(0.0f, dt));
 
-        if (deathActive_) {
+        if (gameWorld_.deathActive) {
             UpdateDeath(dt);
             UpdateDreadMeterDisplay(dt);
             UpdateFlashlightAim(dt);
@@ -10,37 +10,39 @@
             return;
         }
 
-        if (runtimeMode_ == RendererRuntimeMode::PlayableGame) {
-            bool flashlightPressed = gameInput_.flashlight;
-            if (flashlightPressed && !previousFlashlightInput_) {
-                flashlightEnabled_ = !flashlightEnabled_;
-                audio_.PlayRandom(GameSound::FlashlightStutter, AudioBus::Effects, camera_, 0.41f, false);
-                EmitPlayerAudibleSoundAtCamera(FlashlightClickHearingRadius(), 0.62f);
-            }
-            previousFlashlightInput_ = flashlightPressed;
-        } else {
-            previousFlashlightInput_ = false;
+        PlayerFlashlightInputResult flashlightInput = PlayerController::UpdateFlashlightInput(
+            gameWorld_.player,
+            sessionRuntime_.IsPlayableGame(),
+            sessionRuntime_.input.flashlight);
+        if (flashlightInput.toggled) {
+            gameWorld_.QueueAudioEvent(GameAudioEvent::OneShotWithPlayerNoise(
+                GameSound::FlashlightStutter,
+                AudioBus::Effects,
+                gameWorld_.player.position,
+                0.41f,
+                false,
+                FlashlightClickHearingRadius(),
+                0.62f).WithCategory(GameAudioEventCategory::PlayerInteraction));
         }
 
-        if (runtimeMode_ == RendererRuntimeMode::PlayableGame && playableRun_.scoreScreenActive) {
-            if (gameInput_.interact && !previousInteractInput_) {
+        if (sessionRuntime_.IsPlayableGame() && gameWorld_.PlayableScoreScreenActive()) {
+            if (PlayerController::ConsumeInteractPress(gameWorld_.player, sessionRuntime_.input.interact)) {
                 ContinueAfterScoreScreen();
             }
-            previousInteractInput_ = gameInput_.interact;
             UpdateFlashlightAim(dt);
             UpdateAirParticles(dt);
             UpdateAirParticleFocus(dt);
             return;
         }
 
-        fadeInTimer_ = std::max(0.0f, fadeInTimer_ - dt);
-        if (runtimeMode_ == RendererRuntimeMode::MainMenu) {
+        viewRuntime_.fadeInTimer = std::max(0.0f, viewRuntime_.fadeInTimer - dt);
+        if (sessionRuntime_.IsMainMenu()) {
             UpdateMainMenuScene(dt);
             return;
         }
-        if (monsterPreview_) {
+        if (monsterPreview_.active) {
             UpdateMonsterHeadAnimation(dt, false);
-            SetMonsterPreviewCamera(time_);
+            SetMonsterPreviewCamera(timeRuntime_.time);
             UpdateFlashlightAim(dt);
             UpdateDreadMeterDisplay(dt);
             return;
@@ -58,9 +60,9 @@
             UpdateDreadMeterDisplay(dt);
             return;
         }
-        if (settings_.bloodStudyView) {
+        if (settingsRuntime_.live.bloodStudyView) {
             ApplyBloodStudyCamera();
-            bloodWorldActivationTime_ = time_ - 46.0f;
+            scareRuntime_.bloodWorldActivationTime = timeRuntime_.time - 46.0f;
             UpdateSparks(dt);
             UpdateSteamAndDrops(dt);
             UpdateFlashlightAim(dt);
@@ -69,9 +71,9 @@
             UpdateAirParticleFocus(dt);
             return;
         }
-        if (benchmarkDemoActive_ || BenchmarkDemoEnabled()) {
-            benchmarkDemoActive_ = true;
-            benchmarkDemoTimer_ += dt;
+        if (benchmarkRuntime_.active || BenchmarkDemoEnabled()) {
+            benchmarkRuntime_.active = true;
+            benchmarkRuntime_.timer += dt;
             UpdateScareEvents(dt);
             UpdateSparks(dt);
             UpdateSteamAndDrops(dt);
@@ -79,23 +81,23 @@
             if (MonsterActiveForCurrentMode()) {
                 UpdateMonsterHeadAnimation(dt, false);
             }
-            dangerLevel_ = 0.40f + std::sin(time_ * 0.73f) * 0.12f;
-            dreadLevel_ = 0.45f + std::cos(time_ * 0.41f) * 0.10f;
+            viewRuntime_.dangerLevel = 0.40f + std::sin(timeRuntime_.time * 0.73f) * 0.12f;
+            viewRuntime_.dreadLevel = 0.45f + std::cos(timeRuntime_.time * 0.41f) * 0.10f;
             UpdateDreadMeterDisplay(dt);
-            ApplyBenchmarkDemoCamera(benchmarkDemoTimer_);
+            ApplyBenchmarkDemoCamera(benchmarkRuntime_.timer);
             UpdateFlashlightAim(dt);
             UpdateAirParticles(dt);
             UpdateAirParticleFocus(dt);
             float duration = BenchmarkDemoDurationSeconds();
-            if (duration > 0.0f && benchmarkDemoTimer_ >= duration && hwnd_) {
-                PostMessageW(hwnd_, WM_CLOSE, 0, 0);
+            if (duration > 0.0f && benchmarkRuntime_.timer >= duration && hostRuntime_.hwnd) {
+                PostMessageW(hostRuntime_.hwnd, WM_CLOSE, 0, 0);
             }
             return;
         }
         UpdateScareEvents(dt);
         UpdateSparks(dt);
         UpdateSteamAndDrops(dt);
-        if (exitTransitionActive_) {
+        if (gameWorld_.exitTransitionActive) {
             UpdateExitTransition(dt);
             UpdateFlashlightAim(dt);
             UpdateAirParticles(dt);
@@ -103,15 +105,15 @@
             return;
         }
 
-        if (VisibleInFront(maze_.exit)) exitSpotted_ = true;
+        if (VisibleInFront(gameWorld_.maze.exit)) viewRuntime_.exitSpotted = true;
         bool monsterActive = MonsterActiveForCurrentMode();
         float monsterDist = monsterActive ? MonsterDistance() : std::numeric_limits<float>::max();
         if (monsterActive) {
-            UpdateMonster(dt);
+            MonsterUpdateInput monsterInput = BuildMonsterUpdateInput(dt);
+            MonsterUpdateOutput monsterOutput = UpdateMonster(monsterInput);
             UpdateMonsterLampDamage(dt);
-            monsterDist = MonsterDistance();
-            if (!settings_.debugInvincible && !MonsterIgnoresPlayer() && monsterDist < settings_.monsterKillDistance && maze_.LineClear(CameraTile(), MonsterTile())) {
-                playerHealth_ = 0.0f;
+            monsterDist = monsterOutput.distanceToPlayer;
+            if (monsterOutput.HasGameplayEvent(MonsterGameplayEventKind::KillPlayer)) {
                 BeginDeath();
                 UpdateDeath(dt);
                 UpdateFlashlightAim(dt);
@@ -120,31 +122,20 @@
                 return;
             }
         } else {
-            monsterLimbAnchors_.clear();
-            monsterSmoothedBodyPoints_.clear();
-            monsterSmoothedBodyUps_.clear();
-            monsterBodySmoothTime_ = -1000.0f;
-            monsterRenderVisibleUntil_ = -1000.0f;
-            monsterHasSound_ = false;
-            monsterHasLastKnown_ = false;
-            monsterChasingVisible_ = false;
-            monsterRecognizedForChase_ = false;
-            monsterHeadChaseBlend_ = 0.0f;
-            monsterHeadLockAmount_ = 0.0f;
+            gameWorld_.monster.ClearPursuitState();
+            ResetMonsterPresentationState(false, false);
         }
 
         bool threat = monsterActive && IsThreatVisible();
         if (!monsterActive || MonsterIgnoresPlayer()) {
             threat = false;
-            chasePanic_ = 0.0f;
-            chaseMemoryTimer_ = 0.0f;
-            monsterRecognizedForChase_ = false;
+            gameWorld_.monster.ClearChaseCommitment();
         }
         UpdateChasePanic(dt, threat, monsterDist);
         UpdateBrokenRuntimeLampSparks(dt, 3.0f, 9.5f, 0.12f);
         bool panicActive = threat || ChasePanicActive();
-        float dangerTarget = threat ? Clamp01((8.0f - monsterDist) / 6.6f) : chasePanic_ * 0.38f;
-        dangerLevel_ += (dangerTarget - dangerLevel_) * std::min(1.0f, dt * (dangerTarget > dangerLevel_ ? 2.2f : 0.85f));
+        float dangerTarget = threat ? Clamp01((8.0f - monsterDist) / 6.6f) : gameWorld_.monster.chasePanic * 0.38f;
+        viewRuntime_.dangerLevel += (dangerTarget - viewRuntime_.dangerLevel) * std::min(1.0f, dt * (dangerTarget > viewRuntime_.dangerLevel ? 2.2f : 0.85f));
         UpdateDread(dt, threat, monsterDist);
         UpdateMonsterSightDread(dt, threat, monsterDist);
         UpdateBloodDread(dt);
@@ -152,39 +143,39 @@
         UpdateDreadMeterDisplay(dt);
 
         if (threat && !MonsterSightingFreezeActive()) {
-            stopTimer_ = 0.0f;
-            headScanTimer_ = 0.0f;
-            headScanDuration_ = 0.0f;
-            lookBack_ = false;
-            junctionScanActive_ = false;
-            branchLookTimer_ = 0.0f;
-            roomSurveyTimer_ = 0.0f;
-            propLookTimer_ = 0.0f;
-            bloodFocusTimer_ = 0.0f;
-            ventReactionTimer_ = 0.0f;
-            threatRepath_ -= dt;
-            if (threatRepath_ <= 0.0f || pathIndex_ >= path_.size()) {
+            cameraRuntime_.stopTimer = 0.0f;
+            cameraRuntime_.headScanTimer = 0.0f;
+            cameraRuntime_.headScanDuration = 0.0f;
+            cameraRuntime_.lookBack = false;
+            cameraRuntime_.junctionScanActive = false;
+            cameraRuntime_.branchLookTimer = 0.0f;
+            cameraRuntime_.roomSurveyTimer = 0.0f;
+            viewRuntime_.propLookTimer = 0.0f;
+            scareRuntime_.bloodFocusTimer = 0.0f;
+            viewRuntime_.ventReactionTimer = 0.0f;
+            cameraRuntime_.threatRepath -= dt;
+            if (cameraRuntime_.threatRepath <= 0.0f || cameraRuntime_.pathIndex >= cameraRuntime_.path.size()) {
                 ChoosePath(true);
-                bool runningToExit = !path_.empty() && path_.back() == maze_.exit;
-                bool committedEscape = FirstThreatLineBreakIndex(path_, MonsterTile(), 7) >= 0 || FirstBranchIndex(path_, 6) >= 0;
-                threatRepath_ = runningToExit ? RandRange(3.4f, 5.4f) : (committedEscape ? RandRange(2.6f, 4.2f) : RandRange(1.2f, 2.2f));
+                bool runningToExit = !cameraRuntime_.path.empty() && cameraRuntime_.path.back() == gameWorld_.maze.exit;
+                bool committedEscape = FirstThreatLineBreakIndex(cameraRuntime_.path, MonsterTile(), 7) >= 0 || FirstBranchIndex(cameraRuntime_.path, 6) >= 0;
+                cameraRuntime_.threatRepath = runningToExit ? RandRange(3.4f, 5.4f) : (committedEscape ? RandRange(2.6f, 4.2f) : RandRange(1.2f, 2.2f));
             }
         } else if (threat) {
-            threatRepath_ = 0.0f;
-            path_.clear();
-            pathIndex_ = 0;
+            cameraRuntime_.threatRepath = 0.0f;
+            cameraRuntime_.path.clear();
+            cameraRuntime_.pathIndex = 0;
         } else if (panicActive) {
-            threatRepath_ = 0.0f;
-            chaseLookBackTimer_ = std::max(0.0f, chaseLookBackTimer_ - dt * 1.20f);
-            chaseLookBackCooldown_ = std::max(0.0f, chaseLookBackCooldown_ - dt);
-            stumbleTimer_ = std::max(0.0f, stumbleTimer_ - dt * 1.10f);
+            cameraRuntime_.threatRepath = 0.0f;
+            viewRuntime_.chaseLookBackTimer = std::max(0.0f, viewRuntime_.chaseLookBackTimer - dt * 1.20f);
+            viewRuntime_.chaseLookBackCooldown = std::max(0.0f, viewRuntime_.chaseLookBackCooldown - dt);
+            viewRuntime_.stumbleTimer = std::max(0.0f, viewRuntime_.stumbleTimer - dt * 1.10f);
         } else {
-            threatRepath_ = 0.0f;
-            chaseLookBackTimer_ = 0.0f;
-            chaseLookBackCooldown_ = std::max(0.0f, chaseLookBackCooldown_ - dt);
-            stumbleTimer_ = std::max(0.0f, stumbleTimer_ - dt * 2.0f);
+            cameraRuntime_.threatRepath = 0.0f;
+            viewRuntime_.chaseLookBackTimer = 0.0f;
+            viewRuntime_.chaseLookBackCooldown = std::max(0.0f, viewRuntime_.chaseLookBackCooldown - dt);
+            viewRuntime_.stumbleTimer = std::max(0.0f, viewRuntime_.stumbleTimer - dt * 2.0f);
         }
-        if (runtimeMode_ == RendererRuntimeMode::PlayableGame) {
+        if (sessionRuntime_.UsesManualInput()) {
             UpdateManualPlayer(dt);
         } else {
             UpdatePathFollower(dt);

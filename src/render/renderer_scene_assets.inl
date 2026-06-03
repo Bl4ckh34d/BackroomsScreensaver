@@ -1,8 +1,8 @@
     void EnsureFullSceneAssets() {
-        if (!monsterMeshLoaded_ || skullMesh_.empty()) {
-            LoadMonsterSkullMesh();
+        if (!renderAssets_.monsterMeshLoaded || renderAssets_.skullMesh.empty()) {
+            LoadOmukadeMaskMesh();
         }
-        if (!propMeshesLoaded_) {
+        if (!renderAssets_.propMeshesLoaded) {
             LoadPropMeshes();
         }
     }

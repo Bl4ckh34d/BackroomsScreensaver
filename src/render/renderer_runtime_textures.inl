@@ -1,5 +1,5 @@
     bool CreateFlashlightPatternTexture() {
-        if (!device_) return false;
+        if (!d3dRuntime_.device) return false;
         constexpr int kPatternSize = 512;
         ImageRGBA img;
         bool loaded = false;
@@ -31,7 +31,7 @@
         init.SysMemPitch = static_cast<UINT>(img.width * 4);
 
         ComPtr<ID3D11Texture2D> tex;
-        HRESULT hr = device_->CreateTexture2D(&td, &init, &tex);
+        HRESULT hr = d3dRuntime_.device->CreateTexture2D(&td, &init, &tex);
         if (FAILED(hr)) return false;
 
         D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
@@ -39,35 +39,37 @@
         sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         sd.Texture2D.MostDetailedMip = 0;
         sd.Texture2D.MipLevels = 1;
-        hr = device_->CreateShaderResourceView(tex.Get(), &sd, &flashlightPatternSrv_);
+        hr = d3dRuntime_.device->CreateShaderResourceView(tex.Get(), &sd, &runtimeTextures_.flashlightPatternSrv);
         return SUCCEEDED(hr);
     }
 
     bool CreateMazeMaskTexture() {
-        if (!device_ || maze_.w <= 0 || maze_.h <= 0 || maze_.open.empty()) return false;
-        mazeSrv_.Reset();
+        GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
+        if (!d3dRuntime_.device || !world.maze || world.maze->w <= 0 || world.maze->h <= 0 || world.maze->open.empty()) return false;
+        const Maze& maze = *world.maze;
+        runtimeTextures_.mazeSrv.Reset();
 
-        std::vector<uint8_t> mask(static_cast<size_t>(maze_.w * maze_.h), 0);
-        for (int y = 0; y < maze_.h; ++y) {
-            for (int x = 0; x < maze_.w; ++x) {
+        std::vector<uint8_t> mask(static_cast<size_t>(maze.w * maze.h), 0);
+        for (int y = 0; y < maze.h; ++y) {
+            for (int x = 0; x < maze.w; ++x) {
                 uint8_t value = 0;
-                if (maze_.IsOpen(x, y)) {
+                if (maze.IsOpen(x, y)) {
                     value = 255;
                 } else {
-                    MazeWallFeature feature = maze_.WallFeature(x, y);
+                    MazeWallFeature feature = maze.WallFeature(x, y);
                     if (feature == MazeWallFeature::Window) {
                         value = 255;
                     } else if (feature == MazeWallFeature::Tunnel) {
                         value = 128;
                     }
                 }
-                mask[static_cast<size_t>(y * maze_.w + x)] = value;
+                mask[static_cast<size_t>(y * maze.w + x)] = value;
             }
         }
 
         D3D11_TEXTURE2D_DESC td{};
-        td.Width = static_cast<UINT>(maze_.w);
-        td.Height = static_cast<UINT>(maze_.h);
+        td.Width = static_cast<UINT>(maze.w);
+        td.Height = static_cast<UINT>(maze.h);
         td.MipLevels = 1;
         td.ArraySize = 1;
         td.Format = DXGI_FORMAT_R8_UNORM;
@@ -77,10 +79,10 @@
 
         D3D11_SUBRESOURCE_DATA init{};
         init.pSysMem = mask.data();
-        init.SysMemPitch = static_cast<UINT>(maze_.w);
+        init.SysMemPitch = static_cast<UINT>(maze.w);
 
         ComPtr<ID3D11Texture2D> tex;
-        HRESULT hr = device_->CreateTexture2D(&td, &init, &tex);
+        HRESULT hr = d3dRuntime_.device->CreateTexture2D(&td, &init, &tex);
         if (FAILED(hr)) return false;
 
         D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
@@ -88,23 +90,25 @@
         sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         sd.Texture2D.MostDetailedMip = 0;
         sd.Texture2D.MipLevels = 1;
-        hr = device_->CreateShaderResourceView(tex.Get(), &sd, &mazeSrv_);
+        hr = d3dRuntime_.device->CreateShaderResourceView(tex.Get(), &sd, &runtimeTextures_.mazeSrv);
         return SUCCEEDED(hr);
     }
 
     bool CreateLampDamageTexture() {
-        if (!device_ || maze_.w <= 0 || maze_.h <= 0) return false;
-        lampDamageTexture_.Reset();
-        lampDamageSrv_.Reset();
+        GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
+        if (!d3dRuntime_.device || !world.maze || world.maze->w <= 0 || world.maze->h <= 0) return false;
+        const Maze& maze = *world.maze;
+        runtimeTextures_.lampDamageTexture.Reset();
+        runtimeTextures_.lampDamageSrv.Reset();
 
-        const size_t pixelCount = static_cast<size_t>(maze_.w) * static_cast<size_t>(maze_.h);
-        if (lampDamagePixels_.size() != pixelCount) {
-            lampDamagePixels_.assign(pixelCount, 0);
+        const size_t pixelCount = static_cast<size_t>(maze.w) * static_cast<size_t>(maze.h);
+        if (effectRuntime_.lampDamagePixels.size() != pixelCount) {
+            effectRuntime_.lampDamagePixels.assign(pixelCount, 0);
         }
 
         D3D11_TEXTURE2D_DESC td{};
-        td.Width = static_cast<UINT>(maze_.w);
-        td.Height = static_cast<UINT>(maze_.h);
+        td.Width = static_cast<UINT>(maze.w);
+        td.Height = static_cast<UINT>(maze.h);
         td.MipLevels = 1;
         td.ArraySize = 1;
         td.Format = DXGI_FORMAT_R8_UNORM;
@@ -113,10 +117,10 @@
         td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
         D3D11_SUBRESOURCE_DATA init{};
-        init.pSysMem = lampDamagePixels_.data();
-        init.SysMemPitch = static_cast<UINT>(maze_.w);
+        init.pSysMem = effectRuntime_.lampDamagePixels.data();
+        init.SysMemPitch = static_cast<UINT>(maze.w);
 
-        HRESULT hr = device_->CreateTexture2D(&td, &init, &lampDamageTexture_);
+        HRESULT hr = d3dRuntime_.device->CreateTexture2D(&td, &init, &runtimeTextures_.lampDamageTexture);
         if (FAILED(hr)) return false;
 
         D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
@@ -124,8 +128,8 @@
         sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         sd.Texture2D.MostDetailedMip = 0;
         sd.Texture2D.MipLevels = 1;
-        hr = device_->CreateShaderResourceView(lampDamageTexture_.Get(), &sd, &lampDamageSrv_);
+        hr = d3dRuntime_.device->CreateShaderResourceView(runtimeTextures_.lampDamageTexture.Get(), &sd, &runtimeTextures_.lampDamageSrv);
         if (FAILED(hr)) return false;
-        lampDamageDirty_ = false;
+        effectRuntime_.lampDamageDirty = false;
         return true;
     }

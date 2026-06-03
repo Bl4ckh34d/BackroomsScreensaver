@@ -1,0 +1,15 @@
+                static const wchar_t* scareNames[] = {L"Broken lamps", L"Air vents", L"Water damage", L"Blood world", L"Flesh world"};
+                int idx = std::clamp(menuRuntime_.customSelectedScare, 0, CustomGameSpec::kScareTypeCount - 1);
+                text(scareNames[idx], {40, 94, 472, 132}, bodyFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                markerLine(132, 134, 380, 130, dimInkPen);
+                wchar_t chanceText[24]{};
+                swprintf_s(chanceText, L"%d%%", std::clamp(menuRuntime_.customSpec.scareChancePercent[static_cast<size_t>(idx)], 0, 100));
+                wchar_t minText[24]{};
+                swprintf_s(minText, L"%ds", std::max(0, menuRuntime_.customSpec.scareStartMinSeconds[static_cast<size_t>(idx)]));
+                wchar_t maxText[24]{};
+                swprintf_s(maxText, L"%ds", std::max(0, menuRuntime_.customSpec.scareStartMaxSeconds[static_cast<size_t>(idx)]));
+                timingStepper(CustomGameMenuControl::ScareChanceMinus, CustomGameMenuControl::ScareChancePlus, 220, L"Chance", chanceText);
+                timingStepper(CustomGameMenuControl::ScareStartMinMinus, CustomGameMenuControl::ScareStartMinPlus, 270, L"Min", minText);
+                timingStepper(CustomGameMenuControl::ScareStartMaxMinus, CustomGameMenuControl::ScareStartMaxPlus, 320, L"Max", maxText);
+                button(CustomGameMenuControl::ScareDetailBack, L"Back");
+                finishGdiDraw();

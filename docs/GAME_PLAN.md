@@ -93,7 +93,7 @@ This file is the source of truth for turning the screensaver into a playable C++
 ## Debug Scene Roadmap
 
 - Existing debug slice viewer is the first Debug state.
-- Debug Settings currently owns map/dread overlays, fixed study views, effect loop tuning, autopilot camera tuning, and monster mesh/eye calibration.
+- Debug Settings currently owns map/dread overlays, fixed study views, effect loop tuning, autopilot camera tuning, and monster mesh/orientation controls.
 - Debug Settings includes an AI minimap overlay toggle for inspecting monster hearing/path target behavior during gameplay.
 - Add texture/material test wall.
 - Add model browser for runtime props and monster prototypes.

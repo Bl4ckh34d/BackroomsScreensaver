@@ -1,0 +1,14 @@
+        ReportStartupSubStep(L"Loading textures", L"Creating GPU texture views.", 3);
+        if (!makeSrv(albedo, materialTextures_.albedoSrv)) return false;
+        profile.Mark(L"CreateAlbedoSRV");
+        if (!makeSrv(normal, materialTextures_.normalSrv)) return false;
+        profile.Mark(L"CreateNormalSRV");
+        if (!makeSrv(props, materialTextures_.materialPropsSrv)) return false;
+        profile.Mark(L"CreateMaterialPropsSRV");
+        if (!CreateHighResCeilingTextures()) return false;
+        profile.Mark(L"CreateHighResCeilingSRVs");
+        if (!CreateHighResDoorTextures()) return false;
+        profile.Mark(L"CreateHighResDoorSRVs");
+        if (!CreateLoosePageTextureArray()) return false;
+        profile.Mark(L"CreateLoosePagesSRV");
+        return true;

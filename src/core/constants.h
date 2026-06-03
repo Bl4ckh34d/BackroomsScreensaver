@@ -1,0 +1,26 @@
+#pragma once
+
+constexpr float kWallH = 2.85f;
+constexpr float kFloorTextureMeters = 1.8f;
+constexpr float kWallTextureMeters = 1.8f;
+constexpr float kCeilingTextureMeters = 0.0f;
+constexpr int kTextureSize = 512;
+constexpr int kHighResCeilingTextureSize = 4096;
+constexpr int kCustomMenuTextureSize = 1024;
+constexpr int kCollectiblePageMaterialFirst = 27;
+constexpr int kCollectiblePageMaterialCount = 8;
+constexpr int kRandomLoosePageMaterial = kCollectiblePageMaterialFirst + kCollectiblePageMaterialCount;
+constexpr int kRandomLoosePageAtlasColumns = 16;
+constexpr int kRandomLoosePageAtlasRows = 8;
+constexpr int kRandomLoosePageAtlasSlots = kRandomLoosePageAtlasColumns * kRandomLoosePageAtlasRows;
+constexpr int kLoosePageTextureWidth = 512;
+constexpr int kLoosePageTextureHeight = 724;
+constexpr int kMaterialCount = kRandomLoosePageMaterial + 1;
+constexpr int kDynamicVertexCapacity = 320000;
+constexpr int kOverlayVertexCapacity = 160000;
+constexpr float kMonsterHeadForwardOffset = 0.34f;
+constexpr float kMonsterSmokeBackOffset = -0.18f;
+constexpr float kBloodFloorDecalLift = 0.006f;
+constexpr float kBloodCeilingDecalInset = 0.008f;
+constexpr float kBloodFloorDecalLayerStep = 0.00010f;
+constexpr float kBloodCeilingDecalLayerStep = 0.00080f;

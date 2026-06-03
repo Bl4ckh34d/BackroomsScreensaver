@@ -1,12 +1,30 @@
 #pragma once
 
+#include "../core/maze_types.h"
+
 // Maze layout generation and navigation query API.
-// Implementation remains include-based in maze.inl for the first extraction slice.
 
 enum class MazeWallFeature : uint8_t {
     None = 0,
     Window = 1,
     Tunnel = 2
+};
+
+struct MazeGenerationSpec {
+    int roomCount = 3;
+    int roomMinRadius = 1;
+    int roomMaxRadius = 3;
+    float extraConnectorMinRatio = 0.015f;
+    float extraConnectorMaxRatio = 0.050f;
+    int wallFeatureFrequency = 20;
+    float wallFeatureFrequencySpread = 1.0f;
+};
+
+struct MazeLayoutSpec {
+    int width = kMazeW;
+    int height = kMazeH;
+    float tileW = kTile;
+    float tileD = kTile;
 };
 
 struct Maze {
@@ -43,9 +61,9 @@ struct Maze {
 
     int OpenNeighborCount(Tile t) const;
     int LocalOpenCount(Tile t, int radius = 2) const;
-    void AddExtraConnectors(const Settings& settings);
-    void GenerateWallFeatures(const Settings& settings);
-    void Generate(const Settings& settings);
+    void AddExtraConnectors(const MazeGenerationSpec& spec);
+    void GenerateWallFeatures(const MazeGenerationSpec& spec);
+    void Generate(const MazeGenerationSpec& spec);
     void GenerateBloodDebugCorridor();
     void GenerateBenchmarkDemo();
     void GenerateDebugSlice(int tiles);

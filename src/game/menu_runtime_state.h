@@ -1,0 +1,44 @@
+#pragma once
+
+struct MainMenuRuntimeState {
+    float pointerX = 0.5f;
+    float pointerY = 0.5f;
+    float pointerTargetX = 0.5f;
+    float pointerTargetY = 0.5f;
+    float baseYaw = 0.0f;
+    float basePitch = 0.0f;
+    float doorOpen = 0.0f;
+    float bloodAmount = 0.0f;
+    bool buttonHover = false;
+    bool exitHover = false;
+    bool singlePlayerHover = false;
+    bool darkLayerOneRun = false;
+    bool lampBurstPending = false;
+    bool lampBurstPlayed = false;
+    int hoverButtonIndex = -1;
+    bool resumeLabel = false;
+    int buttonCount = 4;
+    std::array<int, 6> buttonLabelRows{{0, 3, 4, 5, 0, 0}};
+    bool customViewTarget = false;
+    bool customViewActive = false;
+    float customViewTimer = 0.0f;
+    float customReturnTimer = 0.0f;
+    XMFLOAT3 customStartCamera{};
+    float customStartYaw = 0.0f;
+    float customStartPitch = 0.0f;
+    XMFLOAT3 customReturnCamera{};
+    float customReturnYaw = 0.0f;
+    float customReturnPitch = 0.0f;
+    CustomGameSpec customSpec{};
+    int customHoverControl = 0;
+    int customSelectedScare = -1;
+    bool customTextureDirty = true;
+    bool startTransitionActive = false;
+    bool startTransitionComplete = false;
+    bool startTransitionFromCustomView = false;
+    float startTransitionTimer = 0.0f;
+    float startTransitionFade = 0.0f;
+    XMFLOAT3 startCamera{};
+    float startYaw = 0.0f;
+    float startPitch = 0.0f;
+};

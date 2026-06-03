@@ -1,0 +1,5 @@
+#include "renderer_texture_runtime_base_materials.inl"
+#include "renderer_texture_menu_label_atlas.inl"
+#include "renderer_texture_runtime_asset_loaders.inl"
+#include "renderer_texture_loose_page_atlas.inl"
+#include "renderer_texture_prop_material_tone.inl"

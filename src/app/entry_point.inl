@@ -8,9 +8,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
 #else
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    HWND previewParent = nullptr;
-    RunMode mode = ParseMode(argc, argv, previewParent);
+    ParsedRunMode parsed = ParseCommandLineMode(argc, argv);
     if (argv) LocalFree(argv);
+    RunMode mode = parsed.mode;
+    HWND previewParent = parsed.previewParent;
+    gStartupDebugSliceEffect = parsed.startupDebugSliceEffect;
+    gDebugHideMonster = parsed.hideDebugMonster;
 
     if (mode == RunMode::Configure) {
         ShowConfig(nullptr);
