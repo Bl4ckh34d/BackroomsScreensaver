@@ -11,6 +11,10 @@
 
     void BeginPlayableLevel(int levelInLayer, bool showStartNotification = true) {
         PlayableLevelSpec level = gameWorld_.BuildLayerOneLevelSpec(levelInLayer, sessionRuntime_.rng);
+        if (AutoplayBenchmarkEnabled() && AutoplayBenchmarkBossLevel() == level.levelInLayer) {
+            level.bossEncounter = true;
+            level.bossEncounterChance = 1.0f;
+        }
         gameWorld_.BeginPlayableLevel(level);
         ApplyPlayableLevelSpec(gameWorld_.CurrentPlayableLevel());
         gameWorld_.ApplyMazeLayout(MakeMazeLayoutSpec(settingsRuntime_.live));
@@ -24,9 +28,11 @@
     }
 
     void BeginPlayableRun() {
-        gameWorld_.BeginLayerRun(menuRuntime_.darkLayerOneRun, sessionRuntime_.rng);
+        bool darkLayerOne = AutoplayBenchmarkEnabled() ? false : menuRuntime_.darkLayerOneRun;
+        gameWorld_.BeginLayerRun(darkLayerOne, sessionRuntime_.rng);
         gameWorld_.ResetMonsterKillCount();
-        BeginPlayableLevel(1);
+        int startLevel = AutoplayBenchmarkEnabled() ? AutoplayBenchmarkStartLevel() : 1;
+        BeginPlayableLevel(startLevel);
     }
 
     void BeginCustomPlayableRun(CustomGameSpec customSpec) {

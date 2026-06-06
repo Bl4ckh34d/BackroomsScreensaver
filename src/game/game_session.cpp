@@ -29,6 +29,13 @@ GameSessionSpec GameSessionSpec::PlayableRun() {
     return spec;
 }
 
+GameSessionSpec GameSessionSpec::AutoplayBenchmarkRun() {
+    GameSessionSpec spec = PlayableRun();
+    spec.inputSource = GameSessionInputSource::Autopilot;
+    spec.mapOverlayStyle = GameSessionMapOverlayStyle::AiDebug;
+    return spec;
+}
+
 GameSessionSpec GameSessionSpec::CustomPlayableRun(const CustomGameSpec& custom) {
     GameSessionSpec spec = PlayableRun();
     spec.customGame = true;

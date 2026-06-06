@@ -1,6 +1,6 @@
         bool drawAiDebug = settingsRuntime_.live.debugAiMapOverlay ||
             sessionRuntime_.mapOverlayStyle == GameSessionMapOverlayStyle::AiDebug;
-        if (drawAiDebug) {
+        if (drawAiDebug && MonsterActiveForCurrentMode()) {
             bool alertPath = world.monsterHasSoundTarget || world.monsterHasLastKnownTarget || world.monsterChasingVisible;
             XMFLOAT4 pathColor = alertPath ? XMFLOAT4{1.0f, 0.12f, 0.04f, 0.72f} : XMFLOAT4{1.0f, 0.56f, 0.10f, 0.52f};
             size_t pathRemaining = monsterPath.size() > world.monsterPathIndex ? monsterPath.size() - world.monsterPathIndex : 0;

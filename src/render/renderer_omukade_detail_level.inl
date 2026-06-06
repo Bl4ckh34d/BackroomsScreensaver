@@ -4,6 +4,9 @@
             monsterPresentation_.headChaseBlend > 0.18f || (monsterInFront && dist < tileScale * 8.5f) ||
             monsterAnyPartVisible || monsterViewRelevant;
         int monsterDetail = debugEffectMonster ? 1 : (highDetailMonster ? 2 : (mediumDetailMonster ? 1 : 0));
+        if (IsPlayableSimulationMode(sessionRuntime_.mode) && !specialMonsterView && !monsterAnyPartVisible) {
+            monsterDetail = std::min(monsterDetail, 1);
+        }
         float faceYaw = monsterYaw;
         if (canTrackPlayer) {
             float cameraYaw = std::atan2(playerPosition.x - monsterPosition.x, playerPosition.z - monsterPosition.z);

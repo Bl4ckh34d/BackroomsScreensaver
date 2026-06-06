@@ -1,3 +1,9 @@
+        } else if (AutoplayBenchmarkEnabled() &&
+            !AutoplayBenchmarkExploreLevel() &&
+            gameWorld_.progressionEnabled &&
+            gameWorld_.PlayableLevelRunning()) {
+            viewRuntime_.exitSpotted = true;
+            cameraRuntime_.path = maze.Path(cur, maze.exit);
         } else if (VisibleInFront(maze.exit)) {
             viewRuntime_.exitSpotted = true;
             cameraRuntime_.path = maze.Path(cur, maze.exit);

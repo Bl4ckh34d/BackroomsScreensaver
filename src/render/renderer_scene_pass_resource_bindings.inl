@@ -21,7 +21,9 @@
             materialTextures_.doorPropsSrv.Get(),
             materialTextures_.doorFrameAlbedoSrv.Get(),
             materialTextures_.doorFrameNormalSrv.Get(),
-            materialTextures_.doorFramePropsSrv.Get()
+            materialTextures_.doorFramePropsSrv.Get(),
+            runtimeTextures_.menuPosterSrv.Get(),
+            runtimeTextures_.bakedLampLightSrv.Get()
         };
         ID3D11SamplerState* samplers[] = {pipelineStates_.sampler.Get(), pipelineStates_.shadowSampler.Get()};
         d3dRuntime_.context->OMSetRenderTargets(1, &sceneTarget, renderTargetRuntime_.dsv.Get());

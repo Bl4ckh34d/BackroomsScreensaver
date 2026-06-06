@@ -12,6 +12,7 @@ struct EnvironmentalEffectRuntimeState {
     std::vector<SparkEmitter> sparkEmitters;
     std::vector<RuntimeLampState> runtimeLamps;
     std::vector<uint8_t> lampDamagePixels;
+    std::vector<XMFLOAT4> bakedLampLightPixels;
     std::vector<SteamEmitter> steamEmitters;
     std::vector<SparkParticle> sparks;
     std::vector<SparkFlash> sparkFlashes;
@@ -20,6 +21,7 @@ struct EnvironmentalEffectRuntimeState {
     std::vector<VentDrop> ventDrops;
     float sparkCooldown = 3.0f;
     bool lampDamageDirty = false;
+    bool bakedLampLightDirty = false;
 
     void ClearTransientParticles() {
         sparks.clear();

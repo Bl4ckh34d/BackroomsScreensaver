@@ -9,21 +9,24 @@ void ExecuteGameMenuCommand(HWND hwnd, int id) {
         gApp->gameForceNewRunPending = false;
         gApp->gameLoadSavedRunPending = false;
         gApp->gameCustomGamePending = false;
+        gApp->gameAutoplayBenchmarkPending = false;
         EnterGamePlay(hwnd);
     } else if (id == kGameResumeSavedRunId) {
         gApp->gameForceNewRunPending = false;
         gApp->gameLoadSavedRunPending = true;
         gApp->gameCustomGamePending = false;
+        gApp->gameAutoplayBenchmarkPending = false;
         EnterGamePlay(hwnd);
     } else if (id == kGameCustomStartId) {
         gApp->gameForceNewRunPending = true;
         gApp->gameLoadSavedRunPending = false;
         gApp->gameCustomGamePending = true;
+        gApp->gameAutoplayBenchmarkPending = false;
         EnterGamePlay(hwnd);
     } else if (id == kGameCustomGameId) {
         EnterGameCustomMenu(hwnd);
     } else if (id == kGameSettingsId) {
-        EnterGameSettings(hwnd, ConfigDialogMode::Game, GameState::MainMenu);
+        EnterGameSettingsBoard(hwnd);
     } else if (id == kGameDebugId) {
         EnterGameDebug(hwnd);
     } else if (id == kGameExitId) {

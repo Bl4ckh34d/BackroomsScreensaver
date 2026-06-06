@@ -14,6 +14,7 @@
     void BeginCustomRun(const CustomGameSpec& customSpec, std::mt19937& rng);
     void WriteLevelStartNotice(std::wostream& out) const;
     float RunSeconds() const;
+    float CurrentPlayableLevelSeconds() const;
     int TotalScore() const;
     bool PlayableScoreScreenActive() const;
     bool PlayableLevelRunning() const;

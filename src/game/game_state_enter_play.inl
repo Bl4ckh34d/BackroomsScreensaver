@@ -6,9 +6,11 @@ void EnterGamePlay(HWND hwnd) {
     bool loadSaved = gApp->gameLoadSavedRunPending;
     bool forceNew = gApp->gameForceNewRunPending;
     bool customGame = gApp->gameCustomGamePending;
+    bool autoplayBenchmark = gApp->gameAutoplayBenchmarkPending;
     gApp->gameLoadSavedRunPending = false;
     gApp->gameForceNewRunPending = false;
     gApp->gameCustomGamePending = false;
+    gApp->gameAutoplayBenchmarkPending = false;
     if (forceNew) {
         gApp->gameRunStarted = false;
         gApp->gameDebugActive = false;
@@ -32,6 +34,8 @@ void EnterGamePlay(HWND hwnd) {
         }
         if (customGame) {
             gApp->renderer.RestartCustomGameRun(gApp->gameCustomSpec);
+        } else if (autoplayBenchmark) {
+            gApp->renderer.RestartAutoplayBenchmarkRun();
         } else {
             gApp->renderer.RestartGameRun();
         }
@@ -59,5 +63,5 @@ void EnterGamePlay(HWND hwnd) {
     SetForegroundWindow(hwnd);
     SetFocus(hwnd);
     CaptureGameMouse(hwnd);
-    SetWindowTextW(hwnd, L"Backrooms Maze - Single Player");
+    SetWindowTextW(hwnd, autoplayBenchmark ? L"Backrooms Maze - Autoplay Benchmark" : L"Backrooms Maze - Single Player");
 }

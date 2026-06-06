@@ -7,6 +7,7 @@
     HINSTANCE gameInstance = nullptr;
     GameState gameState = GameState::MainMenu;
     bool gameMouseCaptured = false;
+    bool gameRawMouseRegistered = false;
     bool gameRecenteringMouse = false;
     POINT gameMouseCenter{};
     float gameMouseDeltaX = 0.0f;
@@ -52,9 +53,14 @@
     bool gameSkipNextLoadingOverlay = false;
     bool gameLoadSavedRunPending = false;
     bool gameForceNewRunPending = false;
+    bool gameAutoplayBenchmarkPending = false;
     bool gameMenuFadeOut = false;
     bool gameMenuFadeIn = true;
     bool gameCustomMenuOpen = false;
+    bool gameSettingsBoardOpen = false;
+    int gameSettingsBoardTab = 1;
+    int gameSettingsBoardCaptureAction = -1;
+    Settings gameSettingsBoardSettings;
     bool gameCustomGamePending = false;
     ULONGLONG gameCustomMenuOpenStart = 0;
     int gameCustomSelectedScare = -1;

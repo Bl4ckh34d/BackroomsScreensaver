@@ -23,6 +23,7 @@ struct GameSessionSpec {
 
     static GameSessionSpec ScreensaverAutopilot();
     static GameSessionSpec PlayableRun();
+    static GameSessionSpec AutoplayBenchmarkRun();
     static GameSessionSpec CustomPlayableRun(const CustomGameSpec& custom);
 };
 

@@ -6,10 +6,16 @@ void ApplyGameAutostart(App& app, HWND hwnd) {
         L"BACKROOMS_AUTOSTART_STRESS75",
         L"BackroomsMaze.autostart_stress75.enable");
     bool autostartBenchmarkDemo = BenchmarkDemoEnabled();
+    bool autostartAutoplayBenchmark = AutoplayBenchmarkEnabled();
     bool autostartGame = MarkerOrEnvEnabled(
         L"BACKROOMS_AUTOSTART_GAME",
         L"BackroomsMaze.autostart_game.enable");
-    if (autostartBenchmarkDemo || autostartStress75) {
+    if (autostartAutoplayBenchmark) {
+        app.gameSkipNextLoadingOverlay = true;
+        app.gameForceNewRunPending = true;
+        app.gameAutoplayBenchmarkPending = true;
+        ExecuteGameMenuCommand(hwnd, kGameSinglePlayerId);
+    } else if (autostartBenchmarkDemo || autostartStress75) {
         CustomGameSpec stress{};
         stress.layer = 1;
         stress.mazeWidth = 75;
@@ -29,7 +35,7 @@ void ApplyGameAutostart(App& app, HWND hwnd) {
         stress.lampFlickerPercent = 10;
         stress.lampSparkPercent = autostartBenchmarkDemo ? 35 : 15;
         stress.fogStartMeters = 0;
-        stress.fogEndMeters = autostartBenchmarkDemo ? 36 : 28;
+        stress.fogEndMeters = autostartBenchmarkDemo ? 36 : 14;
         stress.fogDarknessPercent = 100;
         stress.jumpscareChancePercent = 100;
         stress.jumpscareStartMinSeconds = 0;

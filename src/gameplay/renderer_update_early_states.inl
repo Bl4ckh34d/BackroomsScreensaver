@@ -27,7 +27,8 @@
         if (sessionRuntime_.IsPlayableGame() && gameWorld_.PlayableScoreScreenActive()) {
             bool anyKeyPressed = sessionRuntime_.input.anyKey && !viewRuntime_.scoreContinuePressedLastFrame;
             viewRuntime_.scoreContinuePressedLastFrame = sessionRuntime_.input.anyKey;
-            if (viewRuntime_.exitScoreContinueReady && anyKeyPressed) {
+            bool autoplayContinue = sessionRuntime_.UsesAutopilotInput() && viewRuntime_.exitScoreContinueReady;
+            if (viewRuntime_.exitScoreContinueReady && (anyKeyPressed || autoplayContinue)) {
                 ContinueAfterScoreScreen();
             }
             UpdateFlashlightAim(dt);

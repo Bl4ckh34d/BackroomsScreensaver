@@ -11,7 +11,7 @@ void RuntimeProfileFrameLine(const std::wstring& line) {
     static uint32_t rowsSinceFlush = 0;
     if (!out) return;
     if (!wroteHeader) {
-        out << L"frame,mode,total_ms,progress_ms,budget_ms,simulation_ms,audio_ms,render_ms,indices,instanced_indices,instanced_instances,floor_ceiling_indices,water_indices,transparent_indices,dyn_opaque_vertices,dyn_transparent_vertices,air_particles,sparks,steam,lamps\r\n";
+        out << L"frame,mode,total_ms,progress_ms,budget_ms,simulation_ms,audio_ms,render_ms,indices,instanced_indices,instanced_instances,floor_ceiling_indices,water_indices,transparent_indices,dyn_opaque_vertices,dyn_transparent_vertices,air_particles,sparks,steam,lamps,level,level_running,score_screen,exit_transition,boss,run_seconds,level_seconds,autoplay_seconds,player_tile_x,player_tile_y,monster_distance,monster_visible,death_active\r\n";
         wroteHeader = true;
     }
     out << line << L"\r\n";

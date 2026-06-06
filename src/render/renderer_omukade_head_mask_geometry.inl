@@ -1,7 +1,10 @@
-        if (renderAssets_.skullMesh.empty() && !renderAssets_.monsterMeshLoaded) {
+        bool gameplayMonsterFrame = IsPlayableSimulationMode(sessionRuntime_.mode) && !specialMonsterView;
+        bool gameplayVisibleSkull = gameplayMonsterFrame && monsterAnyPartVisible && dist < tileScale * 4.2f;
+        bool allowExternalSkull = (monsterDetail >= 2 || specialMonsterView) && (!gameplayMonsterFrame || gameplayVisibleSkull);
+        if (allowExternalSkull && renderAssets_.skullMesh.empty() && !renderAssets_.monsterMeshLoaded) {
             LoadOmukadeMaskMesh();
         }
-        bool externalSkull = !renderAssets_.skullMesh.empty() && (monsterDetail >= 2 || specialMonsterView);
+        bool externalSkull = allowExternalSkull && !renderAssets_.skullMesh.empty();
         bool nativeMaskMesh = externalSkull && renderAssets_.monsterSkullNativeMaskAxes;
         auto headSlices = [&](int high, int medium, int low) {
             return debugEffectMonster ? std::max(low, medium) : (monsterDetail >= 2 ? high : (monsterDetail == 1 ? medium : low));

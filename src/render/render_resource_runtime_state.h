@@ -30,9 +30,12 @@ struct MaterialTextureRuntimeState {
 struct RuntimeTextureResourceState {
     ComPtr<ID3D11Texture2D> customMenuTexture;
     ComPtr<ID3D11ShaderResourceView> customMenuSrv;
+    ComPtr<ID3D11ShaderResourceView> menuPosterSrv;
     ComPtr<ID3D11ShaderResourceView> loosePagesSrv;
     ComPtr<ID3D11ShaderResourceView> flashlightPatternSrv;
     ComPtr<ID3D11ShaderResourceView> mazeSrv;
     ComPtr<ID3D11Texture2D> lampDamageTexture;
     ComPtr<ID3D11ShaderResourceView> lampDamageSrv;
+    ComPtr<ID3D11Texture2D> bakedLampLightTexture;
+    ComPtr<ID3D11ShaderResourceView> bakedLampLightSrv;
 };

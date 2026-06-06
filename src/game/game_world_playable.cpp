@@ -78,6 +78,10 @@ float GameWorld::RunSeconds() const {
     return playableRun.RunSeconds();
 }
 
+float GameWorld::CurrentPlayableLevelSeconds() const {
+    return playableRun.CurrentLevelSeconds();
+}
+
 int GameWorld::TotalScore() const {
     return playableRun.TotalScore();
 }

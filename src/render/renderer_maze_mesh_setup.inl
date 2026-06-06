@@ -22,11 +22,13 @@
         GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
         const int mazeCellCount = world.maze ? std::max(0, world.maze->w * world.maze->h) : 0;
         effectRuntime_.lampDamagePixels.assign(static_cast<size_t>(mazeCellCount), 0);
+        effectRuntime_.bakedLampLightPixels.assign(static_cast<size_t>(mazeCellCount), XMFLOAT4{0.0f, 0.0f, 0.0f, 0.0f});
         effectRuntime_.wetFootstepTiles.assign(static_cast<size_t>(mazeCellCount), 0);
         effectRuntime_.wetCeilingTiles.assign(static_cast<size_t>(mazeCellCount), 0);
         effectRuntime_.wetDripEmitters.clear();
         effectRuntime_.wetFloorFootprints.clear();
         effectRuntime_.lampDamageDirty = true;
+        effectRuntime_.bakedLampLightDirty = true;
         effectRuntime_.steamEmitters.clear();
         scareRuntime_.bloodScarePoints.clear();
         exitDoorPresentation_.signLightPosition = {};

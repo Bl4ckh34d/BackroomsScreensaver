@@ -62,6 +62,8 @@ Texture2D gDoorProps : register(t17);
 Texture2D gDoorFrameAlbedo : register(t18);
 Texture2D gDoorFrameNormalHeight : register(t19);
 Texture2D gDoorFrameProps : register(t20);
+Texture2D gMenuPosters : register(t21);
+Texture2D gBakedLampLight : register(t22);
 SamplerState gSampler : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 

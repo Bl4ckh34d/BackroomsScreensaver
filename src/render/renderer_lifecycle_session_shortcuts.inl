@@ -5,3 +5,7 @@
     void RestartCustomGameRun(const CustomGameSpec& customSpec) {
         StartGameSession(GameSessionSpec::CustomPlayableRun(customSpec));
     }
+
+    void RestartAutoplayBenchmarkRun() {
+        StartGameSession(GameSessionSpec::AutoplayBenchmarkRun());
+    }
