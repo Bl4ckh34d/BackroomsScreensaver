@@ -2,7 +2,11 @@
     bool gameFullscreen = true;
     int gameResolutionWidth = 1920;
     int gameResolutionHeight = 1080;
-    int gameFrameRateLimit = 30;
+    int gameFrameRateLimit = 60;
+    int renderScalePercent = 100;
+    bool fxaaEnabled = true;
+    int antiAliasing = 1;
+    int textureAnisotropy = 8;
 
     int mazeWidth = kMazeW;
     int mazeHeight = kMazeH;

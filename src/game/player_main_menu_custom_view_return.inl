@@ -12,6 +12,7 @@
                 gameWorld_.player.pitch = Lerp(menuRuntime_.customReturnPitch, menuRuntime_.customStartPitch, SmoothStep(0.16f, 1.0f, turn));
                 if (t >= 1.68f) {
                     menuRuntime_.customViewActive = false;
+                    menuRuntime_.customTextureDirty = true;
                     gameWorld_.player.position = menuRuntime_.customStartCamera;
                     gameWorld_.player.yaw = menuRuntime_.customStartYaw;
                     gameWorld_.player.pitch = menuRuntime_.customStartPitch;

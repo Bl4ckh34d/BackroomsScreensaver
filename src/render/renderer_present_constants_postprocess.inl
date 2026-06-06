@@ -19,7 +19,7 @@
         float visionFlashT = scareRuntime_.visionFlashDuration > 0.001f ? Clamp01(scareRuntime_.visionFlashTimer / scareRuntime_.visionFlashDuration) : 0.0f;
         cb.post2 = {
             visionFlashT * visionFlashT,
-            0.0f,
+            AntiAliasingUsesFxaa(settingsRuntime_.live.antiAliasing) ? 1.0f : 0.0f,
             0.0f,
             0.0f
         };

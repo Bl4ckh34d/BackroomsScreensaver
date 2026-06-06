@@ -25,8 +25,10 @@ R"(
         float lampBand = pow(saturate(sin(hallDepth / lampSpacing * 6.2831853) * 0.5 + 0.5), 0.55);
         float lampBands = 0.74 + 0.34 * lampBand;
         float hallFade = 1.0 - smoothstep(maxHallDepth - gMaze1.w * 2.15, maxHallDepth + gMaze1.w * 0.45, hallDepth);
-        result += float3(1.0, 0.90, 0.58) * strength * hallLength * hallWidth * hallHeight * hallFade *
+        float vestibuleStrength = max(saturate(strength * 0.16), gExitLight2.w * max(saturate(gExitLight1.w), 0.18));
+        result += float3(1.0, 0.90, 0.58) * vestibuleStrength * hallLength * hallWidth * hallHeight * hallFade *
             (receiver2 * (0.72 + lampBands * 0.34) + 0.08);
+
     }
 
     float doorStrength = gExitLight2.w * (1.0 - saturate(gTransition0.z));
@@ -44,7 +46,7 @@ R"(
             float doorHalfH = 1.18;
             float corridorHeight = smoothstep(doorHalfH + 0.38, doorHalfH - 0.18, abs(worldPos.y - doorHalfH));
             float corridorSide = (1.0 - smoothstep(-0.10, 0.08, axial)) * corridorWidth * corridorHeight;
-            float3 warmDaylight = float3(0.91, 0.965, 1.0);
+            float3 warmDaylight = float3(1.0, 0.88, 0.58);
             float floorReceiver = smoothstep(0.42, 0.82, worldN.y);
             float roomDistance = max(0.0, axial);
             float beamHalfWidth = lerp(doorHalfW * 0.72, doorHalfW * 3.75, saturate(roomDistance / 4.80));

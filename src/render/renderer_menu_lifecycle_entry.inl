@@ -16,6 +16,7 @@
         gameWorld_.GenerateMaze(mazeRequest);
         CreateMazeMaskTexture();
         ResetSimulation();
+        LoadMenuPropMeshes();
         CreateMazeMesh();
         SetupMainMenuScene();
         SetupPersistentAudioEmitters();

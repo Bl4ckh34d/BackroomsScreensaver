@@ -12,6 +12,11 @@
         float vestibuleLength = std::min(
             std::max(tileAvg * 7.5f, settingsRuntime_.live.fogEndMeters + tileAvg * 3.0f),
             tileAvg * 14.0f);
+        if (sessionRuntime_.mode != RendererRuntimeMode::MainMenu) {
+            float exitDepthTile = exitPortal.dy != 0 ? ctx.tileD : ctx.tileW;
+            int exitCellCount = std::max(1, static_cast<int>(std::floor(vestibuleLength / std::max(0.1f, exitDepthTile))));
+            vestibuleLength = static_cast<float>(exitCellCount) * exitDepthTile;
+        }
         float vestibuleHalf = openingHalf;
         float vestibuleH = ctx.wallH;
 

@@ -2,6 +2,7 @@
         rd.FillMode = D3D11_FILL_SOLID;
         rd.CullMode = D3D11_CULL_NONE;
         rd.DepthClipEnable = TRUE;
+        rd.MultisampleEnable = TRUE;
         if (FAILED(d3dRuntime_.device->CreateRasterizerState(&rd, &pipelineStates_.rasterState))) return false;
 
         D3D11_RASTERIZER_DESC shadowRd = rd;

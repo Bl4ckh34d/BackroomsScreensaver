@@ -29,6 +29,9 @@ LRESULT CALLBACK GameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_MOUSEMOVE:
         if (HandleGameMouseMove(hwnd, lParam)) return 0;
         return 0;
+    case WM_INPUT:
+        if (HandleGameRawInput(hwnd, lParam)) return 0;
+        break;
     case WM_MOUSELEAVE:
         if (HandleGameMouseLeave(hwnd)) return 0;
         break;
@@ -37,7 +40,7 @@ LRESULT CALLBACK GameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_RBUTTONDOWN:
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
-        if (HandleGameButtonOrKeyDown(hwnd, msg, lParam)) return 0;
+        if (HandleGameButtonOrKeyDown(hwnd, msg, wParam, lParam)) return 0;
         return 0;
     case WM_COMMAND:
         if (HandleGameCommand(hwnd, wParam)) return 0;

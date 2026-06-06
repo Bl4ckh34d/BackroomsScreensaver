@@ -4,7 +4,7 @@ R"(
         float overhead = LocalLampLight(input.worldPos, worldN, time) * gLighting1.x;
         float sparkLight = SparkLight(input.worldPos, worldN);
         float3 exitGreen = ExitSignLight(input.worldPos, worldN, materialId);
-        float3 color = base * (gLighting0.z + overhead * 0.88 + flashlight + sparkLight);
+        float3 color = base * (gLighting0.z + overhead * 0.72 + flashlight + sparkLight);
         color += base * exitGreen * 0.55;
         color += exitGreen * 0.040;
         float3 toLight = normalize(gShadow0.xyz - input.worldPos);

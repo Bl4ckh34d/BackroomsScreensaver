@@ -1,9 +1,10 @@
         D3D11_SAMPLER_DESC sd{};
-        sd.Filter = D3D11_FILTER_ANISOTROPIC;
+        int textureAnisotropy = NormalizeTextureAnisotropy(settingsRuntime_.live.textureAnisotropy);
+        sd.Filter = textureAnisotropy > 1 ? D3D11_FILTER_ANISOTROPIC : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
         sd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
         sd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
         sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-        sd.MaxAnisotropy = 8;
+        sd.MaxAnisotropy = static_cast<UINT>(textureAnisotropy);
         sd.MaxLOD = D3D11_FLOAT32_MAX;
         if (FAILED(d3dRuntime_.device->CreateSamplerState(&sd, &pipelineStates_.sampler))) return false;
 

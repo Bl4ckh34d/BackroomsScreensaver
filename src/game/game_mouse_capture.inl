@@ -1,5 +1,6 @@
 void CaptureGameMouse(HWND hwnd) {
     if (!gApp || !gApp->gameShell || !hwnd) return;
+    RegisterGameRawMouse(hwnd);
     RECT rc{};
     GetClientRect(hwnd, &rc);
     POINT tl{rc.left, rc.top};

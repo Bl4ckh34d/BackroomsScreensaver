@@ -58,28 +58,55 @@ LRESULT CALLBACK GameSettingsPanelWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 (hit.id >= kGameSettingsTabSystem && hit.id <= kGameSettingsTabAudio)) {
                 state->tab = std::clamp(hit.id - kGameSettingsTabSystem, 0, 4);
                 state->resolutionDropdownOpen = false;
+                state->antiAliasingDropdownOpen = false;
+                state->anisotropyDropdownOpen = false;
             } else if (hit.kind == GameSettingsControlKind::Check) {
                 ToggleGameSetting(state, hit.id);
                 state->resolutionDropdownOpen = false;
+                state->antiAliasingDropdownOpen = false;
+                state->anisotropyDropdownOpen = false;
             } else if (hit.kind == GameSettingsControlKind::Slider) {
                 state->draggingSlider = hit.id;
                 SetCapture(hwnd);
                 ApplyGameSettingsSlider(state, hit.id, p.x);
                 state->resolutionDropdownOpen = false;
+                state->antiAliasingDropdownOpen = false;
+                state->anisotropyDropdownOpen = false;
             } else if (hit.kind == GameSettingsControlKind::Dropdown && hit.id == kGameSettingsResolutionDropdown) {
                 state->resolutionDropdownOpen = !state->resolutionDropdownOpen;
+                state->antiAliasingDropdownOpen = false;
+                state->anisotropyDropdownOpen = false;
+            } else if (hit.kind == GameSettingsControlKind::Dropdown && hit.id == kGameSettingsAntiAliasingDropdown) {
+                state->antiAliasingDropdownOpen = !state->antiAliasingDropdownOpen;
+                state->resolutionDropdownOpen = false;
+                state->anisotropyDropdownOpen = false;
+            } else if (hit.kind == GameSettingsControlKind::Dropdown && hit.id == kGameSettingsAnisotropyDropdown) {
+                state->anisotropyDropdownOpen = !state->anisotropyDropdownOpen;
+                state->resolutionDropdownOpen = false;
+                state->antiAliasingDropdownOpen = false;
             } else if (hit.kind == GameSettingsControlKind::DropdownOption) {
                 int index = hit.id - kGameSettingsResolutionOptionBase;
                 if (index >= 0 && index < static_cast<int>(state->resolutionOptions.size())) {
                     POINT res = state->resolutionOptions[static_cast<size_t>(index)];
                     state->settings.gameResolutionWidth = res.x;
                     state->settings.gameResolutionHeight = res.y;
+                } else if (hit.id >= kGameSettingsAntiAliasingOptionBase && hit.id < kGameSettingsAntiAliasingOptionBase + 6) {
+                    constexpr int values[] = {0, 1, 2, 4, 8, 16};
+                    state->settings.antiAliasing = values[hit.id - kGameSettingsAntiAliasingOptionBase];
+                    state->settings.fxaaEnabled = AntiAliasingUsesFxaa(state->settings.antiAliasing);
+                } else if (hit.id >= kGameSettingsAnisotropyOptionBase && hit.id < kGameSettingsAnisotropyOptionBase + 5) {
+                    constexpr int values[] = {1, 2, 4, 8, 16};
+                    state->settings.textureAnisotropy = values[hit.id - kGameSettingsAnisotropyOptionBase];
                 }
                 state->resolutionDropdownOpen = false;
+                state->antiAliasingDropdownOpen = false;
+                state->anisotropyDropdownOpen = false;
             } else if (hit.id >= kGameSettingsKeybindBase &&
                 hit.id < kGameSettingsKeybindBase + kGameInputActionCount) {
                 state->capturingKeyAction = hit.id - kGameSettingsKeybindBase;
                 state->resolutionDropdownOpen = false;
+                state->antiAliasingDropdownOpen = false;
+                state->anisotropyDropdownOpen = false;
                 NotifyGameSettingsKeyCapture(state, true, false);
                 SetFocus(hwnd);
             } else if (hit.id == kGameSettingsSave) {
@@ -93,6 +120,8 @@ LRESULT CALLBACK GameSettingsPanelWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             return 0;
         }
         state->resolutionDropdownOpen = false;
+        state->antiAliasingDropdownOpen = false;
+        state->anisotropyDropdownOpen = false;
         InvalidateRect(hwnd, nullptr, TRUE);
         return 0;
     }

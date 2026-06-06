@@ -14,7 +14,10 @@ R"(
         float shape = saturate(max(contact * (0.26 - softness * 0.075), feather * 0.86));
         shape *= 0.82 + fineBreakup * 0.18;
         float localFixturePower = FixturePower(input.worldPos, time) * gLighting1.x;
-        float flickerLinkedShadow = saturate(localFixturePower * lerp(0.42, 0.32, softness));
+        float3 exitShadowLight = ExitSignLight(input.worldPos, float3(0.0, 1.0, 0.0), input.material);
+        float exitShadowPower = saturate(max(exitShadowLight.r, max(exitShadowLight.g, exitShadowLight.b)) * 0.90);
+        float flickerLinkedShadow = saturate(max(localFixturePower * lerp(0.42, 0.32, softness),
+            exitShadowPower * lerp(0.34, 0.24, softness)));
         float alpha = shape * flickerLinkedShadow * lerp(0.125, 0.070, softness) * (1.0 - saturate(gTransition0.z));
         if (alpha < 0.006) discard;
         return float4(0.0, 0.0, 0.0, alpha);
@@ -52,7 +55,7 @@ R"(
         base.rgb = dirtBase;
         float3 diffuseColor = base.rgb * (1.0 - metallic);
         float3 specColor = lerp(float3(0.035, 0.035, 0.035), base.rgb, metallic);
-        float ao = lerp(0.50, 1.0, aoMap);
+        float ao = lerp(0.58, 1.0, aoMap);
         float3 color = diffuseColor * (gLighting0.z + flashlight + sparkLight + lift) * ao;
         color += diffuseColor * overheadColor * ao;
         color += diffuseColor * exitGreen * ao;
@@ -65,8 +68,8 @@ R"(
         float surfaceSpec = (pow(specFacing, specSharpness) * (0.08 + gloss * 0.82) +
             fresnel * (0.018 + gloss * 0.090)) * specLight;
         color += specColor * surfaceSpec * lerp(0.66, 1.0, aoMap);
-        color *= 1.0 - CornerAO(input.worldPos, N);
-        float fogScale = floorMaterial > 0.5 ? 1.22 : 1.34;
+        color *= 1.0 - CornerAO(input.worldPos, worldN);
+        float fogScale = 1.0;
         color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, fogScale));
         return float4(ApplyPost(color), 1.0);
     }

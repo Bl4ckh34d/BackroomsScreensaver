@@ -59,6 +59,13 @@
         return ProjectMenuQuadToScreen(placement.center, placement.right, {0.0f, 1.0f, 0.0f}, placement.halfW, placement.halfH, out);
     }
 
+    bool SettingsBoardControlScreenRect(int control, RECT& out) const {
+        if (sessionRuntime_.mode != RendererRuntimeMode::MainMenu) return false;
+        MenuPlaquePlacement placement{};
+        if (!SettingsBoardControlPlacement(static_cast<SettingsBoardControl>(control), placement)) return false;
+        return ProjectMenuQuadToScreen(placement.center, placement.right, {0.0f, 1.0f, 0.0f}, placement.halfW, placement.halfH, out);
+    }
+
     bool MenuExitDoorScreenRect(RECT& out) const {
         if (sessionRuntime_.mode != RendererRuntimeMode::MainMenu) return false;
         XMFLOAT3 center = Add3(exitDoorPresentation_.center, Scale3(exitDoorPresentation_.normal, 0.035f));

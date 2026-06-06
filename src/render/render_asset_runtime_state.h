@@ -19,6 +19,7 @@ struct RenderAssetRuntimeState {
     StaticPropMesh cassettePropMesh;
     StaticPropMesh airVentPropMesh;
     StaticPropMesh exitSignPropMesh;
+    StaticPropMesh toolBoxPropMesh;
     std::array<StaticPropMesh, 4> ceilingLampPropMeshes;
     bool monsterMeshLoaded = false;
     bool propMeshesLoaded = false;

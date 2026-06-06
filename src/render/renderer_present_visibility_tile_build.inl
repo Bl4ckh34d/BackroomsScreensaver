@@ -24,6 +24,18 @@
                     }
                 }
             };
+            auto markVisibleOpenTileAndWalls = [&](int x, int y) {
+                markWithHalo(x, y);
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        if (dx == 0 && dy == 0) continue;
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        if (!maze.InBounds(nx, ny)) continue;
+                        if (!maze.IsOpen(nx, ny)) mark(nx, ny);
+                    }
+                }
+            };
 
             int tileRadius = std::clamp(static_cast<int>(std::ceil(maxDistance / std::max(0.1f, maze.TileMinimum()))) + wallHaloTiles,
                 1, std::max(maze.w, maze.h));
@@ -49,9 +61,9 @@
                         if (facing < coneCos - slack) continue;
                     }
                     if (!maze.LineClear(originTile, {x, y})) continue;
-                    markWithHalo(x, y);
+                    markVisibleOpenTileAndWalls(x, y);
                 }
             }
-            markWithHalo(originTile.x, originTile.y);
+            markVisibleOpenTileAndWalls(originTile.x, originTile.y);
             return true;
         };

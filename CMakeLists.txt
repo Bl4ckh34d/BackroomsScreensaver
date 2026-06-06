@@ -27,6 +27,7 @@ set(BACKROOMS_SOURCES
     src/config/settings_io.cpp
     src/config/settings_paths.cpp
     src/config/settings_profile.cpp
+    src/config/settings_renderer_quality.cpp
     src/config/settings_runtime_variation.cpp
     src/debug/effect_debug.cpp
     src/game/game_session.cpp

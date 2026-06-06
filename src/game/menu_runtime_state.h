@@ -17,8 +17,8 @@ struct MainMenuRuntimeState {
     bool lampBurstPlayed = false;
     int hoverButtonIndex = -1;
     bool resumeLabel = false;
-    int buttonCount = 4;
-    std::array<int, 6> buttonLabelRows{{0, 3, 4, 5, 0, 0}};
+    int buttonCount = 3;
+    std::array<int, 6> buttonLabelRows{{0, 3, 4, 0, 0, 0}};
     bool customViewTarget = false;
     bool customViewActive = false;
     float customViewTimer = 0.0f;
@@ -32,6 +32,11 @@ struct MainMenuRuntimeState {
     CustomGameSpec customSpec{};
     int customHoverControl = 0;
     int customSelectedScare = -1;
+    bool settingsBoardMode = false;
+    Settings settingsBoardSettings{};
+    int settingsBoardTab = 1;
+    int settingsHoverControl = 0;
+    int settingsCaptureAction = -1;
     bool customTextureDirty = true;
     bool startTransitionActive = false;
     bool startTransitionComplete = false;

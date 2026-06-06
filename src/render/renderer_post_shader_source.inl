@@ -58,6 +58,53 @@ float3 BrightPart(float3 c)
     return c * gate;
 }
 
+float SceneLuma(float3 c)
+{
+    return dot(c, float3(0.299, 0.587, 0.114));
+}
+
+float3 SampleSceneColor(float2 uv)
+{
+    return gSceneColor.Sample(gPostSampler, saturate(uv)).rgb;
+}
+
+float3 FxaaSceneColor(float2 uv, float2 texel)
+{
+    float3 rgbM = SampleSceneColor(uv);
+    float3 rgbNW = SampleSceneColor(uv + texel * float2(-1.0, -1.0));
+    float3 rgbNE = SampleSceneColor(uv + texel * float2( 1.0, -1.0));
+    float3 rgbSW = SampleSceneColor(uv + texel * float2(-1.0,  1.0));
+    float3 rgbSE = SampleSceneColor(uv + texel * float2( 1.0,  1.0));
+
+    float lumaM = SceneLuma(rgbM);
+    float lumaNW = SceneLuma(rgbNW);
+    float lumaNE = SceneLuma(rgbNE);
+    float lumaSW = SceneLuma(rgbSW);
+    float lumaSE = SceneLuma(rgbSE);
+    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+    if (lumaMax - lumaMin < max(0.0312, lumaMax * 0.125))
+    {
+        return rgbM;
+    }
+
+    float2 dir;
+    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+    dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.0078125, 0.0009765625);
+    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+    dir = clamp(dir * rcpDirMin, float2(-8.0, -8.0), float2(8.0, 8.0)) * texel;
+
+    float3 rgbA = 0.5 * (
+        SampleSceneColor(uv + dir * (1.0 / 3.0 - 0.5)) +
+        SampleSceneColor(uv + dir * (2.0 / 3.0 - 0.5)));
+    float3 rgbB = rgbA * 0.5 + 0.25 * (
+        SampleSceneColor(uv + dir * -0.5) +
+        SampleSceneColor(uv + dir *  0.5));
+    float lumaB = SceneLuma(rgbB);
+    return (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;
+}
+
 float4 PostPS(PostVSOut input) : SV_TARGET
 {
     uint w;
@@ -71,9 +118,10 @@ float4 PostPS(PostVSOut input) : SV_TARGET
     float bloomAmount = saturate(gPost1.z);
     float dirtAmount = saturate(gPost1.w);
     float visionFlash = saturate(gPost2.x);
+    float fxaa = saturate(gPost2.y);
     float2 motion = clamp(gPost1.xy, float2(-0.045, -0.045), float2(0.045, 0.045));
 
-    float3 color = gSceneColor.Sample(gPostSampler, uv).rgb;
+    float3 color = fxaa > 0.5 ? FxaaSceneColor(uv, texel) : SampleSceneColor(uv);
     float motionWeight = saturate(length(motion) * 42.0);
     [branch]
     if (motionWeight > 0.001)

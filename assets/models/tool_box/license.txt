@@ -1,0 +1,11 @@
+Model Information:
+* title:	Toolbox
+* source:	https://sketchfab.com/3d-models/toolbox-3e6c36fa50704b2a903db54cc3778ec0
+* author:	Vertex Mercher (https://sketchfab.com/VertexMercher)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Toolbox" (https://sketchfab.com/3d-models/toolbox-3e6c36fa50704b2a903db54cc3778ec0) by Vertex Mercher (https://sketchfab.com/VertexMercher) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

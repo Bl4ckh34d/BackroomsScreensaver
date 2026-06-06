@@ -19,7 +19,14 @@
             menuRuntime_.customReturnCamera = world.playerPosition;
             menuRuntime_.customReturnYaw = world.playerYaw;
             menuRuntime_.customReturnPitch = world.playerPitch;
+            menuRuntime_.customTextureDirty = true;
         }
+    }
+
+    void SetMainMenuSettingsBoardView(bool open) {
+        menuRuntime_.settingsBoardMode = open;
+        SetMainMenuCustomGameView(open);
+        menuRuntime_.customTextureDirty = true;
     }
 
     bool MainMenuCustomGameViewVisible() const {
@@ -27,6 +34,7 @@
     }
 
     void SetCustomGameMenuState(const CustomGameSpec& spec, int hoverControl, int selectedScare = -1) {
+        menuRuntime_.settingsBoardMode = false;
         int clampedHover = std::clamp(hoverControl, 0, static_cast<int>(CustomGameMenuControl::Back));
         int clampedSelectedScare = std::clamp(selectedScare, -2, CustomGameSpec::kScareTypeCount - 1);
         bool changed =
@@ -61,5 +69,46 @@
         menuRuntime_.customSpec = spec;
         menuRuntime_.customHoverControl = clampedHover;
         menuRuntime_.customSelectedScare = clampedSelectedScare;
+        menuRuntime_.customTextureDirty = menuRuntime_.customTextureDirty || changed;
+    }
+
+    void SetSettingsBoardState(const Settings& settings, int hoverControl, int tab, int captureAction) {
+        int clampedTab = std::clamp(tab, 0, 4);
+        int clampedCapture = std::clamp(captureAction, -1, kGameInputActionCount - 1);
+        bool changed =
+            !menuRuntime_.settingsBoardMode ||
+            menuRuntime_.settingsBoardSettings.gameFullscreen != settings.gameFullscreen ||
+            menuRuntime_.settingsBoardSettings.gameResolutionWidth != settings.gameResolutionWidth ||
+            menuRuntime_.settingsBoardSettings.gameResolutionHeight != settings.gameResolutionHeight ||
+            menuRuntime_.settingsBoardSettings.gameFrameRateLimit != settings.gameFrameRateLimit ||
+            menuRuntime_.settingsBoardSettings.allowWarpFallback != settings.allowWarpFallback ||
+            menuRuntime_.settingsBoardSettings.renderScalePercent != settings.renderScalePercent ||
+            menuRuntime_.settingsBoardSettings.fxaaEnabled != settings.fxaaEnabled ||
+            menuRuntime_.settingsBoardSettings.antiAliasing != settings.antiAliasing ||
+            menuRuntime_.settingsBoardSettings.textureAnisotropy != settings.textureAnisotropy ||
+            menuRuntime_.settingsBoardSettings.exposure != settings.exposure ||
+            menuRuntime_.settingsBoardSettings.bloomAmount != settings.bloomAmount ||
+            menuRuntime_.settingsBoardSettings.motionBlurAmount != settings.motionBlurAmount ||
+            menuRuntime_.settingsBoardSettings.airParticleDensity != settings.airParticleDensity ||
+            menuRuntime_.settingsBoardSettings.monsterIgnorePlayer != settings.monsterIgnorePlayer ||
+            menuRuntime_.settingsBoardSettings.debugInfiniteStamina != settings.debugInfiniteStamina ||
+            menuRuntime_.settingsBoardSettings.debugInvincible != settings.debugInvincible ||
+            menuRuntime_.settingsBoardSettings.mouseSensitivity != settings.mouseSensitivity ||
+            menuRuntime_.settingsBoardSettings.invertMouseY != settings.invertMouseY ||
+            menuRuntime_.settingsBoardSettings.gameKeyBindings != settings.gameKeyBindings ||
+            menuRuntime_.settingsBoardSettings.audioMuted != settings.audioMuted ||
+            menuRuntime_.settingsBoardSettings.audioMasterVolume != settings.audioMasterVolume ||
+            menuRuntime_.settingsBoardSettings.audioMusicVolume != settings.audioMusicVolume ||
+            menuRuntime_.settingsBoardSettings.audioEffectsVolume != settings.audioEffectsVolume ||
+            menuRuntime_.settingsBoardSettings.audioAmbienceVolume != settings.audioAmbienceVolume ||
+            menuRuntime_.settingsBoardSettings.audioMonsterVolume != settings.audioMonsterVolume ||
+            menuRuntime_.settingsHoverControl != hoverControl ||
+            menuRuntime_.settingsBoardTab != clampedTab ||
+            menuRuntime_.settingsCaptureAction != clampedCapture;
+        menuRuntime_.settingsBoardMode = true;
+        menuRuntime_.settingsBoardSettings = settings;
+        menuRuntime_.settingsHoverControl = hoverControl;
+        menuRuntime_.settingsBoardTab = clampedTab;
+        menuRuntime_.settingsCaptureAction = clampedCapture;
         menuRuntime_.customTextureDirty = menuRuntime_.customTextureDirty || changed;
     }

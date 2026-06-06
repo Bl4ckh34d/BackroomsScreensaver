@@ -14,6 +14,11 @@ struct RenderTargetRuntimeState {
     ComPtr<ID3D11Texture2D> sceneColor;
     ComPtr<ID3D11RenderTargetView> sceneColorRtv;
     ComPtr<ID3D11ShaderResourceView> sceneColorSrv;
+    ComPtr<ID3D11Texture2D> sceneColorMsaa;
+    ComPtr<ID3D11RenderTargetView> sceneColorMsaaRtv;
+    UINT sceneWidth = 0;
+    UINT sceneHeight = 0;
+    UINT sceneSampleCount = 1;
 };
 
 struct ShadowResourceRuntimeState {

@@ -71,6 +71,28 @@ function Copy-RuntimeDirectory {
     Copy-Item -LiteralPath $source -Destination $destinationParent -Recurse -Force
 }
 
+function Copy-RuntimeFilesByPattern {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string]$Pattern
+    )
+
+    $source = Join-Path $root $RelativePath
+    if (-not (Test-Path -LiteralPath $source -PathType Container)) {
+        throw "Required runtime directory is missing: $RelativePath"
+    }
+
+    $matches = @(Get-ChildItem -LiteralPath $source -Filter $Pattern -File)
+    if ($matches.Count -eq 0) {
+        Write-Warning "No runtime files matched ${RelativePath}\${Pattern}"
+        return
+    }
+
+    $destination = Join-Path $stageDir $RelativePath
+    New-Item -ItemType Directory -Force -Path $destination | Out-Null
+    $matches | Copy-Item -Destination $destination -Force
+}
+
 function Copy-CacheFiles {
     param(
         [Parameter(Mandatory = $true)][string]$SourceCache,
@@ -161,6 +183,8 @@ $runtimeFiles = @(
     "assets\images\8pages\page6.jpg",
     "assets\images\8pages\page7.jpg",
     "assets\images\8pages\page8.jpg",
+    "assets\images\menu\custom_level_poster.png",
+    "assets\images\menu\new_game_poster.png",
     "assets\images\title.png",
     "assets\models\monster_face_mask\horror_mask.obj",
     "assets\models\monster_face_mask\horror_mask.mtl",
@@ -176,6 +200,7 @@ $runtimeFiles = @(
     "assets\models\runtime\desklamp.brmesh",
     "assets\models\runtime\audio_caset.brmesh",
     "assets\models\runtime\emergency_exit_sign.brmesh",
+    "assets\models\runtime\tool_box.obj",
     "assets\models\runtime\ceiling_lamp_01.brmesh",
     "assets\models\runtime\ceiling_lamp_02.brmesh",
     "assets\models\runtime\ceiling_lamp_03.brmesh",
@@ -184,7 +209,8 @@ $runtimeFiles = @(
     "assets\models\runtime\textures\office_chair_modern_diffuse.jpg",
     "assets\models\runtime\textures\office_chair_classic_2209.jpg",
     "assets\models\runtime\textures\office_chair_classic_textiles.png",
-    "assets\models\runtime\textures\office_chair_task_diffuse.png"
+    "assets\models\runtime\textures\office_chair_task_diffuse.png",
+    "assets\music\title.mp3"
 )
 
 foreach ($relativePath in $runtimeFiles) {
@@ -192,7 +218,22 @@ foreach ($relativePath in $runtimeFiles) {
 }
 
 Copy-RuntimeDirectory -RelativePath "assets\images\randomPages"
-Copy-RuntimeDirectory -RelativePath "assets\sounds"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\air_vent_dust_air_puff" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\carpet_steps" -Pattern "carpet_step_*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\door_close_creak" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\door_close_lock" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\door_open_creak" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\electric_crackling" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\flashlight_contact_click" -Pattern "flashlight_stutter.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\light_bulb_break" -Pattern "light_bulb_break_1.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\monster_growls" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\monster_spotted_scream" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\neon_light_flicker_start" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\neon_light_hum" -Pattern "*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\paper_flutter" -Pattern "paper_flutter.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\soaked_carpet_steps" -Pattern "soaked_step_*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\vision_flash" -Pattern "vision_flash_*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\wet_carpet_ceiling_drips" -Pattern "muted_cardboard_drip_tap_*.wav"
 
 $runCmd = @'
 @echo off
@@ -258,8 +299,7 @@ if (-not $SkipSelfTest) {
         }
     }
 } else {
-    $defaultCache = Join-Path $env:LOCALAPPDATA "BackroomsMazeScreensaver\Cache"
-    Copy-CacheFiles -SourceCache $defaultCache -StagePath $stageDir
+    Write-Warning "Skipping generated shader and texture caches because packaged self-test was skipped."
 }
 
 $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stageDir "BackroomsMazeGame.exe")).Hash

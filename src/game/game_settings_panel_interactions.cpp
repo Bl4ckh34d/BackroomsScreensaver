@@ -20,6 +20,9 @@ void ApplyGameSettingsSlider(GameSettingsPanelState* state, int id, int x) {
     case kGameSettingsAirDensity:
         s.airParticleDensity = std::clamp(sliderValue(0.0f, 2.0f), 0.0f, 2.0f);
         break;
+    case kGameSettingsRenderScale:
+        s.renderScalePercent = std::clamp(static_cast<int>(std::round(sliderValue(50.0f, 100.0f))), 50, 100);
+        break;
     case kGameSettingsMouseSensitivity:
         s.mouseSensitivity = std::clamp(sliderValue(0.2f, 3.0f), 0.2f, 3.0f);
         break;

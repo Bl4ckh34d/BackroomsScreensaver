@@ -1,5 +1,6 @@
 void ReleaseGameMouse() {
     if (!gApp) return;
+    UnregisterGameRawMouse();
     ClipCursor(nullptr);
     if (gApp->gameMouseCaptured) {
         ReleaseCapture();

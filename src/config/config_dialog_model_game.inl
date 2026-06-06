@@ -12,8 +12,12 @@ void BuildGameConfigModel(ConfigState* state) {
     AddCustomConfigField(f, 0, 0, kConfigGameFullscreenId, L"Display", L"GameWindow", L"Fullscreen", L"Fullscreen", L"1", ConfigFieldKind::Bool, 0);
     AddCustomConfigField(f, 0, 0, kConfigGameResolutionWidthId, L"Display", L"GameWindow", L"ResolutionWidth", L"Resolution width", L"1920", ConfigFieldKind::Text, 90);
     AddCustomConfigField(f, 0, 0, kConfigGameResolutionHeightId, L"Display", L"GameWindow", L"ResolutionHeight", L"Resolution height", L"1080", ConfigFieldKind::Text, 90);
-    AddCustomConfigField(f, 0, 0, kConfigGameFrameRateLimitId, L"Display", L"GameWindow", L"FrameRateLimit", L"Frame rate limit", L"30", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 0, 0, kConfigGameFrameRateLimitId, L"Display", L"GameWindow", L"FrameRateLimit", L"Frame rate limit", L"60", ConfigFieldKind::Text, 90);
     AddConfigFieldCopy(f, L"Renderer", L"AllowWarpFallback", 0, 1, L"System");
+    AddCustomConfigField(f, 1, 0, kConfigRenderScalePercentId, L"Renderer", L"Renderer", L"RenderScalePercent", L"Render scale %", L"100", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 1, 0, kConfigAntiAliasingId, L"Renderer", L"Renderer", L"AntiAliasing", L"Anti-aliasing", L"1", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 1, 0, kConfigTextureAnisotropyId, L"Renderer", L"Renderer", L"TextureAnisotropy", L"Texture anisotropy", L"8", ConfigFieldKind::Text, 90);
+    AddCustomConfigField(f, 1, 0, kConfigFxaaEnabledId, L"Renderer", L"Renderer", L"FXAA", L"Legacy FXAA", L"1", ConfigFieldKind::Bool, 0);
     AddConfigFieldCopy(f, L"Randomization", L"RunVariation", 0, 0, L"Runtime");
     AddConfigFieldCopy(f, L"Maze", L"RandomSeed", 0, 1, L"Runtime");
 

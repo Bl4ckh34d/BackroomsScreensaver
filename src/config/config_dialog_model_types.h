@@ -27,6 +27,10 @@ constexpr int kConfigGameFullscreenId = kConfigFieldBaseId + 174;
 constexpr int kConfigGameResolutionWidthId = kConfigFieldBaseId + 175;
 constexpr int kConfigGameResolutionHeightId = kConfigFieldBaseId + 176;
 constexpr int kConfigGameFrameRateLimitId = kConfigFieldBaseId + 177;
+constexpr int kConfigRenderScalePercentId = kConfigFieldBaseId + 178;
+constexpr int kConfigFxaaEnabledId = kConfigFieldBaseId + 179;
+constexpr int kConfigAntiAliasingId = kConfigFieldBaseId + 180;
+constexpr int kConfigTextureAnisotropyId = kConfigFieldBaseId + 181;
 
 enum class ConfigFieldKind {
     Text,

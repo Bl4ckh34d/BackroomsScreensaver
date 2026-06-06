@@ -10,3 +10,4 @@ struct GameSettingsPanelHost {
 };
 
 HWND CreateGameSettingsPanel(HWND parent, GameSettingsPanelHost host = {});
+void SaveSettingsToIni(const Settings& settings);

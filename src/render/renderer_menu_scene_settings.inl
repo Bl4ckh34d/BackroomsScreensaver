@@ -11,7 +11,6 @@
         settingsRuntime_.live.waterDamageDensity = 0.0f;
         settingsRuntime_.live.lampOnRatio = 1.0f;
         settingsRuntime_.live.lampSpacing = std::max(settingsRuntime_.live.tileWidthMeters, settingsRuntime_.live.tileLengthMeters) * 2.4f;
-        settingsRuntime_.live.lampIntensity = std::max(settingsRuntime_.live.lampIntensity, 1.85f);
         settingsRuntime_.live.lampFlickerRatio = 0.080f;
         settingsRuntime_.live.brokenZoneRatio = 0.0f;
         settingsRuntime_.live.ambientLight = std::max(settingsRuntime_.live.ambientLight, 0.045f);
@@ -33,15 +32,25 @@
         const Maze& maze = *world.maze;
         XMFLOAT3 c = maze.WorldCenter(maze.start, 0.0f);
         const float northWallZ = c.z + maze.tileD * 0.5f - 0.034f;
+        int labelRow = 0;
+        if (index >= 0 && index < menuRuntime_.buttonCount &&
+            index < static_cast<int>(menuRuntime_.buttonLabelRows.size())) {
+            labelRow = menuRuntime_.buttonLabelRows[static_cast<size_t>(index)];
+        }
         MenuPlaquePlacement plaque{};
-        plaque.halfW = std::min(maze.tileW * 0.68f, 1.10f);
-        int count = std::clamp(menuRuntime_.buttonCount, 3, static_cast<int>(menuRuntime_.buttonLabelRows.size()));
-        float spacing = count >= 6 ? 0.300f : (count >= 5 ? 0.325f : 0.360f);
-        float topY = count >= 6 ? 1.90f : (count >= 5 ? 1.82f : 1.72f);
-        plaque.halfH = count >= 5 ? 0.132f : 0.150f;
-        plaque.center = {c.x + maze.tileW * 0.50f, topY - static_cast<float>(index) * spacing, northWallZ};
         plaque.right = {1.0f, 0.0f, 0.0f};
         plaque.inward = {0.0f, 0.0f, -1.0f};
+        plaque.halfW = std::min(maze.tileW * 0.27f, 0.52f);
+        plaque.halfH = 0.68f;
+        if (labelRow == 3) {
+            plaque.center = {c.x + maze.tileW * 0.92f, 1.48f, northWallZ};
+        } else if (labelRow == 4) {
+            plaque.center = {c.x + maze.tileW * 0.58f, 0.44f, northWallZ - 0.42f};
+            plaque.halfW = 0.48f;
+            plaque.halfH = 0.34f;
+        } else {
+            plaque.center = {c.x + maze.tileW * 0.23f, 1.50f, northWallZ};
+        }
         return plaque;
     }
 

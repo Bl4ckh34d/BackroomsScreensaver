@@ -12,12 +12,10 @@ PlayerManualLookResult PlayerController::UpdateManualLook(const PlayerManualLook
     const float pitchSign = input.invertMouseY ? 1.0f : -1.0f;
     const float rawYawDelta = input.lookDeltaX * kMouseYawScale * mouseScale;
     const float rawPitchDelta = input.lookDeltaY * kMousePitchScale * mouseScale * pitchSign;
-    const float lookSmoothing = 1.0f - std::exp(-input.dt * 26.0f);
 
     PlayerManualLookResult result{};
-    result.yawDelta = input.yawDelta + (rawYawDelta - input.yawDelta) * lookSmoothing;
-    result.pitchDelta = input.pitchDelta + (rawPitchDelta - input.pitchDelta) *
-        std::min(1.0f, input.dt * 18.0f);
+    result.yawDelta = rawYawDelta;
+    result.pitchDelta = rawPitchDelta;
 
     result.yaw = input.yaw + result.yawDelta;
     result.bodyYaw = result.yaw;

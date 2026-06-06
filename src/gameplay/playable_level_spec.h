@@ -47,6 +47,12 @@ struct PlayableLevelSpec {
             target.ambientLight = std::min(target.ambientLight, 0.002f);
         }
 
+        constexpr float fogEndByLevel[kPlayableLevelsPerLayer] = {18.0f, 17.0f, 16.0f, 15.0f, 14.0f};
+        constexpr float fogStrengthByLevel[kPlayableLevelsPerLayer] = {0.75f, 0.80f, 0.85f, 0.90f, 1.0f};
+        target.fogStartMeters = 0.0f;
+        target.fogEndMeters = fogEndByLevel[levelIndex];
+        target.fogDarkness = fogStrengthByLevel[levelIndex];
+
         target.jumpscareFrequency = scareTier == PlayableScareTier::None ? 0.0f :
             std::max(target.jumpscareFrequency, 0.12f);
         target.waterDamageEnabled = scareTierValue >= static_cast<int>(PlayableScareTier::Water);

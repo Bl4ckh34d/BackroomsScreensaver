@@ -92,7 +92,7 @@ void DrawGameSettingsDropdown(HDC dc, GameSettingsPanelState* state, int x, int 
     DrawTextLine(dc, L"v", arrow, RGB(220, 176, 84), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     AddGameSettingsHit(state, box, id, GameSettingsControlKind::Dropdown);
 
-    if (state && state->resolutionDropdownOpen) {
+    if (state && state->resolutionDropdownOpen && id == kGameSettingsResolutionDropdown) {
         int maxVisible = std::min<int>(static_cast<int>(state->resolutionOptions.size()), 8);
         for (int i = 0; i < maxVisible; ++i) {
             RECT option{box.left, box.bottom + i * 28, box.right, box.bottom + (i + 1) * 28};
@@ -103,6 +103,28 @@ void DrawGameSettingsDropdown(HDC dc, GameSettingsPanelState* state, int x, int 
             RECT textRc{option.left + 12, option.top, option.right - 12, option.bottom};
             DrawTextLine(dc, FormatResolution(res.x, res.y), textRc, RGB(235, 229, 210));
             AddGameSettingsHit(state, option, kGameSettingsResolutionOptionBase + i, GameSettingsControlKind::DropdownOption);
+        }
+    } else if (state && state->antiAliasingDropdownOpen && id == kGameSettingsAntiAliasingDropdown) {
+        constexpr int values[] = {0, 1, 2, 4, 8, 16};
+        for (int i = 0; i < static_cast<int>(std::size(values)); ++i) {
+            RECT option{box.left, box.bottom + i * 28, box.right, box.bottom + (i + 1) * 28};
+            bool selected = NormalizeAntiAliasingMode(values[i]) == NormalizeAntiAliasingMode(state->settings.antiAliasing);
+            FillSolid(dc, option, selected ? RGB(126, 96, 48) : RGB(36, 34, 29));
+            FrameRect(dc, &option, GetSysColorBrush(COLOR_GRAYTEXT));
+            RECT textRc{option.left + 12, option.top, option.right - 12, option.bottom};
+            DrawTextLine(dc, FormatAntiAliasing(values[i]), textRc, RGB(235, 229, 210));
+            AddGameSettingsHit(state, option, kGameSettingsAntiAliasingOptionBase + i, GameSettingsControlKind::DropdownOption);
+        }
+    } else if (state && state->anisotropyDropdownOpen && id == kGameSettingsAnisotropyDropdown) {
+        constexpr int values[] = {1, 2, 4, 8, 16};
+        for (int i = 0; i < static_cast<int>(std::size(values)); ++i) {
+            RECT option{box.left, box.bottom + i * 28, box.right, box.bottom + (i + 1) * 28};
+            bool selected = NormalizeTextureAnisotropy(values[i]) == NormalizeTextureAnisotropy(state->settings.textureAnisotropy);
+            FillSolid(dc, option, selected ? RGB(126, 96, 48) : RGB(36, 34, 29));
+            FrameRect(dc, &option, GetSysColorBrush(COLOR_GRAYTEXT));
+            RECT textRc{option.left + 12, option.top, option.right - 12, option.bottom};
+            DrawTextLine(dc, FormatTextureAnisotropy(values[i]), textRc, RGB(235, 229, 210));
+            AddGameSettingsHit(state, option, kGameSettingsAnisotropyOptionBase + i, GameSettingsControlKind::DropdownOption);
         }
     }
 }

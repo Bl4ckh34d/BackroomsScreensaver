@@ -14,6 +14,8 @@
                 if (!app.gameSettingsKeyCaptureActive && !app.gameSettingsEscapeConsumed) {
                     DestroyWindow(app.gameConfig);
                 }
+            } else if (app.gameState == GameState::MainMenu && app.gameSettingsBoardOpen) {
+                ExitGameSettingsBoard(hwnd);
             } else if (app.gameState == GameState::MainMenu && app.gameCustomMenuOpen) {
                 ExitGameCustomMenu(hwnd);
             } else if (app.gameState == GameState::MainMenu && app.gameRunStarted && !app.gameDebugActive) {

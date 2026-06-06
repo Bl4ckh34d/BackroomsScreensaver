@@ -29,3 +29,4 @@
         StaticPropMesh loosePaperInstancedMesh = BuildLoosePaperInstancedMesh();
 
         AddExitDoorPropGeometry(propBuild, exitPortal);
+#include "renderer_menu_toolbox_prop.inl"

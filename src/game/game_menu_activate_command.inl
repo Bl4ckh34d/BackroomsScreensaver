@@ -4,7 +4,7 @@ void ActivateGameMenuCommand(HWND hwnd, int id) {
     if (!gApp || !gApp->gameShell || hwnd != gApp->hwnd) return;
     if (gApp->gameMenuFadeOut || gApp->gameMenuStartCinematic) return;
     gApp->gameMenuPendingCommand = id;
-    if (id == kGameCustomGameId) {
+    if (id == kGameCustomGameId || id == kGameSettingsId) {
         gApp->gameMenuPendingCommand = 0;
         ExecuteGameMenuCommand(hwnd, id);
         return;

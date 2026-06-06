@@ -84,7 +84,7 @@ float LampRayClear(float2 startXZ, float2 endXZ)
     float2 endCell = (endXZ - gMaze0.xy) / gMaze0.zw;
     int2 tile = (int2)floor(startCell);
     int2 endTile = (int2)floor(endCell);
-    if (MazeOpenAt(tile) < 0.5 || MazeOpenAt(endTile) < 0.5)
+    if (MazeLightOpenAt(tile) < 0.5 || MazeLightOpenAt(endTile) < 0.5)
     {
         return 0.0;
     }

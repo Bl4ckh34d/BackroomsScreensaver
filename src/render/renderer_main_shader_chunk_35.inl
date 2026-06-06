@@ -12,6 +12,29 @@ R"(
 
     if (materialId > 17.5 && materialId < 18.5)
     {
+        if (frac(input.material) > 0.96)
+        {
+            float4 poster = gMenuPosters.Sample(gSampler, saturate(uv));
+            if (poster.a < 0.025) discard;
+            float dist = length(input.worldPos - cam);
+            float3 overlayN = normalize(N);
+            float flashlight = FlashlightAmount(input.worldPos, overlayN);
+            float overhead = LocalLampLight(input.worldPos, overlayN, time) * gLighting1.x;
+            float sparkLight = SparkLight(input.worldPos, overlayN);
+            float fogVisibility = pow(1.0 - SceneFogBlock(dist, input.worldPos, 0.55), 1.28);
+            float lit = saturate(gLighting0.z * 0.34 + flashlight * 0.92 + overhead * 0.52 + sparkLight * 0.50);
+            float edge = smoothstep(0.00, 0.05, uv.x) * smoothstep(1.00, 0.95, uv.x) *
+                smoothstep(0.00, 0.05, uv.y) * smoothstep(1.00, 0.95, uv.y);
+            float3 ink = saturate((poster.rgb - 0.5) * 1.18 + 0.5);
+            float3 toLight = normalize(gShadow0.xyz - input.worldPos);
+            float facing = saturate(dot(reflect(-toLight, overlayN), V));
+            float gloss = pow(facing, 92.0) * (flashlight * 0.58 + sparkLight * 0.16);
+            float sheen = pow(1.0 - saturate(dot(overlayN, V)), 2.4) * (flashlight * 0.08 + overhead * 0.04);
+            float3 color = ink * (0.22 + lit * 0.98);
+            color *= lerp(0.72, 1.0, edge);
+            color += float3(0.98, 0.94, 0.82) * gloss + ink * sheen;
+            return float4(saturate(ApplyPost(color)), saturate(poster.a * fogVisibility));
+        }
         if (frac(input.material) > 0.80)
         {
             float4 panel = gCustomMenu.Sample(gSampler, saturate(uv));

@@ -18,19 +18,31 @@
             CeilingUv(vc0.x, vc0.z), CeilingUv(vc1.x, vc1.z), CeilingUv(vc2.x, vc2.z), CeilingUv(vc3.x, vc3.z),
             2.0f);
 
-        const float lampSpacing = std::max(tileAvg * 1.75f, 2.2f);
-        const int lampCount = std::clamp(static_cast<int>(std::floor(vestibuleLength / lampSpacing)), 2, 7);
-        const float firstDepth = std::min(tileAvg * 0.70f, vestibuleLength * 0.20f);
-        const float lastDepth = std::max(firstDepth, vestibuleLength - tileAvg * 0.85f);
+        const float exitDepthTile = exitPortal.dy != 0 ? ctx.tileD : ctx.tileW;
+        const int lampCount = sessionRuntime_.mode == RendererRuntimeMode::MainMenu
+            ? std::clamp(static_cast<int>(std::floor(vestibuleLength / std::max(tileAvg * 1.75f, 2.2f))), 2, 7)
+            : std::max(1, static_cast<int>(std::floor(vestibuleLength / std::max(0.1f, exitDepthTile))));
+        const float firstDepth = sessionRuntime_.mode == RendererRuntimeMode::MainMenu
+            ? std::min(tileAvg * 0.70f, vestibuleLength * 0.20f)
+            : exitDepthTile * 0.5f;
+        const float lastDepth = sessionRuntime_.mode == RendererRuntimeMode::MainMenu
+            ? std::max(firstDepth, vestibuleLength - tileAvg * 0.85f)
+            : firstDepth + static_cast<float>(std::max(0, lampCount - 1)) * exitDepthTile;
         for (int i = 0; i < lampCount; ++i) {
             float t = lampCount <= 1 ? 0.0f : static_cast<float>(i) / static_cast<float>(lampCount - 1);
             float depth = Lerp(firstDepth, lastDepth, t);
             XMFLOAT3 exitLampCenter = p(0.0f, 0.0f, depth);
-            float exitLampSeed = std::fmod(LampSeed(exitPortal.tile.x + i * 3, exitPortal.tile.y + i * 5) * 0.73f + 0.19f, 0.49f);
+            Tile lampTile{
+                exitPortal.tile.x + exitPortal.dx * (i + 1),
+                exitPortal.tile.y + exitPortal.dy * (i + 1)
+            };
+            float exitLampSeed = sessionRuntime_.mode == RendererRuntimeMode::MainMenu
+                ? std::fmod(LampSeed(exitPortal.tile.x + i * 3, exitPortal.tile.y + i * 5) * 0.73f + 0.19f, 0.49f)
+                : LampSeed(lampTile.x, lampTile.y) * 0.49f;
             AddCeilingCard(vertices, indices, {exitLampCenter.x, 0.0f, exitLampCenter.z},
                 ctx.tileW * (0.94f / 3.0f), ctx.tileD * (0.94f / 3.0f), 0.0f, vestibuleH - 0.004f, 3.0f + exitLampSeed);
             effectRuntime_.runtimeLamps.push_back({
-                exitPortal.tile,
+                lampTile,
                 {exitLampCenter.x, vestibuleH - 0.08f, exitLampCenter.z},
                 0.0f,
                 RandRange(0.08f, 0.72f),

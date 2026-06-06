@@ -6,6 +6,10 @@
             spec.runtimeMode == RendererRuntimeMode::PlayableGame;
         EnsureFullSceneAssets();
         settingsRuntime_.live = sessionRuntime_.gameplaySettings;
+        if (spec.progressionEnabled && spec.inputSource == GameSessionInputSource::Autopilot) {
+            settingsRuntime_.live.debugInfiniteStamina = true;
+            settingsRuntime_.live.debugInvincible = true;
+        }
         menuRuntime_.startTransitionActive = false;
         menuRuntime_.startTransitionComplete = false;
         menuRuntime_.startTransitionFromCustomView = false;

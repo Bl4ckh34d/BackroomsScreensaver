@@ -1,5 +1,6 @@
 #include "game_cursor_visibility.inl"
-#include "game_mouse_release.inl"
 #include "game_input_window_accepts.inl"
+#include "game_raw_mouse_input.inl"
+#include "game_mouse_release.inl"
 #include "game_mouse_capture.inl"
 #include "game_input_snapshot_collect.inl"

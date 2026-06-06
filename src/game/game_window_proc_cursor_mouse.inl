@@ -12,6 +12,9 @@ bool HandleGameMouseMove(HWND hwnd, LPARAM lParam) {
     if (!gApp || !gApp->gameShell || hwnd != gApp->hwnd) return false;
     POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
     if (gApp->gameState == GameState::PlayGame) {
+        if (gApp->gameRawMouseRegistered) {
+            return true;
+        }
         if (gApp->gameRecenteringMouse) {
             gApp->gameRecenteringMouse = false;
             return true;
@@ -32,10 +35,12 @@ bool HandleGameMouseMove(HWND hwnd, LPARAM lParam) {
         tme.hwndTrack = hwnd;
         if (TrackMouseEvent(&tme)) gApp->gameMenuTrackingMouse = true;
     }
-    int hover = HitTestGameMenu(hwnd, p);
+    int hover = gApp->gameSettingsBoardOpen
+        ? HitTestSettingsBoard(hwnd, p)
+        : HitTestGameMenu(hwnd, p);
     gApp->gameMenuMouse = p;
     gApp->gameMenuHasMouse = true;
-    if (hover == kGameSinglePlayerId && gApp->gameMenuBloodStart == 0) {
+    if (!gApp->gameSettingsBoardOpen && hover == kGameSinglePlayerId && gApp->gameMenuBloodStart == 0) {
         gApp->gameMenuBloodStart = GetTickCount64();
         gApp->gameMenuLampBurstStart = gApp->gameMenuBloodStart;
         if (gApp->rendererInitialized) gApp->renderer.TriggerMainMenuLampBurst();

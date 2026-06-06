@@ -1,7 +1,6 @@
         AppendDynamicDoor(opaqueVerts);
         dynamicProfile.Mark(L"Door");
         if (sessionRuntime_.mode == RendererRuntimeMode::MainMenu) {
-            AppendMenuDoorwayLight(transparentVerts);
             AppendMenuButtonPlaques(opaqueVerts, transparentVerts);
             dynamicProfile.Mark(L"MenuGeometry");
         } else {

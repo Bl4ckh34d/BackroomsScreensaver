@@ -49,3 +49,62 @@
         default: return false;
         }
     }
+
+    static bool SettingsBoardControlPixelRect(SettingsBoardControl control, RECT& r) {
+        switch (control) {
+        case SettingsBoardControl::TabSystem: r = {28, 76, 108, 108}; return true;
+        case SettingsBoardControl::TabGraphics: r = {116, 76, 196, 108}; return true;
+        case SettingsBoardControl::TabGame: r = {204, 76, 284, 108}; return true;
+        case SettingsBoardControl::TabControls: r = {292, 76, 372, 108}; return true;
+        case SettingsBoardControl::TabAudio: r = {380, 76, 480, 108}; return true;
+        case SettingsBoardControl::Fullscreen: r = {42, 142, 250, 170}; return true;
+        case SettingsBoardControl::ResolutionMinus: r = {184, 180, 212, 208}; return true;
+        case SettingsBoardControl::ResolutionPlus: r = {430, 180, 458, 208}; return true;
+        case SettingsBoardControl::FrameRateMinus: r = {184, 218, 212, 246}; return true;
+        case SettingsBoardControl::FrameRatePlus: r = {430, 218, 458, 246}; return true;
+        case SettingsBoardControl::Warp: r = {42, 256, 440, 284}; return true;
+        case SettingsBoardControl::RenderScaleMinus: r = {184, 142, 212, 170}; return true;
+        case SettingsBoardControl::RenderScalePlus: r = {430, 142, 458, 170}; return true;
+        case SettingsBoardControl::AntiAliasingMinus: r = {184, 180, 212, 208}; return true;
+        case SettingsBoardControl::AntiAliasingPlus: r = {430, 180, 458, 208}; return true;
+        case SettingsBoardControl::AnisotropyMinus: r = {184, 218, 212, 246}; return true;
+        case SettingsBoardControl::AnisotropyPlus: r = {430, 218, 458, 246}; return true;
+        case SettingsBoardControl::ExposureMinus: r = {184, 256, 212, 284}; return true;
+        case SettingsBoardControl::ExposurePlus: r = {430, 256, 458, 284}; return true;
+        case SettingsBoardControl::BloomMinus: r = {184, 294, 212, 322}; return true;
+        case SettingsBoardControl::BloomPlus: r = {430, 294, 458, 322}; return true;
+        case SettingsBoardControl::MotionBlurMinus: r = {184, 332, 212, 360}; return true;
+        case SettingsBoardControl::MotionBlurPlus: r = {430, 332, 458, 360}; return true;
+        case SettingsBoardControl::AirDensityMinus: r = {184, 370, 212, 398}; return true;
+        case SettingsBoardControl::AirDensityPlus: r = {430, 370, 458, 398}; return true;
+        case SettingsBoardControl::MonsterIgnorePlayer: r = {42, 142, 330, 170}; return true;
+        case SettingsBoardControl::InfiniteStamina: r = {42, 180, 330, 208}; return true;
+        case SettingsBoardControl::Invincible: r = {42, 218, 330, 246}; return true;
+        case SettingsBoardControl::MouseSensitivityMinus: r = {184, 142, 212, 170}; return true;
+        case SettingsBoardControl::MouseSensitivityPlus: r = {430, 142, 458, 170}; return true;
+        case SettingsBoardControl::InvertMouseY: r = {42, 180, 250, 208}; return true;
+        case SettingsBoardControl::KeyMoveForward: r = {254, 204, 430, 226}; return true;
+        case SettingsBoardControl::KeyMoveBackward: r = {254, 226, 430, 248}; return true;
+        case SettingsBoardControl::KeyMoveLeft: r = {254, 248, 430, 270}; return true;
+        case SettingsBoardControl::KeyMoveRight: r = {254, 270, 430, 292}; return true;
+        case SettingsBoardControl::KeySprint: r = {254, 292, 430, 314}; return true;
+        case SettingsBoardControl::KeyCrouch: r = {254, 314, 430, 336}; return true;
+        case SettingsBoardControl::KeyInteract: r = {254, 336, 430, 358}; return true;
+        case SettingsBoardControl::KeyFlashlight: r = {254, 358, 430, 380}; return true;
+        case SettingsBoardControl::KeyPause: r = {254, 380, 430, 402}; return true;
+        case SettingsBoardControl::MuteAudio: r = {42, 142, 250, 170}; return true;
+        case SettingsBoardControl::MasterMinus: r = {184, 194, 212, 222}; return true;
+        case SettingsBoardControl::MasterPlus: r = {430, 194, 458, 222}; return true;
+        case SettingsBoardControl::MusicMinus: r = {184, 232, 212, 260}; return true;
+        case SettingsBoardControl::MusicPlus: r = {430, 232, 458, 260}; return true;
+        case SettingsBoardControl::EffectsMinus: r = {184, 270, 212, 298}; return true;
+        case SettingsBoardControl::EffectsPlus: r = {430, 270, 458, 298}; return true;
+        case SettingsBoardControl::AmbienceMinus: r = {184, 308, 212, 336}; return true;
+        case SettingsBoardControl::AmbiencePlus: r = {430, 308, 458, 336}; return true;
+        case SettingsBoardControl::MonsterMinus: r = {184, 346, 212, 374}; return true;
+        case SettingsBoardControl::MonsterPlus: r = {430, 346, 458, 374}; return true;
+        case SettingsBoardControl::Back: r = {56, 430, 170, 462}; return true;
+        case SettingsBoardControl::Save: r = {342, 430, 456, 462}; return true;
+        default: return false;
+        }
+    }

@@ -1,4 +1,9 @@
     s.allowWarpFallback = IniInt(L"Renderer", L"AllowWarpFallback", s.allowWarpFallback ? 1 : 0) != 0;
+    s.renderScalePercent = std::clamp(IniInt(L"Renderer", L"RenderScalePercent", s.renderScalePercent), 50, 100);
+    s.fxaaEnabled = IniInt(L"Renderer", L"FXAA", s.fxaaEnabled ? 1 : 0) != 0;
+    s.antiAliasing = NormalizeAntiAliasingMode(IniInt(L"Renderer", L"AntiAliasing", s.fxaaEnabled ? 1 : 0));
+    s.fxaaEnabled = AntiAliasingUsesFxaa(s.antiAliasing);
+    s.textureAnisotropy = NormalizeTextureAnisotropy(IniInt(L"Renderer", L"TextureAnisotropy", s.textureAnisotropy));
     s.gameFullscreen = IniInt(L"GameWindow", L"Fullscreen", s.gameFullscreen ? 1 : 0) != 0;
     s.gameResolutionWidth = std::clamp(IniInt(L"GameWindow", L"ResolutionWidth", s.gameResolutionWidth), 640, 7680);
     s.gameResolutionHeight = std::clamp(IniInt(L"GameWindow", L"ResolutionHeight", s.gameResolutionHeight), 360, 4320);

@@ -15,7 +15,7 @@
         XMFLOAT3 doorwayPortalPos = Add3(exitDoorPresentation_.center, Scale3(exitLightDir, 0.04f));
         float doorwayPortalHalfWidth = exitLightStrength > 0.001f ? 0.56f : 0.0f;
         if (sessionRuntime_.mode == RendererRuntimeMode::MainMenu && exitDoorPresentation_.angle > 0.001f) {
-            float rawDoorOpen = exitDoorPresentation_.angle / 1.38f;
+            float rawDoorOpen = std::clamp(exitDoorPresentation_.angle / 1.38f, 0.0f, 1.0f);
             exitDoorOpen = SmoothStep(0.08f, 0.92f, rawDoorOpen);
             float doorwayLightOpen = SmoothStep(0.12f, 0.90f, rawDoorOpen);
             doorwayLightOpen *= doorwayLightOpen;
@@ -25,6 +25,14 @@
             doorwayLightStrength = doorwayLightOpen * 5.8f;
             doorwayPortalPos = Add3(exitDoorPresentation_.center, Scale3(exitDoorPresentation_.normal, 0.04f));
             doorwayPortalHalfWidth = 0.56f;
+        } else if (exitDoorPresentation_.angle > 0.001f) {
+            float rawDoorOpen = std::clamp(exitDoorPresentation_.angle / 1.38f, 0.0f, 1.0f);
+            exitDoorOpen = SmoothStep(0.08f, 0.92f, rawDoorOpen);
+            doorwayPortalPos = Add3(exitDoorPresentation_.center, Scale3(exitDoorPresentation_.normal, 0.04f));
+            doorwayPortalHalfWidth = 0.56f;
+            doorwayLightPos = Add3(exitDoorPresentation_.center, Scale3(exitDoorPresentation_.normal, 2.0f));
+            float doorwayBase = std::max(settingsRuntime_.live.lampIntensity, exitLightStrength * 0.26f);
+            doorwayLightStrength = std::clamp(doorwayBase * 0.78f, 0.0f, 1.35f);
         }
         cb.exitLight0 = {
             exitLightPos.x,

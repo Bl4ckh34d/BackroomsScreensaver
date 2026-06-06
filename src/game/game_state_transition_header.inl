@@ -19,6 +19,7 @@ void EnterGameMainMenu(HWND hwnd) {
     gApp->gameMenuBloodStart = 0;
     gApp->gameMenuLampBurstStart = 0;
     gApp->gameCustomMenuOpen = false;
+    gApp->gameSettingsBoardOpen = false;
     SetCustomGameControlsVisible(false);
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;

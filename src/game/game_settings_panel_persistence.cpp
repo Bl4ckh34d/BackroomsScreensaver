@@ -16,6 +16,24 @@ std::wstring FormatResolution(int width, int height) {
     return FormatSettingValue(width) + L" x " + FormatSettingValue(height);
 }
 
+std::wstring FormatAntiAliasing(int value) {
+    switch (NormalizeAntiAliasingMode(value)) {
+    case 0: return L"Off";
+    case 1: return L"FXAA";
+    case 2: return L"MSAA 2x";
+    case 4: return L"MSAA 4x";
+    case 8: return L"MSAA 8x";
+    case 16: return L"MSAA 16x";
+    default: return L"FXAA";
+    }
+}
+
+std::wstring FormatTextureAnisotropy(int value) {
+    value = NormalizeTextureAnisotropy(value);
+    if (value <= 1) return L"Off";
+    return FormatSettingValue(value) + L"x";
+}
+
 void BuildGameResolutionOptions(GameSettingsPanelState* state) {
     if (!state) return;
     state->resolutionOptions.clear();
@@ -56,14 +74,16 @@ void WriteIniIntValue(const wchar_t* section, const wchar_t* key, int value) {
     WritePrivateProfileStringW(section, key, FormatSettingValue(value).c_str(), SettingsPath().c_str());
 }
 
-void SaveGameSettingsPanel(const GameSettingsPanelState* state) {
-    if (!state) return;
-    const Settings& s = state->settings;
+void SaveSettingsToIni(const Settings& s) {
     WriteIniIntValue(L"GameWindow", L"Fullscreen", s.gameFullscreen ? 1 : 0);
     WriteIniIntValue(L"GameWindow", L"ResolutionWidth", s.gameResolutionWidth);
     WriteIniIntValue(L"GameWindow", L"ResolutionHeight", s.gameResolutionHeight);
     WriteIniIntValue(L"GameWindow", L"FrameRateLimit", s.gameFrameRateLimit);
     WriteIniIntValue(L"Renderer", L"AllowWarpFallback", s.allowWarpFallback ? 1 : 0);
+    WriteIniIntValue(L"Renderer", L"RenderScalePercent", s.renderScalePercent);
+    WriteIniIntValue(L"Renderer", L"FXAA", AntiAliasingUsesFxaa(s.antiAliasing) ? 1 : 0);
+    WriteIniIntValue(L"Renderer", L"AntiAliasing", NormalizeAntiAliasingMode(s.antiAliasing));
+    WriteIniIntValue(L"Renderer", L"TextureAnisotropy", NormalizeTextureAnisotropy(s.textureAnisotropy));
     WriteIniFloat(L"Lighting", L"Exposure", s.exposure);
     WriteIniFloat(L"Lighting", L"BloomAmount", s.bloomAmount);
     WriteIniFloat(L"Lighting", L"MotionBlurAmount", s.motionBlurAmount);
@@ -82,4 +102,9 @@ void SaveGameSettingsPanel(const GameSettingsPanelState* state) {
     WriteIniFloat(L"Audio", L"EffectsVolume", s.audioEffectsVolume);
     WriteIniFloat(L"Audio", L"AmbienceVolume", s.audioAmbienceVolume);
     WriteIniFloat(L"Audio", L"MonsterVolume", s.audioMonsterVolume);
+}
+
+void SaveGameSettingsPanel(const GameSettingsPanelState* state) {
+    if (!state) return;
+    SaveSettingsToIni(state->settings);
 }

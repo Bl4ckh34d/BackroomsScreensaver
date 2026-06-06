@@ -33,8 +33,7 @@
         const DoorSide fallbackSides[] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
         sides.insert(sides.end(), std::begin(fallbackSides), std::end(fallbackSides));
 
-        for (const DoorSide& side : sides) {
-            if (sessionRuntime_.mode != RendererRuntimeMode::MainMenu && maze.IsOpen(e.x + side.dx, e.y + side.dy)) continue;
+        auto assignPortal = [&](const DoorSide& side) {
             XMFLOAT3 c = maze.WorldCenter(e, 0.0f);
             portal.dx = side.dx;
             portal.dy = side.dy;
@@ -45,7 +44,15 @@
             portal.wallCenter = {c.x + side.dx * tileW * 0.5f, 0.0f, c.z + side.dy * tileD * 0.5f};
             portal.halfSpan = (side.dy != 0 ? tileW : tileD) * 0.5f;
             portal.valid = true;
+        };
+
+        for (const DoorSide& side : sides) {
+            if (sessionRuntime_.mode != RendererRuntimeMode::MainMenu && maze.IsOpen(e.x + side.dx, e.y + side.dy)) continue;
+            assignPortal(side);
             break;
+        }
+        if (!portal.valid && !sides.empty()) {
+            assignPortal(sides.front());
         }
         return portal;
     }

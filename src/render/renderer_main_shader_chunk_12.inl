@@ -19,7 +19,7 @@ R"(
             tile.y += stepTile.y;
             tMax.y += tDelta.y;
         }
-        if (MazeOpenAt(tile) < 0.5)
+        if (MazeLightOpenAt(tile) < 0.5)
         {
             return 0.0;
         }

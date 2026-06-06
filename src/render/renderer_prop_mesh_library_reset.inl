@@ -8,4 +8,5 @@
         renderAssets_.cassettePropMesh = {};
         renderAssets_.airVentPropMesh = {};
         renderAssets_.exitSignPropMesh = {};
+        renderAssets_.toolBoxPropMesh = {};
         for (StaticPropMesh& mesh : renderAssets_.ceilingLampPropMeshes) mesh = {};

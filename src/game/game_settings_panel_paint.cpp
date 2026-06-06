@@ -41,6 +41,11 @@ void PaintGameSettingsPanel(HWND hwnd, HDC dc, GameSettingsPanelState* state) {
         RECT note{x, y + 52, panel.right - 34, y + 88};
         DrawTextLine(dc, L"Save applies fullscreen and window size immediately, then returns to the menu.", note, RGB(174, 166, 142), DT_LEFT | DT_WORDBREAK);
     } else if (state->tab == 1) {
+        DrawGameSettingsSlider(dc, state, x, y, kGameSettingsRenderScale, L"Render scale", static_cast<float>(s.renderScalePercent), 50.0f, 100.0f, FormatSettingValue(s.renderScalePercent) + L"%"); y += 42;
+        DrawGameSettingsDropdown(dc, state, x, y, kGameSettingsAntiAliasingDropdown, L"Anti-aliasing",
+            FormatAntiAliasing(s.antiAliasing)); y += state->antiAliasingDropdownOpen ? 174 : 50;
+        DrawGameSettingsDropdown(dc, state, x, y, kGameSettingsAnisotropyDropdown, L"Texture anisotropy",
+            FormatTextureAnisotropy(s.textureAnisotropy)); y += state->anisotropyDropdownOpen ? 174 : 50;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsExposure, L"Exposure", s.exposure, 0.25f, 3.0f, FormatSettingValue(s.exposure)); y += 42;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsBloom, L"Bloom", s.bloomAmount, 0.0f, 1.0f, FormatSettingValue(s.bloomAmount)); y += 42;
         DrawGameSettingsSlider(dc, state, x, y, kGameSettingsMotionBlur, L"Motion blur", s.motionBlurAmount, 0.0f, 1.0f, FormatSettingValue(s.motionBlurAmount)); y += 42;

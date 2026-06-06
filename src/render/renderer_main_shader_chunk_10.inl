@@ -68,13 +68,43 @@ float2 MazeTile(float2 worldXZ)
     return floor((worldXZ - gMaze0.xy) / gMaze0.zw);
 }
 
+float MazeVirtualExitCorridorOpen(int2 tile)
+{
+    if (gExitLight0.w <= 0.001 || gExitLight3.w <= 0.001)
+    {
+        return 0.0;
+    }
+
+    float2 tileCenter = gMaze0.xy + ((float2)tile + 0.5) * gMaze0.zw;
+    float2 inward = normalize(gExitLight1.xz + float2(0.0001, 0.0001));
+    float2 outward = -inward;
+    float2 right = float2(outward.y, -outward.x);
+    float2 rel = tileCenter - gExitLight3.xz;
+    float axial = dot(rel, outward);
+    float lateral = abs(dot(rel, right));
+    float maxDepth = max(gMaze1.w * 14.0, 14.0);
+    float depthOpen = smoothstep(gMaze1.w * 0.10, gMaze1.w * 0.35, axial) *
+        (1.0 - smoothstep(maxDepth - gMaze1.w * 0.35, maxDepth + gMaze1.w * 0.35, axial));
+    float widthOpen = 1.0 - step(gMaze1.w * 0.52, lateral);
+    return depthOpen * widthOpen;
+}
+
 float MazeOpenAt(int2 tile)
 {
     if (tile.x < 0 || tile.y < 0 || tile.x >= (int)gMaze1.x || tile.y >= (int)gMaze1.y)
     {
-        return 0.0;
+        return MazeVirtualExitCorridorOpen(tile);
     }
     return gMazeOpen.Load(int3(tile, 0)).r;
+}
+
+float MazeLightOpenAt(int2 tile)
+{
+    if (tile.x < 0 || tile.y < 0 || tile.x >= (int)gMaze1.x || tile.y >= (int)gMaze1.y)
+    {
+        return MazeVirtualExitCorridorOpen(tile);
+    }
+    return step(0.001, gMazeOpen.Load(int3(tile, 0)).r);
 }
 
 float LampRayClear(float2 startXZ, float2 endXZ);
@@ -91,7 +121,7 @@ float NearestClosedCellDistance(float2 cell)
         for (int xx = -1; xx <= 1; ++xx)
         {
             int2 tile = baseTile + int2(xx, yy);
-            if (MazeOpenAt(tile) < 0.5)
+            if (MazeLightOpenAt(tile) < 0.5)
             {
                 float2 lo = (float2)tile;
 )"

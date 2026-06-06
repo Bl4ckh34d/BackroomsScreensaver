@@ -37,7 +37,7 @@ struct CustomGameSpec {
     int lampFlickerPercent = 10;
     int lampSparkPercent = 15;
     int fogStartMeters = 0;
-    int fogEndMeters = 28;
+    int fogEndMeters = 14;
     int fogDarknessPercent = 100;
     int jumpscareChancePercent = 15;
     int jumpscareStartMinSeconds = 0;

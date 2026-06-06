@@ -13,6 +13,21 @@
         return out.halfW > 0.0f && out.halfH > 0.0f;
     }
 
+    bool SettingsBoardControlPlacement(SettingsBoardControl control, MenuPlaquePlacement& out) const {
+        RECT r{};
+        if (!SettingsBoardControlPixelRect(control, r)) return false;
+        MenuPlaquePlacement panel = MenuCustomPanelPlacement();
+        constexpr float logicalSize = 512.0f;
+        float centerX = ((static_cast<float>(r.left + r.right) * 0.5f) / logicalSize - 0.5f) * panel.halfW * 2.0f;
+        float centerY = (0.5f - (static_cast<float>(r.top + r.bottom) * 0.5f) / logicalSize) * panel.halfH * 2.0f;
+        XMFLOAT3 up{0.0f, 1.0f, 0.0f};
+        out = panel;
+        out.center = Add3(panel.center, Add3(Add3(Scale3(panel.right, centerX), Scale3(up, centerY)), Scale3(panel.inward, 0.082f)));
+        out.halfW = (static_cast<float>(r.right - r.left) / logicalSize) * panel.halfW;
+        out.halfH = (static_cast<float>(r.bottom - r.top) / logicalSize) * panel.halfH;
+        return out.halfW > 0.0f && out.halfH > 0.0f;
+    }
+
     bool ProjectMenuQuadToScreen(XMFLOAT3 center, XMFLOAT3 right, XMFLOAT3 up, float halfW, float halfH, RECT& out) const {
         if (hostRuntime_.width <= 0 || hostRuntime_.height <= 0) return false;
         right = Normalize3(right, {1.0f, 0.0f, 0.0f});

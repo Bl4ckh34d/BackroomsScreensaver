@@ -11,7 +11,7 @@
     bool MonsterActiveForCurrentMode() const {
         if (monsterPreview_.active || gEffectDebugViewer) return true;
         if (sessionRuntime_.mode == RendererRuntimeMode::PlayableGame) {
-            return gameWorld_.DeathActive() || gameWorld_.PlayableBossLevelRunning();
+            return gameWorld_.PlayableBossLevelRunning();
         }
         return true;
     }

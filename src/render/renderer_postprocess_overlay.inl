@@ -6,6 +6,16 @@
         float blendFactor[4] = {};
         ID3D11RenderTargetView* target = renderTargetRuntime_.rtv.Get();
         d3dRuntime_.context->OMSetRenderTargets(1, &target, nullptr);
+        if (renderTargetRuntime_.sceneColorMsaa && renderTargetRuntime_.sceneColor && renderTargetRuntime_.sceneSampleCount > 1) {
+            d3dRuntime_.context->ResolveSubresource(renderTargetRuntime_.sceneColor.Get(), 0,
+                renderTargetRuntime_.sceneColorMsaa.Get(), 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+        }
+        D3D11_VIEWPORT fullVp{};
+        fullVp.Width = static_cast<float>(hostRuntime_.width);
+        fullVp.Height = static_cast<float>(hostRuntime_.height);
+        fullVp.MinDepth = 0.0f;
+        fullVp.MaxDepth = 1.0f;
+        d3dRuntime_.context->RSSetViewports(1, &fullVp);
         d3dRuntime_.context->OMSetDepthStencilState(pipelineStates_.depthDisabledState.Get(), 0);
         d3dRuntime_.context->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
         d3dRuntime_.context->RSSetState(pipelineStates_.rasterState.Get());

@@ -1,23 +1,51 @@
+        bool drawNewPoster = false;
+        bool drawCustomPoster = false;
+        bool drawSettingsToolbox = false;
+        bool hoverNewPoster = false;
+        bool hoverCustomPoster = false;
+        bool hoverSettingsToolbox = false;
+        int newPosterIndex = -1;
+        int customPosterIndex = -1;
+        int settingsIndex = -1;
+
         for (int i = 0; i < menuRuntime_.buttonCount; ++i) {
-            if (menuRuntime_.customViewActive || menuRuntime_.customViewTarget) break;
-            bool hover = menuRuntime_.hoverButtonIndex == i;
-            float material = hover ? 9.88f : 9.68f;
-            MenuPlaquePlacement plaque = MenuButtonPlacement(i);
-            AppendDynamicBoxAxes(verts, plaque.center, plaque.right, up, plaque.inward, {plaque.halfW, plaque.halfH, 0.030f}, material);
-            XMFLOAT3 capCenter = Add3(plaque.center, Add3(Scale3(plaque.right, -plaque.halfW + 0.012f), Scale3(plaque.inward, -0.017f)));
-            AppendDynamicBoxAxes(verts, capCenter, plaque.right, up, plaque.inward, {0.016f, plaque.halfH + 0.010f, 0.024f}, hover ? 9.94f : 9.78f);
-            XMFLOAT3 labelCenter = Add3(plaque.center, Scale3(plaque.inward, 0.036f));
-            XMFLOAT3 hw = Scale3(plaque.right, std::min(plaque.halfW * 0.72f, 0.76f));
-            XMFLOAT3 hh = Scale3(up, 0.096f);
             int labelIndex = std::clamp(menuRuntime_.buttonLabelRows[static_cast<size_t>(i)], 0, 5);
-            constexpr float kMenuLabelRows = 6.0f;
-            float v0 = (static_cast<float>(labelIndex) + 0.18f) / kMenuLabelRows;
-            float v1 = (static_cast<float>(labelIndex) + 0.82f) / kMenuLabelRows;
-            float labelMaterial = 18.0f + (hover ? 0.46f : 0.08f);
-            AppendDynamicQuadUV(transparentVerts,
-                Add3(labelCenter, Add3(Scale3(hw, -1.0f), Scale3(hh, -1.0f))),
-                Add3(labelCenter, Add3(hw, Scale3(hh, -1.0f))),
-                Add3(labelCenter, Add3(hw, hh)),
-                Add3(labelCenter, Add3(Scale3(hw, -1.0f), hh)),
-                plaque.inward, plaque.right, {0.08f, v1}, {0.92f, v1}, {0.92f, v0}, {0.08f, v0}, labelMaterial);
+            bool hover = menuRuntime_.hoverButtonIndex == i;
+            if (labelIndex == 3) {
+                drawCustomPoster = true;
+                hoverCustomPoster = hoverCustomPoster || hover;
+                if (customPosterIndex < 0) customPosterIndex = i;
+            } else if (labelIndex == 4) {
+                drawSettingsToolbox = true;
+                hoverSettingsToolbox = hoverSettingsToolbox || hover;
+                if (settingsIndex < 0) settingsIndex = i;
+            } else {
+                drawNewPoster = true;
+                hoverNewPoster = hoverNewPoster || hover;
+                if (newPosterIndex < 0) newPosterIndex = i;
+            }
         }
+
+        auto appendCrookedPoster = [&](int index, bool customPoster, bool hover) {
+            if (index < 0) return;
+            MenuPlaquePlacement plaque = MenuButtonPlacement(index);
+            float roll = customPoster ? -0.035f : 0.045f;
+            float cr = std::cos(roll);
+            float sr = std::sin(roll);
+            XMFLOAT3 posterRight = Normalize3(Add3(Scale3(plaque.right, cr), Scale3(up, sr)), plaque.right);
+            XMFLOAT3 posterUp = Normalize3(Add3(Scale3(up, cr), Scale3(plaque.right, -sr)), up);
+            XMFLOAT3 faceCenter = Add3(plaque.center, Scale3(plaque.inward, 0.004f));
+            XMFLOAT3 hw = Scale3(posterRight, plaque.halfW);
+            XMFLOAT3 hh = Scale3(posterUp, plaque.halfH);
+            float u0 = customPoster ? 0.50f : 0.0f;
+            float u1 = customPoster ? 1.0f : 0.50f;
+            AppendDynamicQuadUV(transparentVerts,
+                Add3(faceCenter, Add3(Scale3(hw, -1.0f), Scale3(hh, -1.0f))),
+                Add3(faceCenter, Add3(hw, Scale3(hh, -1.0f))),
+                Add3(faceCenter, Add3(hw, hh)),
+                Add3(faceCenter, Add3(Scale3(hw, -1.0f), hh)),
+                plaque.inward, posterRight, {u0, 1.0f}, {u1, 1.0f}, {u1, 0.0f}, {u0, 0.0f}, 18.98f);
+        };
+
+        if (drawNewPoster) appendCrookedPoster(newPosterIndex, false, hoverNewPoster);
+        if (drawCustomPoster) appendCrookedPoster(customPosterIndex, true, hoverCustomPoster);
