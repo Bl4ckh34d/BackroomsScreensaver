@@ -1,6 +1,7 @@
     // Debug viewer and monster-preview public APIs.
 
     void EnterDebugViewer(DebugSliceEffect effect = DebugSliceEffect::Blood, int tiles = 3) {
+        nextMazePreparation_.reset();
         sessionRuntime_.mode = RendererRuntimeMode::DebugViewer;
         EnsureFullSceneAssets();
         gEffectDebugViewer = true;

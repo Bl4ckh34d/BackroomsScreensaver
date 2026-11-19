@@ -1,5 +1,6 @@
 #include "playable_progression_save_helpers.inl"
 #include "playable_run_persistence.inl"
 #include "playable_level_start_runtime.inl"
+#include "playable_maze_preparation.inl"
 #include "playable_level_completion_runtime.inl"
 #include "playable_score_continue_runtime.inl"

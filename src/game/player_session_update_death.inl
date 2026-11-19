@@ -14,6 +14,6 @@
         cameraPosition.y = 1.42f + std::sin(timeRuntime_.time * 19.0f) * 0.012f * SmoothStep(0.0f, 1.2f, world.deathTimer);
         gameWorld_.SetPlayerCameraPose(cameraPosition, yaw, yaw, pitch);
         if (world.deathTimer > 4.25f) {
-            RestartMaze();
+            RespawnInCurrentMaze();
         }
     }

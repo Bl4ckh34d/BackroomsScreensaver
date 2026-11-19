@@ -16,7 +16,13 @@ int RunSelfTest(HINSTANCE hInstance) {
     }
     bool ok = app.renderer.Initialize(hwnd);
     StartupProfileLine(L"SelfTest after Initialize");
-    app.renderer.SetPresentSyncInterval(0);
+        app.renderer.SetPresentSyncInterval(0);
+        if (ok) {
+            const bool liquids = app.renderer.VerifyLiquidTexture();
+            const bool maze = app.renderer.VerifyPreparedMazeAndRespawn();
+            StartupProfileLine(maze ? L"SelfTest prepared maze and respawn passed" : L"SelfTest prepared maze or respawn failed");
+            ok = liquids && maze;
+        }
     app.renderer.SetPresentEnabled(false);
     StartupProfileLine(L"SelfTest before DestroyWindow");
     DestroyWindow(hwnd);

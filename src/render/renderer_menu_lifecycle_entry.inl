@@ -1,6 +1,7 @@
     // Main-menu scene, interaction, projection, and custom-game presentation APIs.
 
     void EnterMainMenuScene() {
+        nextMazePreparation_.reset();
         sessionRuntime_.mode = RendererRuntimeMode::MainMenu;
         gEffectDebugViewer = false;
         gBloodDebugEveryWall = false;

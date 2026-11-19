@@ -38,7 +38,7 @@
             return false;
         }
         profile.Mark(L"CreateDeviceAndSwapChain");
-        startupRuntime_.shaderTotal = d3dRuntime_.featureLevel >= D3D_FEATURE_LEVEL_11_0 ? 9 : 7;
+        startupRuntime_.shaderTotal = d3dRuntime_.featureLevel >= D3D_FEATURE_LEVEL_11_0 ? 14 : 12;
         startupRuntime_.total = kStartupProgressPreShaderSteps + startupRuntime_.shaderTotal + kStartupProgressPostShaderSteps;
         startupRuntime_.fineTotal = startupRuntime_.total * kStartupProgressUnitsPerStep;
         ReportStartupStep(L"Direct3D device ready", L"Creating render targets.");

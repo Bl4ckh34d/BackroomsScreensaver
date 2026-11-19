@@ -45,3 +45,19 @@
 
     // Monster presentation state; monster decisions live in GameWorld/MonsterState.
     MonsterPresentationRuntimeState monsterPresentation_{};
+
+    struct MazeRespawnState {
+        std::vector<SparkEmitter> sparks;
+        std::vector<SteamEmitter> vents;
+        std::vector<WetDripEmitter> drips;
+        std::vector<BloodScarePoint> scarePoints;
+    };
+    std::unique_ptr<MazeRespawnState> mazeRespawnState_;
+
+    struct NextMazePreparation {
+        PlayableLevelSpec level;
+        float flickerRoll = 0.0f;
+        std::future<std::unique_ptr<Renderer>> scene;
+        bool continueRequested = false;
+    };
+    std::unique_ptr<NextMazePreparation> nextMazePreparation_;

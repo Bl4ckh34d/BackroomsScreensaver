@@ -1,4 +1,5 @@
     void StartGameSession(const GameSessionSpec& spec) {
+        nextMazePreparation_.reset();
         gEffectDebugViewer = false;
         gBloodDebugEveryWall = false;
         sessionRuntime_.ConfigureFromSpec(spec);

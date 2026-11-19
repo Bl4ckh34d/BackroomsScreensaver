@@ -53,5 +53,12 @@
             overlayVs, overlayPs, texturedOverlayVs, texturedOverlayPs, postVs, postPs)) {
             return false;
         }
+        const char* liquidResolveSource =
+#include "renderer_liquid_resolve_shader.inl"
+        ;
+        ComPtr<ID3DBlob> liquidResolvePs;
+        if (!CompileShader(liquidResolveSource, "PSLiquidResolve", mainPsProfile, liquidResolvePs)) return false;
+        if (FAILED(d3dRuntime_.device->CreatePixelShader(liquidResolvePs->GetBufferPointer(),
+            liquidResolvePs->GetBufferSize(), nullptr, &shaders_.liquidResolvePixelShader))) return false;
         return CreateShaderInputLayouts(vs, instancedVs, overlayVs, texturedOverlayVs);
     }

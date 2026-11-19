@@ -28,7 +28,8 @@
             bool anyKeyPressed = sessionRuntime_.input.anyKey && !viewRuntime_.scoreContinuePressedLastFrame;
             viewRuntime_.scoreContinuePressedLastFrame = sessionRuntime_.input.anyKey;
             bool autoplayContinue = sessionRuntime_.UsesAutopilotInput() && viewRuntime_.exitScoreContinueReady;
-            if (viewRuntime_.exitScoreContinueReady && (anyKeyPressed || autoplayContinue)) {
+            bool pendingContinue = nextMazePreparation_ && nextMazePreparation_->continueRequested;
+            if (viewRuntime_.exitScoreContinueReady && (anyKeyPressed || autoplayContinue || pendingContinue)) {
                 ContinueAfterScoreScreen();
             }
             UpdateFlashlightAim(dt);

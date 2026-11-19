@@ -1,5 +1,7 @@
 #include "platform/platform_headers.h"
 
+#include <future>
+
 #include "core/maze_types.h"
 
 #include "core/math_utils.h"

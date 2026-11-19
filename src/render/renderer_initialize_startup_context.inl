@@ -6,7 +6,7 @@
         } progressScope{this};
         startupRuntime_.sink = startupProgress;
         startupRuntime_.step = 0;
-        startupRuntime_.total = kStartupProgressPreShaderSteps + 9 + kStartupProgressPostShaderSteps;
+        startupRuntime_.total = kStartupProgressPreShaderSteps + 14 + kStartupProgressPostShaderSteps;
         startupRuntime_.fineCurrent = 0;
         startupRuntime_.fineTotal = startupRuntime_.total * kStartupProgressUnitsPerStep;
         startupRuntime_.shaderDone = 0;

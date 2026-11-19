@@ -13,6 +13,7 @@
         renderTargetRuntime_.sceneColorMsaa.Reset();
         renderTargetRuntime_.sceneColorRtv.Reset();
         renderTargetRuntime_.sceneColor.Reset();
+        renderTargetRuntime_.liquid = {};
         renderTargetRuntime_.sceneWidth = 0;
         renderTargetRuntime_.sceneHeight = 0;
         renderTargetRuntime_.sceneSampleCount = 1;

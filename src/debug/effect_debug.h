@@ -2,13 +2,13 @@
 
 #include "debug_slice_effect.h"
 
-extern bool gEffectDebugViewer;
-extern DebugSliceEffect gDebugSliceEffect;
+extern thread_local bool gEffectDebugViewer;
+extern thread_local DebugSliceEffect gDebugSliceEffect;
 extern DebugSliceEffect gStartupDebugSliceEffect;
-extern int gDebugSliceTiles;
-extern int gDebugPropIndex;
-extern bool gBloodDebugEveryWall;
-extern bool gDebugHideMonster;
+extern thread_local int gDebugSliceTiles;
+extern thread_local int gDebugPropIndex;
+extern thread_local bool gBloodDebugEveryWall;
+extern thread_local bool gDebugHideMonster;
 
 extern const int kDebugPropCount;
 

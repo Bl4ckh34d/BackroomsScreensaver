@@ -1,3 +1,5 @@
+#include "renderer_liquid_target.inl"
+
     bool CreateBackBuffer() {
         ComPtr<ID3D11Texture2D> backBuffer;
         HRESULT hr = d3dRuntime_.swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
@@ -60,5 +62,7 @@
         hr = d3dRuntime_.device->CreateTexture2D(&dd, nullptr, &renderTargetRuntime_.depth);
         if (FAILED(hr)) return false;
         hr = d3dRuntime_.device->CreateDepthStencilView(renderTargetRuntime_.depth.Get(), nullptr, &renderTargetRuntime_.dsv);
-        return SUCCEEDED(hr);
+        if (FAILED(hr)) return false;
+        CreateLiquidTarget(sceneDesc);
+        return true;
     }

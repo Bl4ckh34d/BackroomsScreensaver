@@ -5,10 +5,11 @@
 #include "debug_slice_effect.h"
 #include "startup_progress.h"
 
-bool gEffectDebugViewer = false;
-DebugSliceEffect gDebugSliceEffect = DebugSliceEffect::Blood;
+// Debug controls belong to the UI thread. Background maze builders use the defaults.
+thread_local bool gEffectDebugViewer = false;
+thread_local DebugSliceEffect gDebugSliceEffect = DebugSliceEffect::Blood;
 DebugSliceEffect gStartupDebugSliceEffect = DebugSliceEffect::Blood;
-int gDebugSliceTiles = 3;
-int gDebugPropIndex = 0;
-bool gBloodDebugEveryWall = false;
-bool gDebugHideMonster = false;
+thread_local int gDebugSliceTiles = 3;
+thread_local int gDebugPropIndex = 0;
+thread_local bool gBloodDebugEveryWall = false;
+thread_local bool gDebugHideMonster = false;

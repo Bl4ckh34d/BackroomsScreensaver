@@ -8,6 +8,16 @@ struct RendererDeviceRuntimeState {
 };
 
 struct RenderTargetRuntimeState {
+    struct LiquidTarget {
+        ComPtr<ID3D11RenderTargetView> color;
+        ComPtr<ID3D11DepthStencilView> depth;
+        ComPtr<ID3D11ShaderResourceView> colorSrv;
+        ComPtr<ID3D11ShaderResourceView> depthSrv;
+        ComPtr<ID3D11Buffer> resolveConstants;
+        UINT width = 0;
+        UINT height = 0;
+    } liquid;
+
     ComPtr<ID3D11RenderTargetView> rtv;
     ComPtr<ID3D11Texture2D> depth;
     ComPtr<ID3D11DepthStencilView> dsv;

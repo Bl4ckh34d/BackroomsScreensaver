@@ -29,6 +29,7 @@
             return;
         }
 
+        PrepareNextPlayableMaze();
         std::wostringstream notice;
         notice << L"Level " << result.levelInLayer << L" clear\n"
                << L"Time " << FormatRunSeconds(result.levelSeconds) << L"   Score +" << result.score

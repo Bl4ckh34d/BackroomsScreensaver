@@ -13,6 +13,7 @@
         auto values = ParseSavedRunKeyValues(text);
         if (SavedRunInt(values, L"Version", 0) != 1) return false;
 
+        nextMazePreparation_.reset();
         PlayableRunState::SavedRunRestoreState savedRun = PlayableRunState::ReadSavedRunFields(values);
         int savedSaveItemsSpawned = gameWorld_.RestoreSavedPlayableRunState(std::move(savedRun));
         PlayableLevelSpec spec = gameWorld_.CurrentPlayableLevel();

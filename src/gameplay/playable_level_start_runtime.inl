@@ -9,22 +9,30 @@
         return s.str();
     }
 
-    void BeginPlayableLevel(int levelInLayer, bool showStartNotification = true) {
+    PlayableLevelSpec RollPlayableLevel(int levelInLayer) {
         PlayableLevelSpec level = gameWorld_.BuildLayerOneLevelSpec(levelInLayer, sessionRuntime_.rng);
         if (AutoplayBenchmarkEnabled() && AutoplayBenchmarkBossLevel() == level.levelInLayer) {
             level.bossEncounter = true;
             level.bossEncounterChance = 1.0f;
         }
+        return level;
+    }
+
+    void BeginPlayableLevel(int levelInLayer, bool showStartNotification = true) {
+        const PlayableLevelSpec level = RollPlayableLevel(levelInLayer);
         gameWorld_.BeginPlayableLevel(level);
-        ApplyPlayableLevelSpec(gameWorld_.CurrentPlayableLevel());
+        ApplyPlayableLevelSpec(level);
         gameWorld_.ApplyMazeLayout(MakeMazeLayoutSpec(settingsRuntime_.live));
         RestartMaze();
-
         if (showStartNotification) {
-            std::wostringstream notice;
-            gameWorld_.WriteLevelStartNotice(notice);
-            ShowGameNotification(notice.str(), 3.6f);
+            ShowPlayableLevelStartNotice();
         }
+    }
+
+    void ShowPlayableLevelStartNotice() {
+        std::wostringstream notice;
+        gameWorld_.WriteLevelStartNotice(notice);
+        ShowGameNotification(notice.str(), 3.6f);
     }
 
     void BeginPlayableRun() {

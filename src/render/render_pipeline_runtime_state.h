@@ -13,6 +13,7 @@ struct ShaderRuntimeState {
     ComPtr<ID3D11PixelShader> postPixelShader;
     ComPtr<ID3D11VertexShader> instancedVertexShader;
     ComPtr<ID3D11PixelShader> liquidPixelShader;
+    ComPtr<ID3D11PixelShader> liquidResolvePixelShader;
     ComPtr<ID3D11PixelShader> shadowPixelShader;
 };
 

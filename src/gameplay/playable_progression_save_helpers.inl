@@ -12,8 +12,7 @@
         std::filesystem::remove(GameSavePath(), ec);
     }
 
-    void ApplyPlayableLevelSpec(const PlayableLevelSpec& spec) {
-        float lampFlickerUnit = spec.NeedsLampFlickerRoll() ? UnitRandom() : 0.0f;
+    void ApplyPlayableLevelSpec(const PlayableLevelSpec& spec, float lampFlickerUnit) {
         spec.ApplyRuntimeSettings(
             settingsRuntime_.live,
             sessionRuntime_.gameplaySettings,
@@ -23,4 +22,8 @@
             gameWorld_.monster.ClearPursuitState();
             ResetMonsterPresentationState(true, false);
         }
+    }
+
+    void ApplyPlayableLevelSpec(const PlayableLevelSpec& spec) {
+        ApplyPlayableLevelSpec(spec, spec.NeedsLampFlickerRoll() ? UnitRandom() : 0.0f);
     }
