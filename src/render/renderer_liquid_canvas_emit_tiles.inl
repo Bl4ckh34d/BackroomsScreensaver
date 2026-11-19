@@ -12,18 +12,23 @@
                     float z1 = z0 + build.surface.tileD;
                     float y = ceiling ? build.ceilingY : build.floorY;
                     uint32_t code = (surface.sourceMask & 0x0fu) | (surface.centerSource ? 0x10u : 0u);
-                    auto edgeContinues = [&](int nx, int ny) {
-                        if (!RenderMazeView().IsOpen(nx, ny)) return true;
+                    auto neighborWet = [&](int nx, int ny) {
+                        if (!RenderMazeView().IsOpen(nx, ny)) return false;
                         size_t nidx = static_cast<size_t>(ny * RenderMazeView().w + nx);
                         return nidx < canvas.size() && canvas[nidx].active;
                     };
                     uint32_t continueMask = 0;
-                    if (edgeContinues(tx, ty - 1)) continueMask |= 1u << 0;
-                    if (edgeContinues(tx, ty + 1)) continueMask |= 1u << 1;
-                    if (edgeContinues(tx - 1, ty)) continueMask |= 1u << 2;
-                    if (edgeContinues(tx + 1, ty)) continueMask |= 1u << 3;
+                    uint32_t wetNeighborMask = 0;
+                    const Tile neighbors[] = {{tx, ty - 1}, {tx, ty + 1}, {tx - 1, ty}, {tx + 1, ty}};
+                    for (int edge = 0; edge < 4; ++edge) {
+                        const Tile n = neighbors[edge];
+                        const bool wet = neighborWet(n.x, n.y);
+                        if (wet || !RenderMazeView().IsOpen(n.x, n.y)) continueMask |= 1u << edge;
+                        if (wet) wetNeighborMask |= 1u << edge;
+                    }
                     float ux = static_cast<float>(code);
-                    float vy = static_cast<float>(continueMask | (surface.downstream ? 0x10u : 0u));
+                    // Low bits describe reach and downstream flow. Upper bits identify shared liquid edges.
+                    float vy = static_cast<float>(continueMask | (surface.downstream ? 0x10u : 0u) | (wetNeighborMask << 5));
                     float u0 = ux + 0.001f;
                     float u1 = ux + 0.999f;
                     float v0 = vy + 0.001f;

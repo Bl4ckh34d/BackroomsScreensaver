@@ -44,7 +44,7 @@ R"(
                 float edgeContinue1 = fmod(floor(neighborCode / 2.0), 2.0);
                 float edgeContinue2 = fmod(floor(neighborCode / 4.0), 2.0);
                 float edgeContinue3 = fmod(floor(neighborCode / 8.0), 2.0);
-                float downstreamCode = step(15.5, neighborCode);
+                float downstreamCode = fmod(floor(neighborCode / 16.0), 2.0);
                 float sideActive0 = fmod(floor(sideCode / 1.0), 2.0);
                 float sideActive1 = fmod(floor(sideCode / 2.0), 2.0);
                 float sideActive2 = fmod(floor(sideCode / 4.0), 2.0);
@@ -91,6 +91,7 @@ R"(
                         float downstreamDelay = downstreamFlow * lerp(22.0 + r0 * 7.0 + away * 18.0, 18.0 + r0 * 9.0 + away * 16.0, waterLiquid);
                         float flowAge = max(0.0, leakAge - r0 * lerp(9.0, 7.8, waterLiquid) - fi * lerp(0.030, 0.070, waterLiquid) - contactDelay - travelDelay - downstreamDelay);
                         float grow = smoothstep(0.0, 1.0, saturate(flowAge * lerp(0.030 + r1 * 0.026, 0.018 + r1 * 0.016, waterLiquid) * lerp(1.0, 0.46, downstreamWater)));
+                        if (grow <= 0.0) continue;
                         float awayContinue = sideIndex == 0 ? edgeContinue1 : (sideIndex == 1 ? edgeContinue0 : (sideIndex == 2 ? edgeContinue3 : edgeContinue2));
                         float sideContinue = sideIndex < 2 ? max(edgeContinue2, edgeContinue3) : max(edgeContinue0, edgeContinue1);
                         float reachNoise = (Fbm3(float3(input.worldPos.xz * (1.20 + r2 * 0.55) + fi * 0.11 + sideSalt, seed * 31.0)) - 0.5);

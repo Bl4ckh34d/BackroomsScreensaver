@@ -68,6 +68,27 @@ void SelectBloodRevealSlot(float4 slot, float active, float2 worldXZ, float time
     }
 }
 
+float LiquidCanvasSeamWeight(float2 encodedUv, out float dryEdgeFade)
+{
+    const uint edgeCode = (uint)floor(encodedUv.y);
+    const uint wetNeighbors = edgeCode >> 5;
+    dryEdgeFade = 1.0;
+    if (wetNeighbors == 0u) return 0.0;
+    const float2 uv = frac(encodedUv);
+    const float4 edgeDistances = float4(uv.y, 1.0 - uv.y, uv.x, 1.0 - uv.x);
+    float nearest = 1.0;
+    float nearestDry = 1.0;
+    [unroll]
+    for (uint side = 0; side < 4; ++side)
+    {
+        const uint bit = 1u << side;
+        if (wetNeighbors & bit) nearest = min(nearest, edgeDistances[side]);
+        if ((edgeCode & bit) == 0u) nearestDry = min(nearestDry, edgeDistances[side]);
+    }
+    dryEdgeFade = smoothstep(0.006, 0.12, nearestDry);
+    return 1.0 - smoothstep(0.006, 0.12, nearest);
+}
+
 float4 PSMain(VSOut input) : SV_TARGET
 {
     float materialId = MaterialId(input.material);

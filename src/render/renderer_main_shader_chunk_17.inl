@@ -73,7 +73,7 @@ R"(
             seed = saturate((rawSeed - 0.02) / 0.40);
         }
         float wet = lerp(saturate(gHorror0.y), 1.0, waterLiquid);
-        float2 bloodUv = lerp(uv, rawUv, waterLiquid);
+        float2 bloodUv = lerp(uv, rawUv, waterLiquid * (1.0 - canvasSurface));
         float drips = 0.0;
         float thickness = 0.0;
         float wallMask = saturate(1.0 - abs(N.y));

@@ -36,6 +36,23 @@ R"(
             drips = 0.0;
         }
 
+        if (canvasSurface > 0.5 && wallMask < 0.45)
+        {
+            float dryEdgeFade;
+            const float seamWeight = LiquidCanvasSeamWeight(rawUv, dryEdgeFade);
+            if (seamWeight > 0.0)
+            {
+                // Both tiles sample the same world-space film at the common edge.
+                const float2 p = input.worldPos.xz;
+                const float breakup = Noise3(float3(p * 3.2, 28.6)) * 0.76 + Noise3(float3(p * 11.5, 73.1)) * 0.24;
+                const float coverage = smoothstep(0.25, 0.72, breakup);
+                const float spread = smoothstep(lerp(7.0, 12.0, waterLiquid), lerp(27.0, 43.0, waterLiquid), leakAge);
+                const float film = coverage * spread * dryEdgeFade * lerp(0.56, 0.64, waterLiquid);
+                alpha = lerp(alpha, film, seamWeight);
+                thickness = lerp(thickness, film * 0.64, seamWeight);
+                drips *= 1.0 - seamWeight;
+            }
+        }
         float wetAlpha = alpha;
         float wetThickness = thickness;
         float wetDrips = drips;
@@ -44,12 +61,21 @@ R"(
         drips = wetDrips * animMask;
         if (alpha < lerp(0.045, 0.026, waterLiquid)) discard;
 
-        float2 local = bloodUv * 2.0 - 1.0;
-        float2 bulgeSlope = -local * thickness * (0.08 + wet * 0.08);
-        bulgeSlope.y += wallMask * drips * (0.030 + wet * 0.028);
-        bulgeSlope += (float2(
-            Fbm3(float3(bloodUv * 18.0, seed * 47.0)),
-            Fbm3(float3(bloodUv.yx * 18.0 + 3.7, seed * 53.0))) - 0.5) * thickness * 0.010;
+        float2 bulgeSlope;
+        if (canvasSurface > 0.5 && wallMask < 0.45)
+        {
+            const float2 p = input.worldPos.xz * 14.0;
+            bulgeSlope = (float2(Noise3(float3(p, 27.1)), Noise3(float3(p.yx, 47.2))) - 0.5) * thickness * 0.016;
+        }
+        else
+        {
+            const float2 local = bloodUv * 2.0 - 1.0;
+            bulgeSlope = -local * thickness * (0.08 + wet * 0.08);
+            bulgeSlope.y += wallMask * drips * (0.030 + wet * 0.028);
+            bulgeSlope += (float2(
+                Fbm3(float3(bloodUv * 18.0, seed * 47.0)),
+                Fbm3(float3(bloodUv.yx * 18.0 + 3.7, seed * 53.0))) - 0.5) * thickness * 0.010;
+        }
         float3 B2 = normalize(cross(N, T));
         float3 worldN = normalize(N + T * bulgeSlope.x + B2 * bulgeSlope.y);
         float dist = length(input.worldPos - cam);
@@ -65,7 +91,7 @@ R"(
         float specLight = saturate(flashlight + overhead * 0.28 + sparkLight * 0.52 + exitGlow * 0.16);
         float spec = (pow(facing, 170.0) * 0.96 + pow(facing, 38.0) * 0.13 + fresnel * 0.055) *
             specLight * (0.18 + wet * 0.72) * saturate(alpha + thickness * 0.48);
-        float grime = Fbm3(input.worldPos * float3(8.0, 5.0, 8.0) + seed * 31.0);
+        float grime = Fbm3(input.worldPos * float3(8.0, 5.0, 8.0) + lerp(seed * 31.0, 9.3, canvasSurface));
         float filmAlpha = saturate(alpha * (0.58 + thickness * 0.38 + drips * 0.12 + wet * 0.035));
         if (filmAlpha < lerp(0.045, 0.026, waterLiquid)) discard;
         float lightEnergy = saturate(flashlight * 0.68 + overhead * 0.25 + sparkLight * 0.34 + exitGlow * 0.095 + gLighting0.z * 0.050);

@@ -7,6 +7,7 @@ R"(
                         float sourceU = clamp(lerp(uniformCenter, clusterCenter + (r1 - 0.5) * 0.26, 0.66), 0.025, 0.975);
                         float flowAge = max(0.0, leakAge - r0 * lerp(8.5, 3.4, waterLiquid) - fi * 0.026);
                         float grow = smoothstep(0.0, 1.0, saturate(flowAge * lerp(0.024 + r1 * 0.022, 0.052 + r1 * 0.038, waterLiquid)));
+                        if (grow <= 0.0) continue;
                         float sideWorld = (sideU - sourceU) * alongMeters;
                         float awayWorld = away * awayMeters;
                         float awayContinue = sideIndex == 0 ? edgeContinue1 : (sideIndex == 1 ? edgeContinue0 : (sideIndex == 2 ? edgeContinue3 : edgeContinue2));
