@@ -79,9 +79,10 @@ void GameWorld::WriteSavedRunFields(std::wostream& out) const {
     out << L"ExitY=" << maze.exit.y << L"\n";
     out << L"Open=" << EncodeSavedMazeBytes(maze.open) << L"\n";
     out << L"WallFeatures=" << EncodeSavedMazeBytes(maze.wallFeatures) << L"\n";
-    out << L"CameraX=" << player.position.x << L"\n";
-    out << L"CameraY=" << player.position.y << L"\n";
-    out << L"CameraZ=" << player.position.z << L"\n";
+    const XMFLOAT3& savePosition = player.windowVault.active ? player.windowVault.start : player.position;
+    out << L"CameraX=" << savePosition.x << L"\n";
+    out << L"CameraY=" << savePosition.y << L"\n";
+    out << L"CameraZ=" << savePosition.z << L"\n";
     out << L"Yaw=" << player.yaw << L"\n";
     out << L"BodyYaw=" << player.bodyYaw << L"\n";
     out << L"LookPitch=" << player.pitch << L"\n";
@@ -130,6 +131,15 @@ void GameWorld::RestoreSavedMazeGeometry(const GameWorldSavedMazeRestoreState& s
     const size_t cellCount = static_cast<size_t>(maze.w * maze.h);
     DecodeSavedMazeBytes(saved.open, maze.open, cellCount);
     DecodeSavedMazeBytes(saved.wallFeatures, maze.wallFeatures, cellCount);
+    // Preserve traversable tunnels when bringing older saved walls up to the current layout rule.
+    for (int y = 0; y < maze.h; ++y) {
+        for (int x = 0; x < maze.w; ++x) {
+            if (maze.WallFeature(x, y) == MazeWallFeature::Window &&
+                maze.HasNeighboringWallFeature({x, y}, MazeWallFeature::Tunnel)) {
+                maze.wallFeatures[static_cast<size_t>(y * maze.w + x)] = 0;
+            }
+        }
+    }
     if (!maze.IsOpen(maze.start.x, maze.start.y)) maze.SetOpen(maze.start.x, maze.start.y);
     if (!maze.IsOpen(maze.exit.x, maze.exit.y)) maze.SetOpen(maze.exit.x, maze.exit.y);
 }

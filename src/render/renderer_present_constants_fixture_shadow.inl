@@ -23,7 +23,7 @@
             float bestScore = std::numeric_limits<float>::infinity();
             const RuntimeLampState* bestLamp = nullptr;
             for (const RuntimeLampState& lamp : effectRuntime_.runtimeLamps) {
-                if (lamp.broken || !lightingMaze.InBounds(lamp.tile.x, lamp.tile.y) || !lightingMaze.LineClear(cameraTile, lamp.tile)) continue;
+                if (lamp.broken || !lightingMaze.InBounds(lamp.tile.x, lamp.tile.y)) continue;
                 float dx = lamp.pos.x - eyePos.x;
                 float dy = lamp.pos.y - eyePos.y;
                 float dz = lamp.pos.z - eyePos.z;
@@ -34,7 +34,7 @@
                 if (dist > tileAverage * 1.25f && viewFacing < -0.18f) continue;
                 float screenBias = 1.0f - std::clamp((viewFacing + 0.18f) / 1.18f, 0.0f, 1.0f);
                 float score = distSq * (0.62f + screenBias * 1.25f);
-                if (score < bestScore) {
+                if (score < bestScore && lightingMaze.LineClear(cameraTile, lamp.tile)) {
                     bestScore = score;
                     bestLamp = &lamp;
                 }

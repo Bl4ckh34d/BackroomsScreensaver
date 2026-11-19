@@ -8,6 +8,7 @@
         cameraRuntime_.turnLookYaw = resetWorld.playerYaw;
         cameraRuntime_.manualLookYawDelta = 0.0f;
         cameraRuntime_.manualLookPitchDelta = 0.0f;
+        cameraRuntime_.manualLookYawFlickTail = 0.0f;
         cameraRuntime_.headScanTimer = 0.0f;
         cameraRuntime_.headScanDuration = 0.0f;
         cameraRuntime_.headScanCenter = 0.0f;

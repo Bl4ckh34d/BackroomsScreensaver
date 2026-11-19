@@ -6,9 +6,14 @@
             viewRight = XMVector3Normalize(XMVector3Cross(worldUp, viewDir));
         }
         float tunnelRoll = world.playerTunnelLeanSide * SmoothStep(0.0f, 1.0f, world.playerTunnelLeanAmount) * 0.115f;
+        float turnRoll = 0.0f;
+        if (HasManualFlashlightAim(world) && !world.playerVaultActive) {
+            turnRoll = std::clamp(AngleWrap(world.playerYaw - world.playerBodyYaw) * 0.040f, -0.031f, 0.031f) *
+                (1.0f - Clamp01(world.playerTunnelLeanAmount));
+        }
         float roll = world.deathActive
             ? (std::sin(timeRuntime_.time * 18.0f) * 0.075f + std::sin(timeRuntime_.time * 37.0f) * 0.045f) * SmoothStep(0.06f, 0.42f, deathProgress)
-            : viewRuntime_.stumbleYawOffset * 0.12f * SmoothStep(0.0f, 0.35f, viewRuntime_.stumbleTimer) + tunnelRoll;
+            : viewRuntime_.stumbleYawOffset * 0.12f * SmoothStep(0.0f, 0.35f, viewRuntime_.stumbleTimer) + tunnelRoll + world.playerVaultCamera.roll + turnRoll;
         XMVECTOR up = XMVector3Normalize(worldUp * std::cos(roll) + viewRight * std::sin(roll));
         XMVECTOR at = eye + viewDir;
         XMMATRIX view = XMMatrixLookAtLH(eye, at, up);

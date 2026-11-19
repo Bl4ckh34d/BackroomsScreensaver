@@ -7,8 +7,19 @@
         viewRuntime_.flashlightHoldYaw += (0.0f - viewRuntime_.flashlightHoldYaw) * holdReturn;
         viewRuntime_.flashlightHoldPitch += (0.0f - viewRuntime_.flashlightHoldPitch) * holdReturn;
 
-        float targetYaw = world.playerYaw + gentleYaw + viewRuntime_.flashlightHoldYaw;
-        float targetPitch = std::clamp(world.playerPitch + gentlePitch + viewRuntime_.flashlightHoldPitch, -0.48f, 0.34f);
+        const bool manualAim = HasManualFlashlightAim(world);
+        // The beam reacts to input the camera has yet to apply, within a comfortable angle from the view.
+        const float leadYaw = manualAim
+            ? std::clamp(cameraRuntime_.manualLookYawDelta + cameraRuntime_.manualLookYawFlickTail, -0.27f, 0.27f)
+            : 0.0f;
+        const float leadPitch = manualAim
+            ? std::clamp(cameraRuntime_.manualLookPitchDelta, -0.14f, 0.14f) : 0.0f;
+        const float sway = manualAim ? Lerp(0.44f, 1.0f, holdPressure) : 1.0f;
+        float targetYaw = world.playerYaw + leadYaw + gentleYaw * sway + viewRuntime_.flashlightHoldYaw;
+        const float viewSlope = world.playerPitch + world.playerVaultCamera.pitch;
+        const float aimPitch = manualAim ? std::atan(viewSlope + leadPitch) : viewSlope;
+        float targetPitch = std::clamp(aimPitch + gentlePitch * sway + viewRuntime_.flashlightHoldPitch,
+            manualAim ? -1.30f : -0.48f, manualAim ? 1.30f : 0.34f);
         float propInspectWeight = 0.0f;
         if (!ChasePanicActive() && viewRuntime_.propLookTimer > 0.0f && viewRuntime_.propLookDuration > 0.001f) {
             float t = 1.0f - viewRuntime_.propLookTimer / viewRuntime_.propLookDuration;
@@ -24,8 +35,11 @@
         float dartFollowBoost = viewRuntime_.flashlightDartTimer > 0.0f ? 0.42f : 0.0f;
         float followSpeed = Lerp(3.7f, 17.5f, std::max(fastTurn,
             std::max(propInspectWeight * 0.26f, std::max(activeAgitation * 0.7f, std::max(snapFollowBoost, dartFollowBoost))))) * settingsRuntime_.live.flashlightFollowSpeed;
-        viewRuntime_.flashlightYaw += AngleWrap(targetYaw - viewRuntime_.flashlightYaw) * std::min(1.0f, dt * followSpeed);
-        viewRuntime_.flashlightPitch += (targetPitch - viewRuntime_.flashlightPitch) * std::min(1.0f, dt * followSpeed);
+        const float aimResponse = manualAim
+            ? -std::expm1(-dt * 68.0f * settingsRuntime_.live.flashlightFollowSpeed)
+            : std::min(1.0f, dt * followSpeed);
+        viewRuntime_.flashlightYaw += AngleWrap(targetYaw - viewRuntime_.flashlightYaw) * aimResponse;
+        viewRuntime_.flashlightPitch += (targetPitch - viewRuntime_.flashlightPitch) * aimResponse;
 
         viewRuntime_.previousCameraYaw = world.playerYaw;
         viewRuntime_.previousCameraPitch = world.playerPitch;

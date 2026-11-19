@@ -9,5 +9,6 @@
         controlInput.movement = CurrentPlayerMovementTuning();
         controlInput.manualLookYawDelta = cameraRuntime_.manualLookYawDelta;
         controlInput.manualLookPitchDelta = cameraRuntime_.manualLookPitchDelta;
+        controlInput.manualLookYawFlickTail = cameraRuntime_.manualLookYawFlickTail;
         return controlInput;
     }

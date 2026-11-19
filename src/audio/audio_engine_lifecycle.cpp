@@ -104,7 +104,7 @@ void AudioEngine::LoadAll(const AudioEngineAssets& assets) {
     AddFolder(assets, GameSound::ElectricCrackle, L"assets\\sounds\\electric_crackling");
     AddFolder(assets, GameSound::NeonFlickerStarterClick, L"assets\\sounds\\neon_light_flicker_start");
     AddFolder(assets, GameSound::AirVentDustPuff, L"assets\\sounds\\air_vent_dust_air_puff");
-    AddFolder(assets, GameSound::WetCarpetCeilingDrip, L"assets\\sounds\\wet_carpet_ceiling_drips", L"muted_cardboard_drip_tap_*.wav");
+    AddFolder(assets, GameSound::WetCarpetCeilingDrip, L"assets\\sounds\\wet_carpet_ceiling_drips", L"muted_cardboard_drip_tap*.wav");
     AddFolder(assets, GameSound::DoorOpenCreak, L"assets\\sounds\\door_open_creak");
     AddFolder(assets, GameSound::DoorCloseCreak, L"assets\\sounds\\door_close_creak");
     AddFolder(assets, GameSound::DoorCloseLock, L"assets\\sounds\\door_close_lock");

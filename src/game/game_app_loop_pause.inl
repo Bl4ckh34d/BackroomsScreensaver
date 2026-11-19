@@ -1,5 +1,5 @@
-        ULONGLONG now = GetTickCount64();
-        float dt = std::min(0.05f, static_cast<float>(now - lastTicks) / 1000.0f);
+        const auto now = GameClock::now();
+        float dt = std::min(0.05f, std::chrono::duration<float>(now - lastTicks).count());
         lastTicks = now;
 
         bool inputWindowActive = GameWindowAcceptsInput(hwnd);

@@ -233,7 +233,7 @@ Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\neon_light_hum" -Pattern
 Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\paper_flutter" -Pattern "paper_flutter.wav"
 Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\soaked_carpet_steps" -Pattern "soaked_step_*.wav"
 Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\vision_flash" -Pattern "vision_flash_*.wav"
-Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\wet_carpet_ceiling_drips" -Pattern "muted_cardboard_drip_tap_*.wav"
+Copy-RuntimeFilesByPattern -RelativePath "assets\sounds\wet_carpet_ceiling_drips" -Pattern "muted_cardboard_drip_tap*.wav"
 
 $runCmd = @'
 @echo off

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "player_window_vault.h"
+
 // Gameplay-owned player state model. Renderer fields are migrated onto this
 // struct in small slices so behavior can stay stable between builds.
 
@@ -13,6 +15,7 @@ struct PlayerSnapshotState {
     float runIntensity = 0.0f;
     float runEffort = 0.0f;
     float breathPhase = 0.0f;
+    float idleBreathWeight = 0.0f;
     bool flashlightEnabled = true;
     float health = 100.0f;
     float stamina = 100.0f;
@@ -28,6 +31,8 @@ struct PlayerSnapshotState {
     float tunnelLeanSideTarget = 1.0f;
     float tunnelLeanSide = 1.0f;
     bool interactPressedLastFrame = false;
+    PlayerWindowVault windowVault{};
+    bool vaultPressedLastFrame = false;
     std::vector<uint16_t> visitedTiles;
 };
 
@@ -47,11 +52,14 @@ struct PlayerState {
     float runIntensity = 0.0f;
     float runEffort = 0.0f;
     float breathPhase = 0.0f;
+    float idleBreathWeight = 0.0f;
 
     float verticalOffset = 0.0f;
     float verticalVelocity = 0.0f;
     bool grounded = true;
     bool jumpRequested = false;
+    PlayerWindowVault windowVault{};
+    bool vaultPressedLastFrame = false;
 
     bool crouchRequested = false;
     bool tunnelCrouchLocked = false;

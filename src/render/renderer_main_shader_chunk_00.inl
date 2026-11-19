@@ -49,7 +49,7 @@ Texture2D gShadowMap : register(t2);
 Texture2D gMazeOpen : register(t3);
 Texture2DArray gMaterialProps : register(t4);
 Texture2D gFlashlightPattern : register(t5);
-Texture2D gLampDamage : register(t6);
+Texture2D<uint4> gLampDamage : register(t6);
 Texture2DArray gLoosePages : register(t9);
 Texture2D gFixtureShadowMap : register(t10);
 Texture2D gCeilingAlbedo : register(t11);

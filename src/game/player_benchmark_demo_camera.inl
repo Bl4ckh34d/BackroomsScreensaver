@@ -1,45 +1,31 @@
     void ApplyBenchmarkDemoCamera(float seconds) {
         const Maze& maze = RenderMazeView();
-        struct BenchmarkCameraNode {
-            float x;
-            float y;
-            float height;
-        };
-        static constexpr BenchmarkCameraNode kNodes[] = {
-            {13.0f, 55.0f, 1.48f},
-            {13.0f, 42.0f, 1.50f},
-            {24.0f, 38.0f, 1.46f},
-            {35.0f, 31.0f, 1.52f},
-            {43.0f, 38.0f, 1.48f},
-            {57.0f, 38.0f, 1.50f},
-            {57.0f, 56.0f, 1.47f},
-            {65.0f, 58.0f, 1.45f},
-            {54.0f, 54.0f, 1.50f},
-            {54.0f, 36.0f, 1.48f},
-            {56.0f, 23.0f, 1.52f},
-            {43.0f, 17.0f, 1.46f},
-            {19.0f, 17.0f, 1.50f},
-            {16.0f, 30.0f, 1.47f}
-        };
-        constexpr float kSegmentSeconds = 4.25f;
-        constexpr int kNodeCount = static_cast<int>(std::size(kNodes));
-        const float cycleSeconds = kSegmentSeconds * static_cast<float>(kNodeCount);
-
-        auto worldAt = [&](const BenchmarkCameraNode& node, float heightOffset) {
-            XMFLOAT3 p = maze.WorldCenter({std::clamp(static_cast<int>(std::round(node.x)), 1, maze.w - 2),
-                                           std::clamp(static_cast<int>(std::round(node.y)), 1, maze.h - 2)}, node.height + heightOffset);
-            return p;
-        };
+        auto& path = benchmarkRuntime_.flightPath;
+        if (path.empty()) {
+            // Each leg follows open corridors between the large rooms in GenerateBenchmarkDemo.
+            static constexpr Tile waypoints[] = {
+                {13, 55}, {13, 42}, {24, 38}, {35, 31}, {43, 38}, {57, 38}, {57, 56},
+                {65, 58}, {54, 54}, {54, 36}, {56, 23}, {43, 17}, {19, 17}, {16, 30}, {13, 55}
+            };
+            path.push_back(maze.start);
+            for (Tile waypoint : waypoints) {
+                const auto leg = maze.Path(path.back(), waypoint);
+                if (leg.size() > 1) path.insert(path.end(), leg.begin() + 1, leg.end());
+            }
+        }
+        constexpr float kCycleSeconds = 59.5f;
+        const size_t legs = path.size() - 1;
         auto samplePath = [&](float tSeconds, float heightOffset) {
-            float wrapped = std::fmod(std::max(0.0f, tSeconds), cycleSeconds);
-            int index = static_cast<int>(wrapped / kSegmentSeconds);
-            int next = (index + 1) % kNodeCount;
-            float localT = SmoothStep(0.0f, 1.0f, (wrapped - static_cast<float>(index) * kSegmentSeconds) / kSegmentSeconds);
-            return Lerp3(worldAt(kNodes[index], heightOffset), worldAt(kNodes[next], heightOffset), localT);
+            const float height = 1.48f + heightOffset + std::sin(tSeconds * 0.60f) * 0.04f;
+            if (legs == 0) return maze.WorldCenter(path.front(), height);
+            const float cursor = std::fmod(tSeconds, kCycleSeconds) / kCycleSeconds * static_cast<float>(legs);
+            const size_t index = std::min(static_cast<size_t>(cursor), legs - 1);
+            return Lerp3(maze.WorldCenter(path[index], height), maze.WorldCenter(path[index + 1], height),
+                cursor - static_cast<float>(index));
         };
 
         XMFLOAT3 eye = samplePath(seconds, 0.0f);
-        XMFLOAT3 target = samplePath(seconds + 2.6f, -0.12f);
+        XMFLOAT3 target = samplePath(seconds + 0.75f, -0.12f);
         float dx = target.x - eye.x;
         float dz = target.z - eye.z;
         float invLen = 1.0f / std::max(0.001f, std::sqrt(dx * dx + dz * dz));

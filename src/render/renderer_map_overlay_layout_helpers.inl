@@ -19,6 +19,10 @@
 
         float maxW = std::clamp(static_cast<float>(hostRuntime_.width) * 0.22f, 125.0f, 245.0f);
         float maxH = std::clamp(static_cast<float>(hostRuntime_.height) * 0.22f, 110.0f, 210.0f);
+        if (showBenchmarkMap) {
+            maxW = static_cast<float>(hostRuntime_.width) * 0.38f;
+            maxH = static_cast<float>(hostRuntime_.height) * 0.42f;
+        }
         float cell = std::max(1.15f, std::min(maxW / static_cast<float>(maze.w), maxH / static_cast<float>(maze.h)));
         float mapW = cell * static_cast<float>(maze.w);
         float mapH = cell * static_cast<float>(maze.h);
@@ -26,7 +30,7 @@
         float x0 = static_cast<float>(hostRuntime_.width) - mapW - pad - 18.0f;
         float y0 = static_cast<float>(hostRuntime_.height) - mapH - pad - 18.0f;
         Tile cameraTile = CameraTile();
-        bool playerExplorationMap = sessionRuntime_.mapOverlayStyle == GameSessionMapOverlayStyle::PlayerExploration &&
+        bool playerExplorationMap = !showBenchmarkMap && sessionRuntime_.mapOverlayStyle == GameSessionMapOverlayStyle::PlayerExploration &&
             !settingsRuntime_.live.debugAiMapOverlay;
 
         pushRect(x0 - pad, y0 - pad, mapW + pad * 2.0f, mapH + pad * 2.0f, {0.0f, 0.0f, 0.0f, 0.32f});

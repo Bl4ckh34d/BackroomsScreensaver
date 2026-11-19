@@ -30,6 +30,8 @@
         Render();
         if (runtimeProfile) {
             const double profileEnd = ProfileNowMs();
+            const double previousFrameStart = benchmarkRuntime_.previousProfileFrameStartMs;
+            benchmarkRuntime_.previousProfileFrameStartMs = profileStart;
             const PlayableLevelSpec& level = gameWorld_.CurrentPlayableLevel();
             GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
             Tile playerTile = gameWorld_.maze.TileFromWorld(world.playerPosition.x, world.playerPosition.z);
@@ -75,7 +77,10 @@
                 << playerTile.y << L","
                 << monsterDistance << L","
                 << (monsterVisible ? 1 : 0) << L","
-                << (gameWorld_.deathActive ? 1 : 0);
+                << (gameWorld_.deathActive ? 1 : 0) << L","
+                << (previousFrameStart > 0.0 ? profileStart - previousFrameStart : 0.0) << L","
+                << benchmarkRuntime_.timer << L","
+                << (gameWorld_.maze.IsOpen(playerTile.x, playerTile.y) ? 1 : 0);
             RuntimeProfileFrameLine(csv.str());
         }
     }

@@ -22,10 +22,6 @@
             int chunkX = std::clamp(tileX / safeChunkTiles, 0, chunksX - 1);
             int chunkY = std::clamp(tileY / safeChunkTiles, 0, chunksY - 1);
             ChunkBuild& chunk = build[static_cast<size_t>(chunkY * chunksX + chunkX)];
-            chunk.minTileX = std::min(chunk.minTileX, tileX);
-            chunk.minTileY = std::min(chunk.minTileY, tileY);
-            chunk.maxTileX = std::max(chunk.maxTileX, tileX);
-            chunk.maxTileY = std::max(chunk.maxTileY, tileY);
             chunk.indices.push_back(ia);
             chunk.indices.push_back(ib);
             chunk.indices.push_back(ic);

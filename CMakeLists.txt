@@ -61,6 +61,7 @@ set(BACKROOMS_SOURCES
     src/game/player_controller_posture.cpp
     src/game/player_controller_stamina.cpp
     src/game/player_state.cpp
+    src/game/player_window_vault.cpp
     src/maze/maze.cpp
     src/maze/maze_generation.cpp
     src/maze/maze_generation_helpers.cpp

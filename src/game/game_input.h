@@ -7,6 +7,7 @@ struct GameInputSnapshot {
     float lookDeltaY = 0.0f;
     bool sprint = false;
     bool crouch = false;
+    bool vault = false;
     bool interact = false;
     bool flashlight = false;
     bool pause = false;

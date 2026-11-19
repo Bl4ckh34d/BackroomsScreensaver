@@ -1,4 +1,5 @@
     ReleaseGameMouse();
+    if (frameTimer) CloseHandle(frameTimer);
     gApp = nullptr;
     gEffectDebugViewer = false;
     gBloodDebugEveryWall = false;

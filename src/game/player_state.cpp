@@ -37,11 +37,14 @@ void PlayerState::ResetSessionState(const XMFLOAT3& startPosition,
     runIntensity = 0.0f;
     runEffort = 0.0f;
     breathPhase = 0.0f;
+    idleBreathWeight = 0.0f;
 
     verticalOffset = 0.0f;
     verticalVelocity = 0.0f;
     grounded = true;
     jumpRequested = false;
+    windowVault = {};
+    vaultPressedLastFrame = false;
 
     crouchRequested = false;
     tunnelCrouchLocked = false;
@@ -67,6 +70,9 @@ void PlayerState::RestoreSavedRunState(const XMFLOAT3& savedPosition,
     yaw = savedYaw;
     bodyYaw = savedBodyYaw;
     pitch = savedPitch;
+    idleBreathWeight = 0.0f;
+    windowVault = {};
+    vaultPressedLastFrame = false;
     RestoreVitals(savedHealth, savedStamina);
 }
 
@@ -81,6 +87,7 @@ PlayerSnapshotState PlayerState::CaptureSnapshotState() const {
     snapshot.runIntensity = runIntensity;
     snapshot.runEffort = runEffort;
     snapshot.breathPhase = breathPhase;
+    snapshot.idleBreathWeight = idleBreathWeight;
     snapshot.flashlightEnabled = flashlightEnabled;
     snapshot.health = health;
     snapshot.stamina = stamina;
@@ -96,6 +103,8 @@ PlayerSnapshotState PlayerState::CaptureSnapshotState() const {
     snapshot.tunnelLeanSideTarget = tunnelLeanSideTarget;
     snapshot.tunnelLeanSide = tunnelLeanSide;
     snapshot.interactPressedLastFrame = interactPressedLastFrame;
+    snapshot.windowVault = windowVault;
+    snapshot.vaultPressedLastFrame = vaultPressedLastFrame;
     snapshot.visitedTiles = visitedTiles;
     return snapshot;
 }
@@ -110,6 +119,7 @@ void PlayerState::RestoreSnapshotState(PlayerSnapshotState snapshot) {
     runIntensity = snapshot.runIntensity;
     runEffort = snapshot.runEffort;
     breathPhase = snapshot.breathPhase;
+    idleBreathWeight = snapshot.idleBreathWeight;
     flashlightEnabled = snapshot.flashlightEnabled;
     health = snapshot.health;
     stamina = snapshot.stamina;
@@ -125,5 +135,7 @@ void PlayerState::RestoreSnapshotState(PlayerSnapshotState snapshot) {
     tunnelLeanSideTarget = snapshot.tunnelLeanSideTarget;
     tunnelLeanSide = snapshot.tunnelLeanSide;
     interactPressedLastFrame = snapshot.interactPressedLastFrame;
+    windowVault = snapshot.windowVault;
+    vaultPressedLastFrame = snapshot.vaultPressedLastFrame;
     visitedTiles = std::move(snapshot.visitedTiles);
 }

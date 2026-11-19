@@ -10,7 +10,7 @@ float LampDamageAtWorld(float2 worldXZ)
     {
         return 0.0;
     }
-    return gLampDamage.Load(int3(tile, 0)).r;
+    return gLampDamage.Load(int3(tile, 0)).r / 255.0;
 }
 
 float LampFailureMultiplier(float damage, float seed, float time)

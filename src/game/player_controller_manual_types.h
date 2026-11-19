@@ -4,6 +4,7 @@
 #include "player_controller_move_types.h"
 #include "player_controller_motion_types.h"
 #include "player_controller_posture_types.h"
+#include "player_window_vault.h"
 struct PlayerManualControlInput {
     float dt = 0.0f;
     GameInputSnapshot input{};
@@ -14,6 +15,7 @@ struct PlayerManualControlInput {
     PlayerMovementTuning movement{};
     float manualLookYawDelta = 0.0f;
     float manualLookPitchDelta = 0.0f;
+    float manualLookYawFlickTail = 0.0f;
 };
 
 struct PlayerManualControlResult {
@@ -22,6 +24,7 @@ struct PlayerManualControlResult {
     bool interactPressed = false;
     float manualLookYawDelta = 0.0f;
     float manualLookPitchDelta = 0.0f;
+    float manualLookYawFlickTail = 0.0f;
     float moveDistance = 0.0f;
     float moveBlend = 0.0f;
     float runBlend = 0.0f;
@@ -38,6 +41,7 @@ struct PlayerManualPostureResult {
 
 struct PlayerManualControlServices {
     void* context = nullptr;
+    bool (*planVault)(void* context, const XMFLOAT3& start, float yaw, PlayerWindowVault& path) = nullptr;
     PlayerManualPostureResult (*updatePosture)(void* context, const PlayerManualPostureRequest& request) = nullptr;
     void (*ensureFootprint)(void* context) = nullptr;
     bool (*move)(void* context, const PlayerCollisionMoveRequest& request) = nullptr;

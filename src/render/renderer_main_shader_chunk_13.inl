@@ -74,36 +74,51 @@ float4 SampleBakedLampLight(float2 worldXZ)
     return lerp(lerp(c00, c10, blend.x), lerp(c01, c11, blend.x), blend.y);
 }
 
+// Shader model 4 does not provide firstbitlow.
+int LowestLampBit(uint bits)
+{
+    int bit = 0;
+    if ((bits & 0xffffu) == 0u) { bits >>= 16; bit += 16; }
+    if ((bits & 0x00ffu) == 0u) { bits >>= 8; bit += 8; }
+    if ((bits & 0x000fu) == 0u) { bits >>= 4; bit += 4; }
+    if ((bits & 0x0003u) == 0u) { bits >>= 2; bit += 2; }
+    if ((bits & 0x0001u) == 0u) { bit += 1; }
+    return bit;
+}
+
 float2 DynamicDamagedLampResponse(float2 worldXZ, float3 worldN)
 {
     float2 cell = (worldXZ - gMaze0.xy) / gMaze0.zw;
     int2 receiverTile = (int2)floor(cell);
+    if (receiverTile.x < 0 || receiverTile.y < 0 ||
+        receiverTile.x >= (int)gMaze1.x || receiverTile.y >= (int)gMaze1.y)
+    {
+        return float2(0.0, 0.0);
+    }
+    uint2 damagedNeighbors = gLampDamage.Load(int3(receiverTile, 0)).ba;
     float2 tileStride = max(gMaze0.zw, float2(0.001, 0.001));
     float loss = 0.0;
     float flicker = 0.0;
 
     [loop]
-    for (int y = -3; y <= 3; ++y)
+    for (int word = 0; word < 2; ++word)
     {
+        uint bits = damagedNeighbors[word];
         [loop]
-        for (int x = -3; x <= 3; ++x)
+        while (bits != 0u)
         {
-            int2 lampTile = receiverTile + int2(x, y);
-            if (lampTile.x < 0 || lampTile.y < 0 || lampTile.x >= (int)gMaze1.x || lampTile.y >= (int)gMaze1.y)
-            {
-                continue;
-            }
-
-            float damage = gLampDamage.Load(int3(lampTile, 0)).r;
-            if (damage <= 0.001)
-            {
-                continue;
-            }
+            int bit = LowestLampBit(bits) + word * 32;
+            bits &= bits - 1u;
+            int2 lampTile = receiverTile + int2(bit % 7, bit / 7) - int2(3, 3);
+            float damage = gLampDamage.Load(int3(lampTile, 0)).g / 255.0;
 
             float2 lampXZ = gMaze0.xy + ((float2)lampTile + 0.5) * gMaze0.zw;
             float2 deltaTiles = (lampXZ - worldXZ) / tileStride;
             float tileDist = length(deltaTiles);
             float footprint = 1.0 - smoothstep(0.65, 3.85, tileDist);
+            // Fade out before crossing the edge of the 7x7 damage mask.
+            float maskDistance = max(abs(deltaTiles.x), abs(deltaTiles.y));
+            footprint *= 1.0 - smoothstep(3.0, 3.5, maskDistance);
             if (footprint <= 0.001)
             {
                 continue;
@@ -132,7 +147,8 @@ float3 LocalLampLightColor(float3 worldPos, float3 worldN, float time)
     float ceilingReceiver = smoothstep(0.12, 0.82, -n.y);
     float wallReceiver = saturate(1.0 - abs(n.y));
     float lowFeatureCeiling = ceilingReceiver * (1.0 - smoothstep(gMaze1.z * 0.68, gMaze1.z * 0.86, worldPos.y));
-    ceilingReceiver *= lerp(1.0, 0.07, lowFeatureCeiling);
+    // The bake already attenuates light under tunnels. Preserve some reflected light on their soffits.
+    float ceilingSpill = lerp(0.42, 0.12, lowFeatureCeiling);
 
     float2 lightingXZ = worldPos.xz;
     if (wallReceiver > 0.35)
@@ -155,8 +171,8 @@ float3 LocalLampLightColor(float3 worldPos, float3 worldN, float time)
 
     float wallHeight = saturate(worldPos.y / max(gMaze1.z, 0.001));
     float wallVertical = lerp(0.48, 1.04, smoothstep(0.04, 0.92, wallHeight));
-    float receiverBase = lerp(0.18, 0.035, lowFeatureCeiling);
-    float receiver = max(receiverBase, floorReceiver * 1.0 + wallReceiver * 0.72 * wallVertical + ceilingReceiver * 0.42);
+    float receiverBase = lerp(0.18, 0.10, lowFeatureCeiling);
+    float receiver = max(receiverBase, floorReceiver + wallReceiver * 0.72 * wallVertical + ceilingReceiver * ceilingSpill);
     float3 light = baked.rgb * receiver;
 
     if (gFixtureShadow0.w > 0.001)

@@ -1,6 +1,7 @@
         GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
         const Maze* mapMaze = world.maze;
-        if ((!settingsRuntime_.live.mapOverlay && !settingsRuntime_.live.debugAiMapOverlay) || !renderBuffers_.overlayBuffer || !shaders_.overlayVertexShader || !shaders_.overlayPixelShader ||
+        const bool showBenchmarkMap = benchmarkRuntime_.active;
+        if ((!showBenchmarkMap && !settingsRuntime_.live.mapOverlay && !settingsRuntime_.live.debugAiMapOverlay) || !renderBuffers_.overlayBuffer || !shaders_.overlayVertexShader || !shaders_.overlayPixelShader ||
             hostRuntime_.width <= 0 || hostRuntime_.height <= 0 || !mapMaze || mapMaze->w <= 0 || mapMaze->h <= 0 || mapMaze->open.empty()) {
             return;
         }

@@ -32,8 +32,11 @@ struct GameWorldRenderSnapshot {
     float playerStepPhase = 0.0f;
     float playerRunIntensity = 0.0f;
     float playerRunEffort = 0.0f;
+    float playerIdleBreath = 0.0f;
     float playerTunnelLeanSide = 0.0f;
     float playerTunnelLeanAmount = 0.0f;
+    WindowVaultCameraPose playerVaultCamera{};
+    bool playerVaultActive = false;
     XMFLOAT3 monsterPosition{};
     float monsterYaw = 0.0f;
     int monsterKillCount = 0;

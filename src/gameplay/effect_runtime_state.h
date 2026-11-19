@@ -12,6 +12,7 @@ struct EnvironmentalEffectRuntimeState {
     std::vector<SparkEmitter> sparkEmitters;
     std::vector<RuntimeLampState> runtimeLamps;
     std::vector<uint8_t> lampDamagePixels;
+    std::vector<uint8_t> bakedLampDamageBaseline;
     std::vector<XMFLOAT4> bakedLampLightPixels;
     std::vector<SteamEmitter> steamEmitters;
     std::vector<SparkParticle> sparks;

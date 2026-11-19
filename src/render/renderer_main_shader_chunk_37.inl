@@ -68,7 +68,7 @@ R"(
         float surfaceSpec = (pow(specFacing, specSharpness) * (0.08 + gloss * 0.82) +
             fresnel * (0.018 + gloss * 0.090)) * specLight;
         color += specColor * surfaceSpec * lerp(0.66, 1.0, aoMap);
-        color *= 1.0 - CornerAO(input.worldPos, worldN);
+        color *= 1.0 - MazeFloorCeilingAO(input.worldPos.xz, floorMaterial > 0.5);
         float fogScale = 1.0;
         color = lerp(color, float3(0.0, 0.0, 0.0), SceneFogBlock(dist, input.worldPos, fogScale));
         return float4(ApplyPost(color), 1.0);

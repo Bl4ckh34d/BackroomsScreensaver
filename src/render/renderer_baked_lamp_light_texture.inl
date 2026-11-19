@@ -110,7 +110,13 @@
             }
         }
 
-        constexpr float kSmoothBlend = 0.72f;
+        constexpr float kInteriorSmoothBlend = 0.72f;
+        std::array<float, kBakedLampLightTexelsPerTile> edgeBlend{};
+        for (int i = 0; i < kBakedLampLightTexelsPerTile; ++i) {
+            const int edgeDistance = std::min(i, kBakedLampLightTexelsPerTile - 1 - i);
+            const float interior = SmoothStep(0.0f, static_cast<float>(radius), static_cast<float>(edgeDistance));
+            edgeBlend[i] = Lerp(1.0f, kInteriorSmoothBlend, interior);
+        }
         for (int py = 0; py < bakeH; ++py) {
             for (int px = 0; px < bakeW; ++px) {
                 const size_t dst = static_cast<size_t>(py * bakeW + px);
@@ -134,10 +140,13 @@
                     const float inv = 1.0f / weightSum;
                     XMFLOAT4& base = effectRuntime_.bakedLampLightPixels[dst];
                     const XMFLOAT4 smoothed{sum.x * inv, sum.y * inv, sum.z * inv, sum.w * inv};
-                    base.x = Lerp(base.x, smoothed.x, kSmoothBlend);
-                    base.y = Lerp(base.y, smoothed.y, kSmoothBlend);
-                    base.z = Lerp(base.z, smoothed.z, kSmoothBlend);
-                    base.w = Lerp(base.w, smoothed.w, kSmoothBlend);
+                    // Blend out the tile-center visibility step at the edges.
+                    const float blend = std::max(edgeBlend[px % kBakedLampLightTexelsPerTile],
+                        edgeBlend[py % kBakedLampLightTexelsPerTile]);
+                    base.x = Lerp(base.x, smoothed.x, blend);
+                    base.y = Lerp(base.y, smoothed.y, blend);
+                    base.z = Lerp(base.z, smoothed.z, blend);
+                    base.w = Lerp(base.w, smoothed.w, blend);
                 }
             }
         }

@@ -10,6 +10,7 @@
             services);
         cameraRuntime_.manualLookYawDelta = controlResult.manualLookYawDelta;
         cameraRuntime_.manualLookPitchDelta = controlResult.manualLookPitchDelta;
+        cameraRuntime_.manualLookYawFlickTail = controlResult.manualLookYawFlickTail;
 
         DispatchManualInteraction(controlResult.interactPressed);
 

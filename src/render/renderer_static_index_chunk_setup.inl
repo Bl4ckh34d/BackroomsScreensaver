@@ -10,10 +10,6 @@
             std::vector<uint32_t> indices;
             XMFLOAT3 min{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
             XMFLOAT3 max{-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max()};
-            int minTileX = std::numeric_limits<int>::max();
-            int minTileY = std::numeric_limits<int>::max();
-            int maxTileX = std::numeric_limits<int>::min();
-            int maxTileY = std::numeric_limits<int>::min();
         };
         std::vector<ChunkBuild> build(static_cast<size_t>(chunksX * chunksY));
         float ox = -static_cast<float>(maze.w) * maze.tileW * 0.5f;

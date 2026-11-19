@@ -22,8 +22,15 @@ PlayerRunMotionResult PlayerController::UpdateRunMotion(const PlayerRunMotionInp
         std::min(1.0f, input.dt * (input.wantsSprint ? 3.2f : 2.6f));
     result.runEffort = input.runEffort + (sprintEffortTarget - input.runEffort) *
         std::min(1.0f, input.dt * (input.wantsSprint ? 2.4f : 3.0f));
+    const float fatigue = SmoothStep(0.06f, 0.98f, 1.0f - Clamp01(input.stamina * 0.01f));
+    const float idleBlend = 1.0f - SmoothStep(0.04f, 0.48f, input.smoothedSpeed);
+    const float idleBreathTarget = fatigue * idleBlend;
+    const float breathResponse = idleBreathTarget > input.idleBreathWeight
+        ? 3.4f : Lerp(8.0f, 1.8f, idleBlend);
+    result.idleBreathWeight = Lerp(input.idleBreathWeight, idleBreathTarget,
+        1.0f - std::exp(-input.dt * breathResponse));
     result.breathPhase = input.breathPhase +
-        input.dt * (0.95f + result.runEffort * 2.2f + result.runIntensity * 0.85f) * kPi;
+        input.dt * (0.95f + result.runEffort * 2.2f + result.runIntensity * 0.85f + result.idleBreathWeight) * kPi;
     if (result.breathPhase > kPi * 128.0f) {
         result.breathPhase = std::fmod(result.breathPhase, kPi * 2.0f);
     }
@@ -38,7 +45,8 @@ void PlayerController::UpdateManualCameraHeight(PlayerState& state, const Player
     float verticalBob = stepWave * bobAmount;
     float sideBob = stepWave * (0.00055f + state.runEffort * 0.0011f) * input.crouch.sideBobScale;
     float breathY = std::sin(state.breathPhase) *
-        (0.002f + state.runIntensity * 0.0045f + state.runEffort * 0.008f);
+        (0.002f * SmoothStep(0.0f, 0.12f, input.moveBlend) +
+         state.runIntensity * 0.0045f + state.runEffort * 0.008f);
     float desiredY = input.crouch.eyeHeight + state.verticalOffset + verticalBob + sideBob + breathY;
     state.position.y += (desiredY - state.position.y) * (1.0f - std::exp(-input.dt * input.crouch.eyeResponse));
 }

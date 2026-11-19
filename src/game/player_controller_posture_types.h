@@ -1,5 +1,9 @@
 #pragma once
 
+inline constexpr float kPlayerStandingEyeHeight = 1.45f;
+inline constexpr float kPlayerCrouchedEyeHeight = 1.12f;
+inline constexpr float kPlayerCrouchedSpeedScale = 0.52f;
+
 struct PlayerCrouchInput {
     float dt = 0.0f;
     bool crouchActive = false;

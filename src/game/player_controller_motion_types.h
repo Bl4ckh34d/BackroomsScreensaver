@@ -10,6 +10,8 @@ struct PlayerRunMotionInput {
     float runIntensity = 0.0f;
     float runEffort = 0.0f;
     float breathPhase = 0.0f;
+    float stamina = 100.0f;
+    float idleBreathWeight = 0.0f;
 };
 
 struct PlayerRunMotionResult {
@@ -18,6 +20,7 @@ struct PlayerRunMotionResult {
     float runIntensity = 0.0f;
     float runEffort = 0.0f;
     float breathPhase = 0.0f;
+    float idleBreathWeight = 0.0f;
 };
 
 struct PlayerMovementTuning {

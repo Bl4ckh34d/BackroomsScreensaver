@@ -41,6 +41,14 @@ GameWorldRenderSnapshot GameWorld::BuildRenderSnapshot() const {
     snapshot.playerRunEffort = player.runEffort;
     snapshot.playerTunnelLeanSide = player.tunnelLeanSide;
     snapshot.playerTunnelLeanAmount = player.tunnelLeanAmount;
+    snapshot.playerVaultActive = player.windowVault.active && !deathActive && !exitTransitionActive;
+    if (!snapshot.playerVaultActive && !deathActive && !exitTransitionActive) {
+        const float forwardLean = (1.0f - std::cos(player.breathPhase)) * 0.5f;
+        snapshot.playerIdleBreath = forwardLean * player.idleBreathWeight;
+    }
+    if (snapshot.playerVaultActive) {
+        snapshot.playerVaultCamera = SampleWindowVaultCamera(player.windowVault, player.windowVault.progress);
+    }
     snapshot.monsterPosition = monster.position;
     snapshot.monsterYaw = monster.yaw;
     snapshot.monsterKillCount = monster.killCount;

@@ -35,10 +35,12 @@ void Maze::GenerateWallFeatures(const MazeGenerationSpec& spec) {
             1, static_cast<int>(candidates.size()));
 
         std::shuffle(candidates.begin(), candidates.end(), rng);
-        for (int i = 0; i < target; ++i) {
-            const Tile t = candidates[static_cast<size_t>(i)];
-            wallFeatures[static_cast<size_t>(t.y * w + t.x)] =
-                (rng() & 1u) ? static_cast<uint8_t>(MazeWallFeature::Window) : static_cast<uint8_t>(MazeWallFeature::Tunnel);
+        for (const Tile t : candidates) {
+            const MazeWallFeature feature = (rng() & 1u) ? MazeWallFeature::Window : MazeWallFeature::Tunnel;
+            const MazeWallFeature other = feature == MazeWallFeature::Window ? MazeWallFeature::Tunnel : MazeWallFeature::Window;
+            if (HasNeighboringWallFeature(t, other)) continue;
+            wallFeatures[static_cast<size_t>(t.y * w + t.x)] = static_cast<uint8_t>(feature);
+            if (--target == 0) break;
         }
     }
 

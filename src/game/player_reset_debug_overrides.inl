@@ -16,6 +16,7 @@
         if (BenchmarkDemoEnabled()) {
             benchmarkRuntime_.active = true;
             benchmarkRuntime_.timer = 0.0f;
+            benchmarkRuntime_.flightPath.clear();
             ApplyBenchmarkDemoCamera(0.0f);
             viewRuntime_.fadeInTimer = 0.0f;
             cameraRuntime_.path.clear();

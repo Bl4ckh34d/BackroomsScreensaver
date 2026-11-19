@@ -16,15 +16,37 @@ PlayerManualControlResult PlayerController::UpdateManualControl(
     lookInput.mouseSensitivity = input.mouseSensitivity;
     lookInput.invertMouseY = input.invertMouseY;
     lookInput.yaw = state.yaw;
+    lookInput.bodyYaw = state.bodyYaw;
     lookInput.pitch = state.pitch;
     lookInput.yawDelta = input.manualLookYawDelta;
     lookInput.pitchDelta = input.manualLookPitchDelta;
+    lookInput.yawFlickTail = input.manualLookYawFlickTail;
     PlayerManualLookResult lookResult = UpdateManualLook(lookInput);
     state.yaw = lookResult.yaw;
     state.bodyYaw = lookResult.bodyYaw;
     state.pitch = lookResult.pitch;
     result.manualLookYawDelta = lookResult.yawDelta;
     result.manualLookPitchDelta = lookResult.pitchDelta;
+    result.manualLookYawFlickTail = lookResult.yawFlickTail;
+
+    const bool vaultPressed = input.input.vault && !state.vaultPressedLastFrame;
+    state.vaultPressedLastFrame = input.input.vault;
+    if (vaultPressed && !state.windowVault.active && state.grounded && services.planVault) {
+        services.planVault(services.context, state.position, state.yaw, state.windowVault);
+    }
+    if (state.windowVault.active) {
+        PlayerWindowVault& vault = state.windowVault;
+        const float crawlSpeed = input.movement.walkSpeed * kPlayerCrouchedSpeedScale;
+        AdvanceWindowVault(vault, input.dt, input.input.moveZ, crawlSpeed);
+        state.position = SampleWindowVault(vault, vault.progress);
+        state.smoothedMoveSpeed = 0.0f;
+        state.runIntensity *= std::exp(-input.dt * 7.0f);
+        state.runEffort *= std::exp(-input.dt * 7.0f);
+        state.idleBreathWeight *= std::exp(-input.dt * 8.0f);
+        state.tunnelLeanAmount *= std::exp(-input.dt * 9.0f);
+        ConsumeInteractPress(state, input.input.interact);
+        return result;
+    }
 
     PlayerMoveIntentInput moveIntentInput{};
     moveIntentInput.moveX = input.input.moveX;
@@ -83,12 +105,15 @@ PlayerManualControlResult PlayerController::UpdateManualControl(
     runInput.runIntensity = state.runIntensity;
     runInput.runEffort = state.runEffort;
     runInput.breathPhase = state.breathPhase;
+    runInput.stamina = state.stamina;
+    runInput.idleBreathWeight = state.idleBreathWeight;
     PlayerRunMotionResult runResult = UpdateRunMotion(runInput);
     result.moveBlend = runResult.moveBlend;
     result.runBlend = runResult.runBlend;
     state.runIntensity = runResult.runIntensity;
     state.runEffort = runResult.runEffort;
     state.breathPhase = runResult.breathPhase;
+    state.idleBreathWeight = runResult.idleBreathWeight;
     if (result.wantsMove) {
         AdvanceStepPhase(state, result.moveDistance, std::max(0.1f, state.smoothedMoveSpeed), input.movement);
     }

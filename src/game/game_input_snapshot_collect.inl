@@ -20,6 +20,7 @@ GameInputSnapshot CollectGameInput() {
     gApp->gameMouseDeltaY = 0.0f;
     input.sprint = down(GameActionKey(settings, GameInputAction::Sprint));
     input.crouch = down(GameActionKey(settings, GameInputAction::Crouch));
+    input.vault = down(VK_SPACE);
     input.interact = down(GameActionKey(settings, GameInputAction::Interact));
     input.flashlight = down(GameActionKey(settings, GameInputAction::Flashlight));
     input.pause = down(GameActionKey(settings, GameInputAction::Pause));

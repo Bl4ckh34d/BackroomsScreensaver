@@ -10,6 +10,8 @@ enum class MazeWallFeature : uint8_t {
     Tunnel = 2
 };
 
+float MazeWindowSillHeight(float wallHeight);
+
 struct MazeGenerationSpec {
     int roomCount = 3;
     int roomMinRadius = 1;
@@ -43,6 +45,7 @@ struct Maze {
     void SetOpen(int x, int y, bool v = true);
     MazeWallFeature WallFeature(int x, int y) const;
     bool HasWallFeature(int x, int y) const;
+    bool HasNeighboringWallFeature(Tile tile, MazeWallFeature feature) const;
     bool IsVisionOpen(int x, int y) const;
     XMFLOAT3 WorldCenter(Tile t, float y = 0.0f) const;
     Tile TileFromWorld(float x, float z) const;

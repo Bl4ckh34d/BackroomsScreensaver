@@ -14,10 +14,13 @@
             float dy = b.max.y - chunk.center.y;
             float dz = b.max.z - chunk.center.z;
             chunk.radius = std::sqrt(dx * dx + dy * dy + dz * dz);
-            chunk.minTileX = std::clamp(b.minTileX - safeTilePadding, 0, std::max(0, maze.w - 1));
-            chunk.minTileY = std::clamp(b.minTileY - safeTilePadding, 0, std::max(0, maze.h - 1));
-            chunk.maxTileX = std::clamp(b.maxTileX + safeTilePadding, 0, std::max(0, maze.w - 1));
-            chunk.maxTileY = std::clamp(b.maxTileY + safeTilePadding, 0, std::max(0, maze.h - 1));
+            // A merged wall triangle can span many tiles on either side of its centroid.
+            const Tile firstTile = maze.TileFromWorld(b.min.x, b.min.z);
+            const Tile lastTile = maze.TileFromWorld(b.max.x, b.max.z);
+            chunk.minTileX = std::clamp(firstTile.x - safeTilePadding, 0, std::max(0, maze.w - 1));
+            chunk.minTileY = std::clamp(firstTile.y - safeTilePadding, 0, std::max(0, maze.h - 1));
+            chunk.maxTileX = std::clamp(lastTile.x + safeTilePadding, 0, std::max(0, maze.w - 1));
+            chunk.maxTileY = std::clamp(lastTile.y + safeTilePadding, 0, std::max(0, maze.h - 1));
             destIndices.insert(destIndices.end(), b.indices.begin(), b.indices.end());
             chunks.push_back(chunk);
         }

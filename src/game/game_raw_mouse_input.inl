@@ -27,18 +27,14 @@ bool HandleGameRawInput(HWND hwnd, LPARAM lParam) {
     }
     if (!GameWindowAcceptsInput(hwnd)) return true;
 
-    UINT size = 0;
-    if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER)) != 0 || size == 0) {
-        return true;
-    }
-    std::vector<BYTE> data(size);
-    if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, data.data(), &size, sizeof(RAWINPUTHEADER)) != size) {
+    RAWINPUT raw{};
+    UINT size = sizeof(raw);
+    if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, &raw, &size, sizeof(RAWINPUTHEADER)) != sizeof(raw)) {
         return true;
     }
 
-    const RAWINPUT* raw = reinterpret_cast<const RAWINPUT*>(data.data());
-    if (raw->header.dwType != RIM_TYPEMOUSE) return true;
-    const RAWMOUSE& mouse = raw->data.mouse;
+    if (raw.header.dwType != RIM_TYPEMOUSE) return true;
+    const RAWMOUSE& mouse = raw.data.mouse;
     if ((mouse.usFlags & MOUSE_MOVE_ABSOLUTE) != 0) return true;
     gApp->gameMouseDeltaX += static_cast<float>(mouse.lLastX);
     gApp->gameMouseDeltaY += static_cast<float>(mouse.lLastY);

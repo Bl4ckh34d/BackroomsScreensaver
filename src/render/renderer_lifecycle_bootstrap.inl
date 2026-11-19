@@ -10,7 +10,6 @@
         target.roomCount = 0;
         target.mazeSeed = 0xB345D123u;
         target.runVariation = 0.0f;
-        target.mapOverlay = false;
         target.debugAiMapOverlay = false;
         target.lampOnRatio = 1.0f;
         target.lampFlickerRatio = 0.18f;

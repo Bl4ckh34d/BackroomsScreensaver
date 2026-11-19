@@ -13,8 +13,8 @@ PlayerCrouchResult PlayerController::UpdateCrouch(PlayerState& state, const Play
 
     PlayerCrouchResult result{};
     result.pose = SmoothStep(0.0f, 1.0f, state.crouchBlend);
-    result.speedScale = 1.0f + (0.52f - 1.0f) * result.pose;
-    result.eyeHeight = 1.45f + (1.12f - 1.45f) * result.pose;
+    result.speedScale = Lerp(1.0f, kPlayerCrouchedSpeedScale, result.pose);
+    result.eyeHeight = Lerp(kPlayerStandingEyeHeight, kPlayerCrouchedEyeHeight, result.pose);
     result.eyeResponse = result.pose > 0.5f ? 15.0f : 9.6f;
     result.headBobScale = 1.0f + (0.10f - 1.0f) * result.pose;
     result.sideBobScale = 1.0f - result.pose;

@@ -1,5 +1,38 @@
 R"(
 
+float MazeFloorCeilingAO(float2 worldXZ, bool floorSide)
+{
+    const float strength = saturate(gAO0.x * gAO0.z);
+    if (strength <= 0.0) return 0.0;
+
+    const float2 cell = (worldXZ - gMaze0.xy) / gMaze0.zw;
+    const int2 tile = (int2)floor(cell);
+    if (any(tile < 0) || any(tile >= (int2)gMaze1.xy)) return 0.0;
+
+    const float4 mask = gMazeOpen.Load(int3(tile, 0));
+    const uint occluders = (uint)round((floorSide ? mask.g : mask.b) * 255.0);
+    if (occluders == 0) return 0.0;
+
+    const float radius = min(max(0.02, gAO0.y) * 1.20, min(gMaze0.z, gMaze0.w));
+    const float2 local = cell - (float2)tile;
+    static const float2 offsets[8] = {
+        float2(-1, -1), float2(0, -1), float2(1, -1), float2(-1, 0),
+        float2(1, 0), float2(-1, 1), float2(0, 1), float2(1, 1)
+    };
+    float nearestSquared = radius * radius;
+    [unroll]
+    for (uint i = 0; i < 8; ++i)
+    {
+        const float2 low = offsets[i];
+        const float2 delta = max(max(low - local, local - (low + 1.0)), 0.0) * gMaze0.zw;
+        if ((occluders & (1u << i)) != 0)
+        {
+            nearestSquared = min(nearestSquared, dot(delta, delta));
+        }
+    }
+    return strength * (1.0 - smoothstep(0.0, radius, sqrt(nearestSquared)));
+}
+
 float CornerAO(float3 worldPos, float3 normal)
 {
     float radius = max(0.02, gAO0.y);

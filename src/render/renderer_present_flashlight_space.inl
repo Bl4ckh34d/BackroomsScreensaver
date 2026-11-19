@@ -1,6 +1,10 @@
         XMFLOAT3 flashlightForward = FlashlightForward();
         XMVECTOR lightDir = XMVector3Normalize(XMVectorSet(flashlightForward.x, flashlightForward.y, flashlightForward.z, 0.0f));
         XMVECTOR lightPos = eye + viewRight * 0.16f - up * 0.18f + viewDir * 0.08f;
+        if (HasManualFlashlightAim(world)) {
+            const XMFLOAT3 origin = FlashlightOrigin();
+            lightPos = XMLoadFloat3(&origin);
+        }
         float shadowDistance = settingsRuntime_.live.flashlightShadowDistanceMeters;
         float coneHalfRadians = std::clamp(settingsRuntime_.live.flashlightConeDegrees, 20.0f, 140.0f) * 0.5f * kPi / 180.0f;
         float coneOuter = std::cos(coneHalfRadians);

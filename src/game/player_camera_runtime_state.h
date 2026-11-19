@@ -5,6 +5,7 @@ struct PlayerCameraRuntimeState {
     float turnLookYaw = 0.0f;
     float manualLookYawDelta = 0.0f;
     float manualLookPitchDelta = 0.0f;
+    float manualLookYawFlickTail = 0.0f;
     float headScanTimer = 0.0f;
     float headScanDuration = 0.0f;
     float headScanCenter = 0.0f;

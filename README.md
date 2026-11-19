@@ -42,6 +42,16 @@ Effect slice debug viewer:
 
 Use `< Effect`, `Effect >`, and `Grid: NxN` to inspect blood, water, ceiling lamps, broken lamps, and air vents in a well-lit 1x1 through 5x5 map slice. `/blooddebug` opens the same viewer starting on blood.
 
+## Game performance benchmarks
+
+From PowerShell, run the 75 × 75 tile fly-through through five large connected rooms with dense loose pages, flickering lights, sparks, and the full maze map in the corner.
+
+```powershell
+.\tools\benchmark-game.ps1 -Scenario Flythrough
+```
+
+Use `-Scenario LateLevel` for autoplay through level 5 with a forced boss. Use `-Game` to point at a different `BackroomsMazeGame.exe`. The default is a 1920 × 1080 window. Use `-NativeFullscreen` to test at the display's native resolution. Each run reports frame cadence after the first two seconds and saves CSV profiles for frame, CPU, and GPU timings beside the executable. The benchmark uses its own temporary player data.
+
 ## Install
 
 Right-click `build\Release\BackroomsMaze.scr` and choose **Install**.

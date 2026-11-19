@@ -29,10 +29,18 @@
         return DirectionFromYawPitch(viewRuntime_.flashlightYaw, viewRuntime_.flashlightPitch);
     }
 
+    bool HasManualFlashlightAim(const GameWorldRenderSnapshot& world) const {
+        return sessionRuntime_.UsesManualInput() && !world.deathActive &&
+            !world.exitTransitionActive && !monsterPreview_.active;
+    }
+
     XMFLOAT3 FlashlightOrigin() const {
         GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
         XMFLOAT3 forward = Normalize3(FlashlightForward(), {0.0f, 0.0f, 1.0f});
         XMFLOAT3 right = Normalize3(Cross3({0.0f, 1.0f, 0.0f}, forward), {1.0f, 0.0f, 0.0f});
+        if (HasManualFlashlightAim(world)) {
+            right = {std::cos(world.playerBodyYaw), 0.0f, -std::sin(world.playerBodyYaw)};
+        }
         return Add3(world.playerPosition, Add3(Scale3(right, 0.16f), Add3(Scale3({0.0f, 1.0f, 0.0f}, -0.18f), Scale3(forward, 0.08f))));
     }
 
@@ -40,7 +48,9 @@
         GameWorldRenderSnapshot world = gameWorld_.BuildRenderSnapshot();
         float maxDist = std::clamp(settingsRuntime_.live.flashlightShadowDistanceMeters * 0.56f, 3.6f, 9.5f);
         XMFLOAT3 origin = world.playerPosition;
-        XMFLOAT3 dir = Normalize3(DirectionFromYawPitch(world.playerYaw, world.playerPitch), {0.0f, 0.0f, 1.0f});
+        XMFLOAT3 dir = HasManualFlashlightAim(world)
+            ? FlashlightForward()
+            : DirectionFromYawPitch(world.playerYaw, world.playerPitch);
         float horizontalLen = std::sqrt(dir.x * dir.x + dir.z * dir.z);
         float target = maxDist;
         if (horizontalLen > 0.04f) {

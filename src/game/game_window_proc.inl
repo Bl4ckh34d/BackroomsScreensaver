@@ -30,8 +30,8 @@ LRESULT CALLBACK GameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         if (HandleGameMouseMove(hwnd, lParam)) return 0;
         return 0;
     case WM_INPUT:
-        if (HandleGameRawInput(hwnd, lParam)) return 0;
-        break;
+        HandleGameRawInput(hwnd, lParam);
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
     case WM_MOUSELEAVE:
         if (HandleGameMouseLeave(hwnd)) return 0;
         break;

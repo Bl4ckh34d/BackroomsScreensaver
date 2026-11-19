@@ -4,14 +4,20 @@ void StartupProfileLine(const std::wstring& line) {
     if (out) out << line << L"\r\n";
 }
 
+static std::filesystem::path RuntimeProfilePath(const wchar_t* name) {
+    wchar_t directory[MAX_PATH]{};
+    DWORD length = GetEnvironmentVariableW(L"BACKROOMS_PROFILE_DIRECTORY", directory, ARRAYSIZE(directory));
+    return (length > 0 && length < ARRAYSIZE(directory) ? std::filesystem::path(directory) : ModuleDirectory()) / name;
+}
+
 void RuntimeProfileFrameLine(const std::wstring& line) {
     if (!RuntimeProfileEnabled()) return;
-    static std::wofstream out(ModuleDirectory() / L"BackroomsMaze.runtime_profile.csv", std::ios::app);
+    static std::wofstream out(RuntimeProfilePath(L"BackroomsMaze.runtime_profile.csv"), std::ios::app);
     static bool wroteHeader = false;
     static uint32_t rowsSinceFlush = 0;
     if (!out) return;
     if (!wroteHeader) {
-        out << L"frame,mode,total_ms,progress_ms,budget_ms,simulation_ms,audio_ms,render_ms,indices,instanced_indices,instanced_instances,floor_ceiling_indices,water_indices,transparent_indices,dyn_opaque_vertices,dyn_transparent_vertices,air_particles,sparks,steam,lamps,level,level_running,score_screen,exit_transition,boss,run_seconds,level_seconds,autoplay_seconds,player_tile_x,player_tile_y,monster_distance,monster_visible,death_active\r\n";
+        out << L"frame,mode,total_ms,progress_ms,budget_ms,simulation_ms,audio_ms,render_ms,indices,instanced_indices,instanced_instances,floor_ceiling_indices,water_indices,transparent_indices,dyn_opaque_vertices,dyn_transparent_vertices,air_particles,sparks,steam,lamps,level,level_running,score_screen,exit_transition,boss,run_seconds,level_seconds,autoplay_seconds,player_tile_x,player_tile_y,monster_distance,monster_visible,death_active,frame_interval_ms,benchmark_seconds,camera_in_open_tile\r\n";
         wroteHeader = true;
     }
     out << line << L"\r\n";
@@ -23,7 +29,7 @@ void RuntimeProfileFrameLine(const std::wstring& line) {
 
 void RuntimeProfileGpuLine(const std::wstring& line) {
     if (!RuntimeProfileEnabled()) return;
-    static std::wofstream out(ModuleDirectory() / L"BackroomsMaze.gpu_profile.csv", std::ios::app);
+    static std::wofstream out(RuntimeProfilePath(L"BackroomsMaze.gpu_profile.csv"), std::ios::app);
     static bool wroteHeader = false;
     static uint32_t rowsSinceFlush = 0;
     if (!out) return;
@@ -40,7 +46,7 @@ void RuntimeProfileGpuLine(const std::wstring& line) {
 
 void RuntimeProfileRenderCpuLine(const std::wstring& line) {
     if (!RuntimeProfileEnabled()) return;
-    static std::wofstream out(ModuleDirectory() / L"BackroomsMaze.render_cpu_profile.csv", std::ios::app);
+    static std::wofstream out(RuntimeProfilePath(L"BackroomsMaze.render_cpu_profile.csv"), std::ios::app);
     static bool wroteHeader = false;
     static uint32_t rowsSinceFlush = 0;
     if (!out) return;

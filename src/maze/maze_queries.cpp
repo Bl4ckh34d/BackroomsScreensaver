@@ -3,6 +3,10 @@
 #include "../platform/platform_headers.h"
 #include "maze.h"
 
+float MazeWindowSillHeight(float wallHeight) {
+    return std::clamp(std::max(0.86f, wallHeight * 0.40f), 0.68f, wallHeight - 0.08f);
+}
+
 bool Maze::InBounds(int x, int y) const {
         return x >= 0 && y >= 0 && x < w && y < h;
     }
@@ -28,6 +32,15 @@ MazeWallFeature Maze::WallFeature(int x, int y) const {
 bool Maze::HasWallFeature(int x, int y) const {
         return WallFeature(x, y) != MazeWallFeature::None;
     }
+
+bool Maze::HasNeighboringWallFeature(Tile tile, MazeWallFeature feature) const {
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            if ((dx != 0 || dy != 0) && WallFeature(tile.x + dx, tile.y + dy) == feature) return true;
+        }
+    }
+    return false;
+}
 
 bool Maze::IsVisionOpen(int x, int y) const {
         return IsOpen(x, y) || WallFeature(x, y) == MazeWallFeature::Window;
