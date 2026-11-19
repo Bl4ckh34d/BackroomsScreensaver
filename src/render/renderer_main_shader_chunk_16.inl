@@ -80,6 +80,49 @@ float4 PSMain(VSOut input) : SV_TARGET
     float2 rawUv = input.uv;
     float2 uv = frac(rawUv);
 
+    if (input.material >= 36.0 && input.material < 37.0)
+    {
+        const uint surface = (uint)round(frac(input.material) * 16.0);
+        const float3 paint[9] = {
+            float3(0.40, 0.48, 0.37), float3(0.060, 0.071, 0.064), float3(0.49, 0.53, 0.52),
+            float3(0.033, 0.037, 0.034), float3(0.78, 0.74, 0.62), float3(0.89, 0.86, 0.75),
+            float3(0.29, 0.175, 0.095), float3(0.62, 0.45, 0.19), float3(0.18, 0.051, 0.047)
+        };
+        float3 albedo = paint[min(surface, 8u)];
+        float weathering = Noise3(input.worldPos * 83.0 + 27.3);
+        albedo *= lerp(0.87, 1.03, weathering);
+        if (surface == 6u)
+        {
+            float grain = Noise3(input.worldPos * float3(9.0, 68.0, 130.0) + 53.8);
+            albedo *= lerp(0.72, 1.13, grain);
+        }
+        if (surface == 5u)
+        {
+            float2 type = (rawUv - float2(0.13, 0.20)) * float2(31.0, 12.0);
+            float2 cell = floor(type);
+            float2 letter = frac(type);
+            float ink = step(0.23, Hash21(cell + 11.0)) * step(0.0, cell.x) * step(cell.x, 22.0 - Hash21(float2(cell.y, 3.0)) * 5.0) *
+                step(0.0, cell.y) * step(cell.y, 6.0) *
+                smoothstep(0.04, 0.16, letter.x) * smoothstep(0.85, 0.66, letter.x) *
+                smoothstep(0.19, 0.32, letter.y) * smoothstep(0.68, 0.53, letter.y);
+            albedo = lerp(albedo, float3(0.10, 0.081, 0.068), ink * 0.82);
+        }
+
+        const float metal = surface == 2u || surface == 7u ? 1.0 : 0.0;
+        const float enamelSheen = surface == 0u ? 0.19 : 0.05;
+        const float flashlight = FlashlightAmount(input.worldPos, N);
+        const float3 overhead = LocalLampLightColor(input.worldPos, N, time) * gLighting1.x;
+        const float spark = SparkLight(input.worldPos, N);
+        float3 color = albedo * (gLighting0.z * 0.85 + overhead + flashlight + spark);
+        float3 lightDirection = normalize(gShadow0.xyz - input.worldPos + float3(0.0, 0.0001, 0.0));
+        float spec = pow(saturate(dot(reflect(-lightDirection, N), V)), lerp(22.0, 66.0, metal));
+        float overheadSheen = pow(saturate(dot(reflect(float3(0.0, -1.0, 0.0), N), V)), 17.0);
+        color += lerp(float3(0.82, 0.86, 0.84), albedo, metal * 0.50) * (enamelSheen + metal * 0.49) *
+            (spec * (flashlight + spark * 0.40) + overhead * overheadSheen * 0.68);
+        color *= 1.0 - SceneFogBlock(length(input.worldPos - cam), input.worldPos, 1.0);
+        return float4(ApplyPost(color), 1.0);
+    }
+
     if (input.material > 27.05 && input.material < 27.95)
     {
         float seed = frac(input.material);

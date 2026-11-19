@@ -27,19 +27,21 @@
         if (!world.maze) return;
         const SavePoint& savePoint = world.savePoint;
         if (sessionRuntime_.mode != RendererRuntimeMode::PlayableGame || !savePoint.active) return;
-        if (!DynamicVisualCandidate(Add3(savePoint.pos, {0.0f, 0.72f, 0.0f}), 0.85f, std::max(9.0f, world.maze->TileAverage() * 7.0f))) return;
-        XMFLOAT3 right{std::cos(savePoint.yaw), 0.0f, -std::sin(savePoint.yaw)};
-        XMFLOAT3 up{0.0f, 1.0f, 0.0f};
-        XMFLOAT3 forward{std::sin(savePoint.yaw), 0.0f, std::cos(savePoint.yaw)};
-        XMFLOAT3 base = savePoint.pos;
-        AppendDynamicBoxAxes(verts, Add3(base, {0.0f, 0.22f, 0.0f}), right, up, forward, {0.30f, 0.22f, 0.22f}, 19.0f);
-        AppendDynamicBoxAxes(verts, Add3(base, {0.0f, 0.49f, 0.0f}), right, up, forward, {0.44f, 0.055f, 0.30f}, 22.0f);
-        AppendDynamicBoxAxes(verts, Add3(base, {0.0f, 0.62f, 0.02f}), right, up, forward, {0.28f, 0.075f, 0.17f}, 23.0f);
-        AppendDynamicBoxAxes(verts, Add3(base, Add3(Scale3(forward, -0.13f), {0.0f, 0.73f, 0.0f})), right, up, forward, {0.24f, 0.070f, 0.035f}, 18.0f);
-        AppendDynamicBoxAxes(verts, Add3(base, Add3(Scale3(forward, 0.17f), {0.0f, 0.68f, 0.0f})), right, up, forward, {0.20f, 0.030f, 0.045f}, 18.0f);
-        for (int i = -4; i <= 4; ++i) {
-            float x = static_cast<float>(i) * 0.045f;
-            AppendDynamicBoxAxes(verts, Add3(base, Add3(Scale3(right, x), Add3(Scale3(forward, 0.12f), {0.0f, 0.72f, 0.0f}))),
-                right, up, forward, {0.014f, 0.014f, 0.018f}, 21.0f);
+        if (!DynamicVisualCandidate(Add3(savePoint.pos, {0.0f, 0.53f, 0.0f}), 0.75f, std::max(9.0f, world.maze->TileAverage() * 7.0f))) return;
+        static const std::vector<Vertex> mesh = [this] {
+            std::vector<Vertex> model;
+            model.reserve(9000);
+            BuildSavePointTypewriter(model);
+            return model;
+        }();
+        if (verts.size() + mesh.size() > kDynamicVertexCapacity) return;
+        const float cosine = std::cos(savePoint.yaw);
+        const float sine = std::sin(savePoint.yaw);
+        auto rotate = [&](XMFLOAT3 v) {
+            return XMFLOAT3{cosine * v.x + sine * v.z, v.y, -sine * v.x + cosine * v.z};
+        };
+        for (const Vertex& vertex : mesh) {
+            verts.push_back({Add3(savePoint.pos, rotate(vertex.pos)),
+                rotate(vertex.normal), rotate(vertex.tangent), vertex.uv, vertex.material});
         }
     }

@@ -6,7 +6,7 @@ void ShadowPS(VSOut input)
 {
     float materialId = MaterialId(input.material);
     bool transparentPaper = materialId > 8.5 && materialId < 9.5 && frac(input.material) < 0.5;
-    bool randomLoosePage = materialId > 34.5 && materialId < 35.5;
+    bool randomLoosePage = input.material >= 35.0 && input.material < 36.0;
     if ((materialId > 0.5 && materialId < 2.5) ||
         transparentPaper ||
         randomLoosePage ||
